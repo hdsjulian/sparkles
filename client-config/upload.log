@@ -1,0 +1,140 @@
+********************************************************************************
+Obsolete PIO Core v6.1.11a2 is used (previous was 6.1.13)
+Please remove multiple PIO Cores from a system:
+https://docs.platformio.org/en/latest/core/installation/troubleshooting.html
+********************************************************************************
+Processing d1_mini (platform: espressif32; board: esp32-s2-saola-1; framework: arduino)
+--------------------------------------------------------------------------------
+Tool Manager: Installing espressif/toolchain-xtensa-esp32s2 @ 8.4.0+2021r2-patch5
+Downloading 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
+Unpacking 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
+Tool Manager: toolchain-xtensa-esp32s2@8.4.0+2021r2-patch5 has been installed!
+Tool Manager: Installing platformio/tool-scons @ ~4.40502.0
+Downloading 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
+Unpacking 0% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
+Tool Manager: tool-scons@4.40502.0 has been installed!
+Tool Manager: Removing tool-scons @ 4.40600.0
+Tool Manager: tool-scons@4.40600.0 has been removed!
+Verbose mode can be enabled via `-v, --verbose` option
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/esp32-s2-saola-1.html
+PLATFORM: Espressif 32 (6.1.0) > Espressif ESP32-S2-Saola-1
+HARDWARE: ESP32S2 240MHz, 320KB RAM, 4MB Flash
+DEBUG: Current (cmsis-dap) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - framework-arduinoespressif32 @ 3.20007.0 (2.0.7) 
+ - tool-esptoolpy @ 1.40500.0 (4.5.0) 
+ - tool-mkfatfs @ 2.0.1 
+ - tool-mklittlefs @ 1.203.210628 (2.3) 
+ - tool-mkspiffs @ 2.230.0 (2.30) 
+ - toolchain-riscv32-esp @ 8.4.0+2021r2-patch5 
+ - toolchain-xtensa-esp32s2 @ 8.4.0+2021r2-patch5
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 35 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- ESP32TimerInterrupt @ 2.3.0
+|-- WiFi @ 2.0.0
+Building in release mode
+Compiling .pio/build/d1_mini/src/main.cpp.o
+Building .pio/build/d1_mini/bootloader.bin
+Generating partitions .pio/build/d1_mini/partitions.bin
+esptool.py v4.5
+Creating esp32s2 image...
+Merged 1 ELF section
+Successfully created esp32s2 image.
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFi.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiAP.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiClient.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiGeneric.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiMulti.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiSTA.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiScan.cpp.o
+src/main.cpp: In function 'void receiveAddress(uint8_t*)':
+src/main.cpp:127:57: warning: 'sizeof' on array function parameter 'address' will return size of 'uint8_t*' {aka 'unsigned char*'} [-Wsizeof-array-argument]
+     if (memcmp(&address, &addressList[i], sizeof(address))) {
+                                                         ^
+src/main.cpp:123:29: note: declared here
+ void receiveAddress(uint8_t address[6]) {
+                     ~~~~~~~~^~~~~~~~~~
+src/main.cpp:130:66: warning: 'sizeof' on array function parameter 'address' will return size of 'uint8_t*' {aka 'unsigned char*'} [-Wsizeof-array-argument]
+     memcpy(&addressList[addressCounter], &address, sizeof(address));
+                                                                  ^
+src/main.cpp:123:29: note: declared here
+ void receiveAddress(uint8_t address[6]) {
+                     ~~~~~~~~^~~~~~~~~~
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiServer.cpp.o
+Compiling .pio/build/d1_mini/liba50/WiFi/WiFiUdp.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/Esp.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/FirmwareMSC.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/FunctionalInterrupt.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/HWCDC.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/HardwareSerial.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/IPAddress.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/IPv6Address.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/MD5Builder.cpp.o
+Archiving .pio/build/d1_mini/liba50/libWiFi.a
+Compiling .pio/build/d1_mini/FrameworkArduino/Print.cpp.o
+Indexing .pio/build/d1_mini/liba50/libWiFi.a
+Compiling .pio/build/d1_mini/FrameworkArduino/Stream.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/StreamString.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/Tone.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/USB.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/USBCDC.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/USBMSC.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/WMath.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/WString.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/base64.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/cbuf.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-adc.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-bt.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-cpu.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-dac.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-gpio.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-i2c-slave.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-i2c.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-ledc.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-matrix.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-misc.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-psram.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-rgb-led.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-rmt.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-sigmadelta.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-spi.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-time.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-timer.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-tinyusb.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-touch.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/esp32-hal-uart.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/firmware_msc_fat.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/libb64/cdecode.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/libb64/cencode.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/main.cpp.o
+Compiling .pio/build/d1_mini/FrameworkArduino/stdlib_noniso.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/wiring_pulse.c.o
+Compiling .pio/build/d1_mini/FrameworkArduino/wiring_shift.c.o
+Archiving .pio/build/d1_mini/libFrameworkArduino.a
+Indexing .pio/build/d1_mini/libFrameworkArduino.a
+Linking .pio/build/d1_mini/firmware.elf
+Retrieving maximum program size .pio/build/d1_mini/firmware.elf
+Checking size .pio/build/d1_mini/firmware.elf
+Advanced Memory Usage is available via "PlatformIO Home > Project Inspect"
+RAM:   [          ]   4.8% (used 15672 bytes from 327680 bytes)
+Flash: [==        ]  18.5% (used 242338 bytes from 1310720 bytes)
+Building .pio/build/d1_mini/firmware.bin
+esptool.py v4.5
+Creating esp32s2 image...
+Merged 2 ELF sections
+Successfully created esp32s2 image.
+Configuring upload protocol...
+AVAILABLE: cmsis-dap, esp-bridge, esp-prog, espota, esptool, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa
+CURRENT: upload_protocol = esptool
+Looking for upload port...
+Using manually specified: /dev/cu.usbserial-0001
+Uploading .pio/build/d1_mini/firmware.bin
+esptool.py v4.5
+Serial port /dev/cu.usbserial-0001
+
+A fatal error occurred: Could not open /dev/cu.usbserial-0001, the port doesn't exist
+*** [upload] Error 2
+========================= [FAILED] Took 25.14 seconds =========================

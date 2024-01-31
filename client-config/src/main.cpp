@@ -1,17 +1,12 @@
-// test ing
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
-#include "ESP32TimerInterrupt.h"
-#define TIMER_INTERVAL_MS       1000
-#define USING_TIM_DIV1 true
-
 #define PRINT_MODE -1
 #define HELLO 0
 #define BLINK 1
 #define ADDRESS_RCVD 2
 #define LETSGO 3
-#define NUM_ADDRESSES 4
+#define NUM_ADDRESSES 2
 int mode;
 bool letsgo = false;
 bool blinking = false;
@@ -46,13 +41,13 @@ esp_now_peer_info_t peerInfo;
 
 struct message_address {
   uint8_t messageType = HELLO;
-  uint8_t address[6];
-} addressMessage;
+  uint8_t address[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+} outgoingAddressMessage, incomingAddressMessage;
 
 struct message_blink {
   uint8_t message_Type = BLINK;
   uint8_t color[3];
-  uint8_t address[6];
+  uint8_t address[6] = {0x01, 0x00, 0x00, 0x01, 0x01, 0x01};;
 } blinkMessage;
 
 struct addresses {
@@ -74,11 +69,21 @@ int addressReceived = false;
 int addressSending = 0;
 
 
-
+void printAddress(uint8_t address[6]) {
+  Serial.print("Sieze of ");
+  Serial.println(sizeof(address));
+    for (int i = 0; i < sizeof(address); i++) {
+      Serial.print(address[i]);
+      if (i < sizeof(address)) {
+        Serial.print(":");
+      }
+    }
+    Serial.println();
+    
+}
 
 void sendAddress() {
-  memcpy(&addressMessage.address, myAddress, sizeof(myAddress));
-  esp_now_send(broadcastAddress, (uint8_t *) &addressMessage, sizeof(addressMessage));
+  esp_now_send(broadcastAddress, (uint8_t *) &outgoingAddressMessage, sizeof(outgoingAddressMessage));
 }
 
 void blink(message_blink blinkMessage) {
@@ -95,6 +100,7 @@ void blink(message_blink blinkMessage) {
   ledcWrite(ledChannelBlue1, (int)floor(bluefloat));
   delay(2);
   }
+  // networking stuff
   while (true) {
     randnum = random(NUM_ADDRESSES);
     if (memcmp(&blinkMessage.address, &addressList[randnum], sizeof(blinkMessage.address)) == false) {
@@ -125,16 +131,22 @@ void blink(message_blink blinkMessage) {
 
 void receiveAddress(uint8_t address[6]) {
   Serial.print("Address received ");
-  Serial.println(address[5]);
+  printAddress(address);
   for (int i = 0; i<sizeof(addressList); i++) {
+    Serial.print("Checking Address ");
+    Serial.println(i);
     if (memcmp(&address, &addressList[i], sizeof(address))) {
+      Serial.println("found");
       return;
     }
     memcpy(&addressList[addressCounter], &address, sizeof(address));
     memcpy(&addressRcvd.address, myAddress, sizeof(myAddress));
     esp_now_send(address, (uint8_t *) &addressRcvd, sizeof(addressRcvd));
     addressCounter++;
+    Serial.print("Address Counter one up, is now") ;
+    Serial.println(addressCounter);
     if (addressCounter == NUM_ADDRESSES-1 and letsgo == false) {
+      Serial.println("not going but address counter full");
       esp_now_send(broadcastAddress, (uint8_t *) &letsgoMsg, sizeof(letsgoMsg));
       blinkMessage.color[0] = 0xFF;
       blinkMessage.color[1] = 0xFF; 
@@ -148,8 +160,10 @@ void receiveAddress(uint8_t address[6]) {
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   switch (incomingData[0]) {
     case HELLO:  
-      memcpy(&addressMessage,incomingData,sizeof(addressMessage));
-      receiveAddress(addressMessage.address);
+      Serial.println("address received");
+      memcpy(&incomingAddressMessage,incomingData,sizeof(incomingAddressMessage));
+      printAddress(incomingAddressMessage.address);
+      receiveAddress(incomingAddressMessage.address);
       break;
     case ADDRESS_RCVD: 
       //add stuff regarding received address
@@ -161,6 +175,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
       break;
     case LETSGO:
       letsgo = true;
+      Serial.println("Lets go");
       break;
 
     default: 
@@ -177,16 +192,40 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
 
 
 
+void ledSetup() { 
+    ledcSetup(ledChannelRed1, freq, resolution);
+  ledcSetup(ledChannelGreen1, freq, resolution);
+  ledcSetup(ledChannelBlue1, freq, resolution);
+ ledcSetup(ledChannelRed2, freq, resolution);
+  ledcSetup(ledChannelGreen2, freq, resolution);
+  ledcSetup(ledChannelBlue2, freq, resolution);
+  ledcAttachPin(ledPinRed, ledChannelRed1);
+  ledcAttachPin(ledPinGreen, ledChannelGreen1);
+  ledcAttachPin(ledPinBlue, ledChannelBlue1);
+  ledcAttachPin(ledPinRed2, ledChannelRed2);
+  ledcAttachPin(ledPinBlue2, ledChannelBlue2);
+  ledcAttachPin(ledPinGreen2, ledChannelGreen2);
+  ledcWrite(ledChannelRed1, 0);
+  ledcWrite(ledChannelBlue1, 0);
+  ledcWrite(ledChannelGreen1, 0);
+  
+  ledcWrite(ledChannelRed2, 0);
+  ledcWrite(ledChannelBlue2, 0);
+  ledcWrite(ledChannelGreen2, 0);
+}
 
 
 void setup() {
- 
+ ledSetup();
   // Initialize Serial Monitor
   Serial.begin(115200);
   // start timer
   // Set device as a Wi-Fi Station
+  //Networking Stuff
   WiFi.mode(WIFI_STA);
-  WiFi.macAddress(addressMessage.address);
+  Serial.println("printing address before");
+  printAddress(outgoingAddressMessage.address);
+  WiFi.macAddress(outgoingAddressMessage.address);
 
   // Init ESP-NOW
   if (esp_now_init() != 0) {
@@ -203,24 +242,24 @@ void setup() {
   }
   esp_now_register_recv_cb(OnDataRecv);  
   esp_now_register_send_cb(OnDataSent);
-  ledcSetup(ledChannelRed1, freq, resolution);
-  ledcSetup(ledChannelGreen1, freq, resolution);
-  ledcSetup(ledChannelBlue1, freq, resolution);
- ledcSetup(ledChannelRed2, freq, resolution);
-  ledcSetup(ledChannelGreen2, freq, resolution);
-  ledcSetup(ledChannelBlue2, freq, resolution);
-
+  Serial.println("starting");
+  Serial.print("First Address");
+  printAddress(outgoingAddressMessage.address);
+  delay(3000);
 }
 
 
 void loop() {
-  if (addressCounter <NUM_ADDRESSES-1) {
-    Serial.println("Address sent");
+//networking stuff   
+if (addressCounter <NUM_ADDRESSES-1) {
+    Serial.print ("Address sent ");
+    printAddress(outgoingAddressMessage.address);
     sendAddress();
-    delay(1);
+    delay(1000);
   }
   else {
     Serial.println("Address counter full");
   }
 
+delay(100);
 }
