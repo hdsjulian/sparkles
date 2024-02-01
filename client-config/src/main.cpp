@@ -6,10 +6,12 @@
 #define BLINK 1
 #define ADDRESS_RCVD 2
 #define LETSGO 3
-#define NUM_ADDRESSES 2
+#define NUM_ADDRESSES 4
 #define ADDRESS_SIZE 6
 int mode;
 int letsgo = 0;
+int first = 0;
+bool sendingLetsgo = false;
 bool blinking = false;
 int freq = 5000;
 int resolution = 8;
@@ -35,7 +37,8 @@ uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 //uint8_t broadcastAddress[] = {0xB4,0xE6,0x2D,0xE9,0x3C,0x21};
 uint8_t myAddress[6];
 esp_now_peer_info_t peerInfo;
-
+esp_now_peer_num_t numPeers;
+esp_now_peer_info_t testPeerInfo;
 
 //Variables for Time Offset
 
@@ -81,6 +84,7 @@ void printMessageTypes(int messageType) {
       Serial.println("Address received");
       break;
     case LETSGO: 
+
       Serial.println("Lets Go");
       break;
     default: 
@@ -110,6 +114,26 @@ void sendAddress() {
 }
 
 void blink(message_blink blinkMessage) {
+  while (true) {
+    randnum = random(NUM_ADDRESSES);
+    //randnum = 0;
+    Serial.print("Rand num ");
+    Serial.println(randnum);
+    printAddress(blinkMessage.address);
+    printAddress(addressList[randnum].address);
+    if (memcmp(blinkMessage.address, addressList[randnum].address, sizeof(uint8_t) * ADDRESS_SIZE) == 0) {
+      memcpy(blinkMessage.address, myAddress, sizeof(uint8_t) * ADDRESS_SIZE);
+      blinkMessage.color[0] = random(128);
+      blinkMessage.color[1] = random(128);
+      blinkMessage.color[2] = random(128);
+      esp_now_send(addressList[randnum].address, (uint8_t *) &blinkMessage, sizeof(blinkMessage));
+      break;
+    }
+    Serial.println("Didn't break");
+    delay(500);
+
+  }
+  delay(steps);
   Serial.println("blink");
   blinking = true;
   for (int i = 0; i < steps; i++) {
@@ -122,21 +146,14 @@ void blink(message_blink blinkMessage) {
   ledcWrite(ledChannelRed1, (int)floor(redfloat));
   ledcWrite(ledChannelGreen1, (int)floor(greenfloat));
   ledcWrite(ledChannelBlue1, (int)floor(bluefloat));
+  if (i % 100 == 0) {
+    Serial.print ("Step ");
+    Serial.println(i);
+  }
   delay(2);
   }
   // networking stuff
-  while (true) {
-    randnum = random(NUM_ADDRESSES);
-    if (memcmp(&blinkMessage.address, &addressList[randnum], sizeof(blinkMessage.address)) == false) {
-      memcpy(&blinkMessage.address, myAddress, sizeof(myAddress));
-      blinkMessage.color[0] = random(256);
-      blinkMessage.color[1] = random(256);
-      blinkMessage.color[2] = random(256);
-      esp_now_send(addressList[randnum].address, (uint8_t *) &blinkMessage, sizeof(blinkMessage));
-      break;
-    }
 
-  }
   for (int i = steps; i > 0; i--) {
     redfloat -= (float)blinkMessage.color[0]/steps;
     greenfloat -= (float)blinkMessage.color[1]/steps;
@@ -170,75 +187,47 @@ void blinkquick(int red, int green, int blue) {
     
 }
 
+void registerAddress(uint8_t address[6]) {
 
+  memcpy(peerInfo.peer_addr, address, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+    esp_now_add_peer(&peerInfo);
+    esp_now_get_peer_num(&numPeers);
+    Serial.print("Added Address to Peer list. Total Number: ");
+    Serial.println(numPeers.total_num);   
+
+}
 void receiveAddress(uint8_t address[6]) {
+  Serial.print("received address ");
   printAddress(address);
-  Serial.println("Printing addresses: ");
-  for (int i = 0; i<NUM_ADDRESSES; i++) {
-    printAddress(addressList[i].address);
+  if (esp_now_get_peer(address, &testPeerInfo) == ESP_OK) {
+    Serial.println("found!");
+    return;
   }
-  for (int i = 0; i<NUM_ADDRESSES; i++) {
-    if (memcmp(&address, &addressList[i].address, sizeof(uint8_t) * ADDRESS_SIZE)==0) {
-      Serial.println("found");
-
-    }
-    else {
-      Serial.print("address is New ");
-      printAddress(address);
-      Serial.print("Address in List ");
-      printAddress(addressList[i].address);
-      Serial.print("Address Counter");
-      Serial.println(addressCounter);
-    }
-    memcpy(addressList[addressCounter].address, address, sizeof(uint8_t) * ADDRESS_SIZE);
-    Serial.println("Printing addresses: ");
-    for (int i = 0; i<NUM_ADDRESSES; i++) {
-      printAddress(addressList[i].address);
-    }
-    memcpy(&addressRcvd.address, outgoingAddressMessage.address, sizeof(uint8_t) * ADDRESS_SIZE);
-    Serial.println("sending rcvd");
-    printAddress(address);
-    //blinkquick(255, 0, 0);
-      Serial.print ("Sent ");
-      printMessageTypes(addressRcvd.messageType);
-    esp_now_send(address, (uint8_t *) &addressRcvd, sizeof(addressRcvd));
-    addressCounter++;
-    Serial.print("Address Counter one up, is now") ;
-    Serial.println(addressCounter);
-    if (addressCounter == NUM_ADDRESSES-1) {
-      Serial.println("address counter full, ready to go");
-      Serial.print ("Sent ");
-      printMessageTypes(letsgoMsg.messageType);
-      esp_now_send(broadcastAddress, (uint8_t *) &letsgoMsg, sizeof(letsgoMsg));
-      //blinkMessage.color[0] = 0xFF;
-      //blinkMessage.color[1] = 0xFF; 
-      //blinkMessage.color[2] = 0xFF;
-      //delay(5);
-      //blink(blinkMessage);
-    }
+  memcpy(addressList[addressCounter].address, address, sizeof(uint8_t) * ADDRESS_SIZE);
+  memcpy(addressRcvd.address, outgoingAddressMessage.address, sizeof(uint8_t) * ADDRESS_SIZE);
+ //blinkquick(255, 0, 0);
+  registerAddress(address);
+  esp_now_send(address, (uint8_t *) &addressRcvd, sizeof(addressRcvd));
+  addressCounter++;
+  if (addressCounter == NUM_ADDRESSES-1) {
+    Serial.println("address counter full, ready to go");
+    sendAddress();
+    sendingLetsgo = true;
+    esp_now_send(broadcastAddress, (uint8_t *) &letsgoMsg, sizeof(letsgoMsg));
   }
+  
 }
 
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  blinkquick(0, 255, 0);
-  Serial.print ("msg rcvd");
-  Serial.println(incomingData[0]);
   switch (incomingData[0]) {
     case HELLO:  
-      Serial.println("address received");
-      blinkquick(0, 255, 0);
       memcpy(&incomingAddressMessage,incomingData,sizeof(incomingAddressMessage));
       receiveAddress(incomingAddressMessage.address);
       break;
     case ADDRESS_RCVD: 
-      blinkquick(255, 0, 0);
-      delay(100);
-      blinkquick(255, 0, 0);
       letsgo++;
-      Serial.print("received an address from");
-      memcpy(&addressRcvd,incomingData,sizeof(addressRcvd));
-      printAddress(addressRcvd.address);
-      //add stuff regarding received address
       break;
     case BLINK: 
       if (blinking == false) {}
@@ -246,8 +235,10 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         blink(blinkMessage);
       break;
     case LETSGO:
-      //letsgo = true;
-      Serial.println("Lets go");
+      Serial.println("received letsgo");
+      if (first == 0) {
+        first = -1;
+      }
       break;
 
     default: 
@@ -255,13 +246,13 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   }
 }
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
-  if (sendStatus == ESP_NOW_SEND_SUCCESS) {
-    Serial.println("Sent success");
+  if (sendingLetsgo == true and sendStatus == ESP_NOW_SEND_SUCCESS) {
+    sendingLetsgo = false;
+    if (first != -1) { 
+      first = 1;
+    }
+    
   }
-  else {
-    Serial.println("not successful");
-  }
-
 }
 
 
@@ -302,7 +293,7 @@ void setup() {
   //Networking Stuff
   WiFi.mode(WIFI_STA);
   WiFi.macAddress(outgoingAddressMessage.address);
-
+  WiFi.macAddress(myAddress);
   // Init ESP-NOW
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
@@ -318,19 +309,28 @@ void setup() {
   }
   esp_now_register_recv_cb(OnDataRecv);  
   esp_now_register_send_cb(OnDataSent);
-  delay(3000);
+  delay(100);
 }
 
 
 void loop() {
 //networking stuff   
-if (letsgo<NUM_ADDRESSES-1) {
-  Serial.println("Sent Address");
-    sendAddress();
-    delay(3000);
-}
-else {
-  Serial.println("everyone sent me their address");
-  delay(3000);
-}
+Serial.print(" First = ");
+Serial.println(first);
+  if (letsgo<NUM_ADDRESSES-1) {
+      sendAddress();
+      delay(500);
+  }
+  else {
+    if (first == 1) {
+      //Serial.println("blinkign");
+      blinkMessage.color[0] = random(128);
+      blinkMessage.color[1] = random(128);
+      blinkMessage.color[2] = random(128);
+      memcpy(blinkMessage.address,addressList[0].address, sizeof(uint8_t) * ADDRESS_SIZE);
+      blink(blinkMessage);
+    }
+    delay(2000);
+  }
+
 }
