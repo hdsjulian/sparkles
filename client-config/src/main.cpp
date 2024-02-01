@@ -7,13 +7,14 @@
 #define ADDRESS_RCVD 2
 #define LETSGO 3
 #define NUM_ADDRESSES 2
+#define ADDRESS_SIZE 6
 int mode;
-bool letsgo = false;
+int letsgo = 0;
 bool blinking = false;
 int freq = 5000;
 int resolution = 8;
 int randnum = 0;
-
+int bla = 0;
 const int ledPinBlue = 20;  // 16 corresponds to GPIO16
 const int ledPinRed = 9; // 17 corresponds to GPIO17
 const int ledPinGreen = 3;  // 5 corresponds to GPIO5
@@ -45,36 +46,54 @@ struct message_address {
 } outgoingAddressMessage, incomingAddressMessage;
 
 struct message_blink {
-  uint8_t message_Type = BLINK;
+  uint8_t messageType = BLINK;
   uint8_t color[3];
   uint8_t address[6] = {0x01, 0x00, 0x00, 0x01, 0x01, 0x01};;
 } blinkMessage;
 
 struct addresses {
   uint8_t address[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-  uint8_t rcvd[NUM_ADDRESSES];
-} addressList[NUM_ADDRESSES];
+  uint8_t rcvd;
+} addressList[NUM_ADDRESSES-1];
 int addressCounter = 0;
 
 struct msg_address_rcvd {
-  uint8_t message = ADDRESS_RCVD;
+  uint8_t messageType = ADDRESS_RCVD;
   uint8_t address[6];
 } addressRcvd;
 
 struct msg_letsgo {
-  uint8_t message = LETSGO;
+  uint8_t messageType = LETSGO;
 } letsgoMsg;
 //address sending
 int addressReceived = false;
 int addressSending = 0;
 
+void printMessageTypes(int messageType) {
+  switch (messageType) {
+    case HELLO: 
+      Serial.println ("Message Hello");
+      break;
+    case BLINK: 
+      Serial.println("Blink");
+      break;
+    case ADDRESS_RCVD:
+      Serial.println("Address received");
+      break;
+    case LETSGO: 
+      Serial.println("Lets Go");
+      break;
+    default: 
+      Serial.print("Unknown message type ");
+      Serial.println(messageType);
+  }
+}
 
 void printAddress(uint8_t address[6]) {
-  Serial.print("Sieze of ");
-  Serial.println(sizeof(address));
-    for (int i = 0; i < sizeof(address); i++) {
+
+    for (int i = 0; i < ADDRESS_SIZE; i++) {
       Serial.print(address[i]);
-      if (i < sizeof(address)) {
+      if (i < ADDRESS_SIZE-1) {
         Serial.print(":");
       }
     }
@@ -83,10 +102,15 @@ void printAddress(uint8_t address[6]) {
 }
 
 void sendAddress() {
+  Serial.print ("Sent ");
+  printMessageTypes(outgoingAddressMessage.messageType);
+  Serial.print(" My Address is ");
+  printAddress(outgoingAddressMessage.address);
   esp_now_send(broadcastAddress, (uint8_t *) &outgoingAddressMessage, sizeof(outgoingAddressMessage));
 }
 
 void blink(message_blink blinkMessage) {
+  Serial.println("blink");
   blinking = true;
   for (int i = 0; i < steps; i++) {
     redfloat += (float)blinkMessage.color[0]/steps;
@@ -128,44 +152,92 @@ void blink(message_blink blinkMessage) {
   blinking = false;
 }
 
+void blinkquick(int red, int green, int blue) {
+    ledcWrite(ledChannelRed2, red);
+  ledcWrite(ledChannelGreen2, green);
+  ledcWrite(ledChannelBlue2, blue);
+  ledcWrite(ledChannelRed1, red);
+  ledcWrite(ledChannelGreen1, green);
+  ledcWrite(ledChannelBlue1, blue);   
+  delay(100);
+    ledcWrite(ledChannelRed2, 0);
+    ledcWrite(ledChannelGreen2, 0);
+  ledcWrite(ledChannelBlue2, 0);
+  ledcWrite(ledChannelRed1, 0);
+  ledcWrite(ledChannelGreen1, 0);
+  ledcWrite(ledChannelBlue1, 0);   
+
+    
+}
+
 
 void receiveAddress(uint8_t address[6]) {
-  Serial.print("Address received ");
   printAddress(address);
-  for (int i = 0; i<sizeof(addressList); i++) {
-    Serial.print("Checking Address ");
-    Serial.println(i);
-    if (memcmp(&address, &addressList[i], sizeof(address))) {
+  Serial.println("Printing addresses: ");
+  for (int i = 0; i<NUM_ADDRESSES; i++) {
+    printAddress(addressList[i].address);
+  }
+  for (int i = 0; i<NUM_ADDRESSES; i++) {
+    if (memcmp(&address, &addressList[i].address, sizeof(uint8_t) * ADDRESS_SIZE)==0) {
       Serial.println("found");
-      return;
+
     }
-    memcpy(&addressList[addressCounter], &address, sizeof(address));
-    memcpy(&addressRcvd.address, myAddress, sizeof(myAddress));
+    else {
+      Serial.print("address is New ");
+      printAddress(address);
+      Serial.print("Address in List ");
+      printAddress(addressList[i].address);
+      Serial.print("Address Counter");
+      Serial.println(addressCounter);
+    }
+    memcpy(addressList[addressCounter].address, address, sizeof(uint8_t) * ADDRESS_SIZE);
+    Serial.println("Printing addresses: ");
+    for (int i = 0; i<NUM_ADDRESSES; i++) {
+      printAddress(addressList[i].address);
+    }
+    memcpy(&addressRcvd.address, outgoingAddressMessage.address, sizeof(uint8_t) * ADDRESS_SIZE);
+    Serial.println("sending rcvd");
+    printAddress(address);
+    //blinkquick(255, 0, 0);
+      Serial.print ("Sent ");
+      printMessageTypes(addressRcvd.messageType);
     esp_now_send(address, (uint8_t *) &addressRcvd, sizeof(addressRcvd));
     addressCounter++;
     Serial.print("Address Counter one up, is now") ;
     Serial.println(addressCounter);
-    if (addressCounter == NUM_ADDRESSES-1 and letsgo == false) {
-      Serial.println("not going but address counter full");
+    if (addressCounter == NUM_ADDRESSES-1) {
+      Serial.println("address counter full, ready to go");
+      Serial.print ("Sent ");
+      printMessageTypes(letsgoMsg.messageType);
       esp_now_send(broadcastAddress, (uint8_t *) &letsgoMsg, sizeof(letsgoMsg));
-      blinkMessage.color[0] = 0xFF;
-      blinkMessage.color[1] = 0xFF; 
-      blinkMessage.color[2] = 0xFF;
-      delay(5);
-      blink(blinkMessage);
+      //blinkMessage.color[0] = 0xFF;
+      //blinkMessage.color[1] = 0xFF; 
+      //blinkMessage.color[2] = 0xFF;
+      //delay(5);
+      //blink(blinkMessage);
     }
   }
 }
 
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  blinkquick(0, 255, 0);
+  Serial.print ("msg rcvd");
+  Serial.println(incomingData[0]);
   switch (incomingData[0]) {
     case HELLO:  
       Serial.println("address received");
+      blinkquick(0, 255, 0);
       memcpy(&incomingAddressMessage,incomingData,sizeof(incomingAddressMessage));
-      printAddress(incomingAddressMessage.address);
       receiveAddress(incomingAddressMessage.address);
       break;
     case ADDRESS_RCVD: 
+      blinkquick(255, 0, 0);
+      delay(100);
+      blinkquick(255, 0, 0);
+      letsgo++;
+      Serial.print("received an address from");
+      memcpy(&addressRcvd,incomingData,sizeof(addressRcvd));
+      printAddress(addressRcvd.address);
       //add stuff regarding received address
       break;
     case BLINK: 
@@ -174,7 +246,7 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
         blink(blinkMessage);
       break;
     case LETSGO:
-      letsgo = true;
+      //letsgo = true;
       Serial.println("Lets go");
       break;
 
@@ -183,6 +255,12 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   }
 }
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
+  if (sendStatus == ESP_NOW_SEND_SUCCESS) {
+    Serial.println("Sent success");
+  }
+  else {
+    Serial.println("not successful");
+  }
 
 }
 
@@ -223,8 +301,6 @@ void setup() {
   // Set device as a Wi-Fi Station
   //Networking Stuff
   WiFi.mode(WIFI_STA);
-  Serial.println("printing address before");
-  printAddress(outgoingAddressMessage.address);
   WiFi.macAddress(outgoingAddressMessage.address);
 
   // Init ESP-NOW
@@ -242,24 +318,19 @@ void setup() {
   }
   esp_now_register_recv_cb(OnDataRecv);  
   esp_now_register_send_cb(OnDataSent);
-  Serial.println("starting");
-  Serial.print("First Address");
-  printAddress(outgoingAddressMessage.address);
   delay(3000);
 }
 
 
 void loop() {
 //networking stuff   
-if (addressCounter <NUM_ADDRESSES-1) {
-    Serial.print ("Address sent ");
-    printAddress(outgoingAddressMessage.address);
+if (letsgo<NUM_ADDRESSES-1) {
+  Serial.println("Sent Address");
     sendAddress();
-    delay(1000);
-  }
-  else {
-    Serial.println("Address counter full");
-  }
-
-delay(100);
+    delay(3000);
+}
+else {
+  Serial.println("everyone sent me their address");
+  delay(3000);
+}
 }
