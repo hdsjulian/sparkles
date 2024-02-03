@@ -1,4 +1,5 @@
-#include <../lib/declarations.h>
+//#include "declarations.h"
+
 
 #ifndef LEDFUNCTIONS_H
 #define LEDFUNCTIONS_H

@@ -1,4 +1,7 @@
-#include <../lib/declarations.h>
+#include <Arduino.h>
+#include <esp_now.h>
+
+//#include <../lib/declarations.h>
 
 #ifndef MESSAGING_H
 #define MESSAGING_H

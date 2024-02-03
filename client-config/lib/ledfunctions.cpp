@@ -1,7 +1,29 @@
 #include "ledfunctions.h"
-#include "declarations.h"
+//#include "declarations.h"
+#include "definitions.h"
 #include "messaging.h"
 #include "Arduino.h"
+extern const boolean invert;
+extern uint32_t R, G, B;
+extern int steps;
+extern float redfloat, greenfloat, bluefloat;
+extern const int ledPinBlue = 20;  // 16 corresponds to GPIO16
+extern const int ledPinRed = 9; // 17 corresponds to GPIO17
+extern const int ledPinGreen = 3;  // 5 corresponds to GPIO5
+extern const int ledPinGreen2 = 8;
+extern const int ledPinRed2 = 19;
+extern const int ledPinBlue2 = 18;
+extern const int ledChannelRed1 = 0;
+extern const int ledChannelGreen1 = 1;
+extern const int ledChannelBlue1 = 2;
+extern const int ledChannelRed2 = 3;
+extern const int ledChannelGreen2 = 4;
+extern const int ledChannelBlue2 = 5;
+extern addresses addressList[NUM_ADDRESSES-1];
+extern message_blink blinkMessage;
+extern int stepdelay;
+extern int freq, resolution;
+
 void hueToRGB(uint8_t hue, uint8_t brightness)
 {
     uint16_t scaledHue = (hue * 6);

@@ -1,11 +1,13 @@
 #include <Arduino.h>
+//#include <../lib/definitions.h>
 #include <WiFi.h>
 #include <../lib/declarations.h>
 #include <../lib/ledfunctions.h>
 #include <../lib/messaging.h>
 //#include <ledfunctions.cpp>
 
-
+message_blink blinkMessage;
+message_address outgoingAddressMessage, incomingAddressMessage;
 
 
 

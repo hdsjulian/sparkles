@@ -1,14 +1,28 @@
 #include <Arduino.h>
-
+#include <esp_now.h>
+#include "definitions.h"
 int mode;
 bool sendAddressFlag= true;
 bool blinking = false;
-#define PRINT_MODE -1
-#define HELLO 0
-#define BLINK 1
-#define ADDRESS_RCVD 2
-#define NUM_ADDRESSES 8
-#define ADDRESS_SIZE 6
+
+
+//Variables for Time Offset
+int addressReceived = false;
+const int ledPinBlue = 20;  // 16 corresponds to GPIO16
+const int ledPinRed = 9; // 17 corresponds to GPIO17
+const int ledPinGreen = 3;  // 5 corresponds to GPIO5
+const int ledPinGreen2 = 8;
+const int ledPinRed2 = 19;
+const int ledPinBlue2 = 18;
+const int ledChannelRed1 = 0;
+const int ledChannelGreen1 = 1;
+const int ledChannelBlue1 = 2;
+const int ledChannelRed2 = 3;
+const int ledChannelGreen2 = 4;
+const int ledChannelBlue2 = 5;
+int freq = 5000;
+int resolution = 8;
+
 int randnum = 0;
 int bla = 0;
 
@@ -31,43 +45,5 @@ esp_now_peer_info_t peerInfo;
 esp_now_peer_num_t numPeers;
 esp_now_peer_info_t testPeerInfo;
 
-//Variables for Time Offset
-
-
-struct message_address {
-  uint8_t messageType = HELLO;
-  uint8_t address[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-} outgoingAddressMessage, incomingAddressMessage;
-
-struct message_blink {
-  uint8_t messageType = BLINK;
-  uint8_t color[3];
-  bool broadcast = false;
-} blinkMessage;
-
-struct addresses {
-  uint8_t address[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-  bool registered;
-} addressList[NUM_ADDRESSES-1];
-int addressCounter = 0;
-
-struct msg_address_rcvd {
-  uint8_t messageType = ADDRESS_RCVD;
-  uint8_t address[6];
-} addressRcvd;
-
-int addressReceived = false;
-const int ledPinBlue = 20;  // 16 corresponds to GPIO16
-const int ledPinRed = 9; // 17 corresponds to GPIO17
-const int ledPinGreen = 3;  // 5 corresponds to GPIO5
-const int ledPinGreen2 = 8;
-const int ledPinRed2 = 19;
-const int ledPinBlue2 = 18;
-const int ledChannelRed1 = 0;
-const int ledChannelGreen1 = 1;
-const int ledChannelBlue1 = 2;
-const int ledChannelRed2 = 3;
-const int ledChannelGreen2 = 4;
-const int ledChannelBlue2 = 5;
-int freq = 5000;
-int resolution = 8;
+addresses addressList[NUM_ADDRESSES-1];
+message_address_rcvd addressRcvd;
