@@ -1,3 +1,6 @@
+#ifndef MESSAGING_H
+#define MESSAGING_H
+
 #include "myDefines.h"
 #include "Arduino.h"
 #include "stateMachine.h"
@@ -13,12 +16,6 @@ class webserver;
 #include <vector>
 #include <cstdint>
 #include "LittleFS.h"
-
-
-
-#ifndef MESSAGING_H
-#define MESSAGING_H
-
 
 class messaging {
     private:  
@@ -189,7 +186,7 @@ class messaging {
         void setAnimation(message_animate* message);
         void nextAnimation();
         void forceDebug(int i = 0);
-        void setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight) {
+        void setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight);// {
 
 
 };

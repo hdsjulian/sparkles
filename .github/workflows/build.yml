@@ -1,0 +1,31 @@
+name: PlatformIO CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # enable all OSes when code is read
+        os: [windows-latest]
+        #os: [ubuntu-latest, windows-latest, macos-latest]
+        example:
+        # add all examples when working
+          - "sparkles-client-config"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+      - name: Install dependencies
+        run: |
+          pip install -U https://github.com/platformio/platformio/archive/develop.zip
+      - name: Build examples
+        # remove environment restriction when code is ready
+        run: |
+          pio run -d ${{ matrix.example }} -e BlinkyV3

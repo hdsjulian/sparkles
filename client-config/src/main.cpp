@@ -1,6 +1,6 @@
 #define V1 1
 #define V2 2
-#define D1 3
+//#define D1 3
 #define DEVICE V2
 #include <Arduino.h>
 #include <esp_now.h>
