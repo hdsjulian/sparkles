@@ -236,6 +236,14 @@ void loop() {
     Serial.println("-----");
     int* sysTime = messageHandler.getSystemTime();
     Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));
+    Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
+    Serial.println("Time is "+String(millis()));
+    Serial.println("Next animation in "+String(int(messageHandler.nextAnimationPing-millis())));
+    Serial.println("sleep in "+String(messageHandler.calculateGoodNight(true)));
+    Serial.println("Wakeup in "+String(messageHandler.calculateGoodNight(false)));
+
+
+
     //messageHandler.printAddress(myAddress);
 
   }
@@ -259,7 +267,7 @@ void loop() {
   if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER and modeHandler.getMode() != MODE_PING_RESET) {
     messageHandler.handleTimerUpdates();
   }
-  if (modeHandler.getMode() == MODE_ANIMATE) {
+  if (messageHandler.nextAnimationPing > 0) {
     messageHandler.nextAnimation();
   }
   

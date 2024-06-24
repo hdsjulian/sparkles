@@ -1,5 +1,3 @@
-#define DEVICE_MODE 2
-#define DEVICE_USED 5
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
@@ -97,7 +95,7 @@ int something = 1;
 
 void setup() {
     Serial.begin(115200);
-    
+    #if DEVICE_USED == 2
     if (DEVICE_USED == 2) {
     ledcAttach(ledPinRed1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
   ledcAttach(ledPinGreen1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
@@ -107,6 +105,7 @@ void setup() {
   ledcAttach(ledPinBlue2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
   ledsOff();
 }
+    #endif
   if (!LittleFS.begin()) {
     Serial.println("Failed to mount LittleFS");
     return;

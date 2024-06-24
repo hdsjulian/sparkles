@@ -1,4 +1,4 @@
-23242870618173562
+23251447849939392
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -94892,6 +94892,13 @@ CONN-TH_B2B-PH-K-S footprint
 2
 2
 footprint
+CONN-TH_S2B-PH-K-LF-SN
+CONN-TH_S2B-PH-K-LF-SN footprint
+CONN-TH_S2B-PH-K-LF-SN footprint
+0
+2
+2
+footprint
 ESOP-8_L4.9-W3.9-P1.27-LS6.0-BL-EP
 ESOP-8_L4.9-W3.9-P1.27-LS6.0-BL-EP footprint
 ESOP-8_L4.9-W3.9-P1.27-LS6.0-BL-EP footprint
@@ -95116,6 +95123,34 @@ MIC-TH_BD6.0-P1.90-D0.4-L-RD footprint
 2
 2
 footprint3
+TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2
+TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2 footprint
+TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2 footprint
+0
+8
+8
+fpx
+FC-135R_L3.2-W1.5
+FC-135R_L3.2-W1.5 footprint
+FC-135R_L3.2-W1.5 footprint
+0
+2
+2
+fpx
+MIC-TH_BD4.0-P1.4-D0.4-L-FD
+MIC-TH_BD4.0-P1.4-D0.4-L-FD footprint
+MIC-TH_BD4.0-P1.4-D0.4-L-FD footprint
+0
+2
+2
+fpx
+MIC-TH_BD6.0-P1.90-D0.4-L-RD
+MIC-TH_BD6.0-P1.90-D0.4-L-RD footprint
+MIC-TH_BD6.0-P1.90-D0.4-L-RD footprint
+0
+2
+2
+fpx
 TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2
 TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2 footprint
 TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2 footprint

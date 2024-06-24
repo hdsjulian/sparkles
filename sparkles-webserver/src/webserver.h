@@ -43,5 +43,6 @@ class webserver {
     void setTime(AsyncWebServerRequest *request);
     void submitPositions(AsyncWebServerRequest *request);
     void sendSyncAsyncAnimation(AsyncWebServerRequest *request);
+    void setNeutral(AsyncWebServerRequest *request);
 };
 #endif

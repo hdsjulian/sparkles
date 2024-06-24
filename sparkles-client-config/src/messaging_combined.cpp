@@ -100,84 +100,113 @@ void messaging::printMessage(int message) {
 String messaging::messageCodeToText(int message) {
     String out = "";
     out += "message ";
-    switch (message) {
-        case MSG_ADDRESS:
-            out = "MSG_ADDRESS";
-            break;
-        case MSG_ANNOUNCE:
-            out = "MSG_ANNOUNCE";
-            break;
-        case MSG_TIMER_CALIBRATION:
-            out = "MSG_TIMER_CALIBRATION";
-            break;
-        case MSG_GOT_TIMER:
-            out = "MSG_GOT_TIMER";
-            break;
-        case MSG_ASK_CLAP_TIMES:
-            out = "MSG_ASK_CLAP_TIMES";
-            break;
-        case MSG_SEND_CLAP_TIMES:
-            out = "MSG_SEND_CLAP_TIMES";
-            break;
-        case MSG_ANIMATION:
-            out = "MSG_ANIMATION";
-            break;
-        case MSG_SWITCH_MODE:
-            out = "MSG_SWITCH_MODE";
-            break;
-        case MSG_NOCLAPFOUND:
-            out = "MSG_NOCLAPFOUND";
-            break;
-        case MSG_COMMANDS:
-            out = "MSG_COMMANDS";
-            break;
-        case MSG_ADDRESS_LIST:
-            out = "MSG_ADDRESS_LIST";
-            break;
-        case MSG_STATUS_UPDATE:
-            out = "MSG_STATUS_UPDATE";
-            break;
-        case MSG_END_CALIBRATION:
-            out = "MSG_END_CALIBRATION";
-            break;
-        case CMD_START:
-            out = "CMD_START";
-            break;
-        case CMD_MSG_SEND_ADDRESS_LIST:
-            out = "CMD_MSG_SEND_ADDRESS_LIST";
-            break;
-        case CMD_START_CALIBRATION_MODE:
-            out = "CMD_START_CALIBRATION_MODE";
-            break;
-        case CMD_END_CALIBRATION_MODE:
-            out = "CMD_END_CALIBRATION_MODE";
-            break;
-        case CMD_BLINK:
-            out = "CMD_BLINK";
-            break;
-        case CMD_MODE_NEUTRAL:
-            out = "CMD_MODE_NEUTRAL";
-            break;
-        case CMD_GET_TIMER:
-            out = "CMD_GET_TIMER";
-            break;
-        case CMD_END:
-            out = "CMD_END";
-            break;
-        case MSG_DISTANCE:
-            out = "MSG_DISTANCE";
-            break;
-        case MSG_SET_TIME:
-            out = "MSG_SET_TIME";
-            break;
-        case MSG_SET_POSITIONS:
-            out = "MSG_SET_POSITIONS";
-            break;
-        default:
-            out = "Didn't recognize Message";
-            out += message;
-            break;
-    }
+ switch (message) {
+    case MSG_ADDRESS:
+        out = "MSG_ADDRESS";
+        break;
+    case MSG_ANNOUNCE:
+        out = "MSG_ANNOUNCE";
+        break;
+    case MSG_TIMER_CALIBRATION:
+        out = "MSG_TIMER_CALIBRATION";
+        break;
+    case MSG_GOT_TIMER:
+        out = "MSG_GOT_TIMER";
+        break;
+    case MSG_ASK_CLAP_TIMES:
+        out = "MSG_ASK_CLAP_TIMES";
+        break;
+    case MSG_SEND_CLAP_TIMES:
+        out = "MSG_SEND_CLAP_TIMES";
+        break;
+    case MSG_ANIMATION:
+        out = "MSG_ANIMATION";
+        break;
+    case MSG_SWITCH_MODE:
+        out = "MSG_SWITCH_MODE";
+        break;
+    case MSG_DISTANCE:
+        out = "MSG_DISTANCE";
+        break;
+    case MSG_NOCLAPFOUND:
+        out = "MSG_NOCLAPFOUND";
+        break;
+    case MSG_COMMANDS:
+        out = "MSG_COMMANDS";
+        break;
+    case MSG_ADDRESS_LIST:
+        out = "MSG_ADDRESS_LIST";
+        break;
+    case MSG_STATUS_UPDATE:
+        out = "MSG_STATUS_UPDATE";
+        break;
+    case MSG_END_CALIBRATION:
+        out = "MSG_END_CALIBRATION";
+        break;
+    case MSG_WAKEUP:
+        out = "MSG_WAKEUP";
+        break;
+    case MSG_SET_TIME:
+        out = "MSG_SET_TIME";
+        break;
+    case MSG_SET_POSITIONS:
+        out = "MSG_SET_POSITIONS";
+        break;
+    case MSG_BATTERY_STATUS:
+        out = "MSG_BATTERY_STATUS";
+        break;
+    case MSG_SET_SLEEP_WAKEUP:
+        out = "MSG_SET_SLEEP_WAKEUP";
+        break;
+    case CMD_START:
+        out = "CMD_START";
+        break;
+    case CMD_MSG_SEND_ADDRESS_LIST:
+        out = "CMD_MSG_SEND_ADDRESS_LIST";
+        break;
+    case CMD_START_CALIBRATION_MODE:
+        out = "CMD_START_CALIBRATION_MODE";
+        break;
+    case CMD_END_CALIBRATION_MODE:
+        out = "CMD_END_CALIBRATION_MODE";
+        break;
+    case CMD_BLINK:
+        out = "CMD_BLINK";
+        break;
+    case CMD_MODE_NEUTRAL:
+        out = "CMD_MODE_NEUTRAL";
+        break;
+    case CMD_GET_TIMER:
+        out = "CMD_GET_TIMER";
+        break;
+    case CMD_START_ANIMATION:
+        out = "CMD_START_ANIMATION";
+        break;
+    case CMD_STOP_ANIMATION:
+        out = "CMD_STOP_ANIMATION";
+        break;
+    case CMD_DELETE_CLIENTS:
+        out = "CMD_DELETE_CLIENTS";
+        break;
+    case CMD_TIMER_CALIBRATION:
+        out = "CMD_TIMER_CALIBRATION";
+        break;
+    case CMD_GO_TO_SLEEP:
+        out = "CMD_GO_TO_SLEEP";
+        break;
+    case CMD_RESET:
+        out = "CMD_RESET";
+        break;
+    case CMD_RESET_SYSTEM:
+        out = "CMD_RESET_SYSTEM";
+        break;
+    case CMD_GET_BATTERY_STATUS:
+        out = "CMD_GET_BATTERY_STATUS";
+        break;
+    default:
+        out = "UNKNOWN_MESSAGE";
+        break;
+}
 
     return out;
 }
@@ -431,19 +460,3 @@ void messaging::setAnimation(message_animate* messageAnimate) {
     memcpy(&animationMessage, messageAnimate, sizeof(animationMessage));
 }   
 
-void messaging::nextAnimation() {
-    if (millis() < nextAnimationPing) {
-        return;
-    }
-    if (millis() > nextAnimationPing) {
-        if (endAnimation == true) {
-            globalModeHandler->switchMode(MODE_NEUTRAL);
-        }
-        else {
-            handleLed->getNextAnimation(&animationMessage);
-            animationMessage.startTime = micros()+1000000;
-            nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-            pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
-        }
-    }
-}

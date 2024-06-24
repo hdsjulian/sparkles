@@ -1,3 +1,4 @@
+
 #include "myDefines.h"
 #include "Arduino.h"
 #include "stateMachine.h"
@@ -14,10 +15,10 @@ class webserver;
 #include <cstdint>
 #include "LittleFS.h"
 
-
-
 #ifndef MESSAGING_H
 #define MESSAGING_H
+
+
 
 
 class messaging {
@@ -106,7 +107,8 @@ class messaging {
         int forcedDebugCounter = 0;
         unsigned long lastTry = 0;
         unsigned long nextAnimationPing;
-        bool endAnimation;
+        bool endAnimation = false;
+        int maxPos;
         //esp8266
         //uint8_t webserverAddress[6] = {0xe8, 0xdb, 0x84, 0x99, 0x5e, 0x44};
         uint8_t webserverAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
@@ -189,8 +191,9 @@ class messaging {
         void setAnimation(message_animate* message);
         void nextAnimation();
         void forceDebug(int i = 0);
-        void setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight) {
-
+        void setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight);
+        void setPositions(int id, float xpos, float  ypos, float zpos);
+        double calculateGoodNight(bool sleepWakeup);
 
 };
 

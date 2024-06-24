@@ -18,6 +18,9 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
     wakeupTime.minutes = GOODMORNING_MINUTE;
     wakeupTime.seconds = 0;
     if (DEVICE_MODE == MAIN) {
+        addPeer(webserverAddress);
+        WiFi.macAddress(clientAddresses[0].address);
+        return;
         if (!readStructsFromFile(clientAddresses, NUM_DEVICES,  "/clientAddress")) {
             addError("Failed to read client addresses from file");
         }
@@ -42,8 +45,7 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
             addError("Address counter: "+String(addressCounter));
         clientAddresses[1].active = WAITING;
         }
-        addPeer(webserverAddress);
-        WiFi.macAddress(clientAddresses[0].address);
+
         //todo dings
         clientAddresses[0].xLoc = 0;
         clientAddresses[0].yLoc = 0;
@@ -405,7 +407,6 @@ void messaging::setNoSuccess() {
             clientAddresses[updatingAddress].tries = 0;
         }
         timerUpdateCounter++;
-        globalModeHandler->switchMode(MODE_NEUTRAL);
         handleTimerUpdates();
     }
 
@@ -425,6 +426,7 @@ void messaging::goodNight() {
     }
     if (goToSleepTime != 0 and (millis() > goToSleepTime)) {
         difference = calculateTimeDifference(time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes-1, 0);
+        Serial.println("sleeping for "+String(difference));
         esp_sleep_enable_timer_wakeup((unsigned long)(difference*1000000));
         esp_light_sleep_start();
         goToSleepTime = 0;
@@ -435,6 +437,22 @@ void messaging::goodNight() {
     }
 
 }
+
+double messaging::calculateGoodNight(bool sleepWakeup) {
+    int* time;  
+    time = getSystemTime();
+    double difference;
+    if (sleepWakeup == true) {
+        difference = calculateTimeDifference(time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds);
+    }
+    else {
+    difference = calculateTimeDifference(time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes, wakeupTime.seconds);
+    }
+    return difference;
+}
+
+
+
 
 void messaging::setClock(int hours, int minutes, int seconds) {
     struct tm timeinfo;
@@ -519,4 +537,26 @@ void messaging::forceDebug(int i) {
     forcedDebugCounter++;
     Serial.println("forced debug "+String(forcedDebugCounter)+" - "+String(i));
     //delay();
+}
+
+void messaging::nextAnimation() {
+    return;
+    if (millis() < nextAnimationPing) {
+        return;
+    }
+    if (millis() > nextAnimationPing) {
+        if (endAnimation == true) {
+            Serial.println("End animation is true");
+            globalModeHandler->switchMode(MODE_NEUTRAL);
+        }
+        else {
+            handleLed->getNextAnimation(&animationMessage);
+            handleLed->printStatus();
+            animationMessage.startTime = micros()+1000000;
+            nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
+            Serial.println("Next animation ping "+String(nextAnimationPing));
+            Serial.println("now = "+String(millis()));
+            pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
+        }
+    }
 }

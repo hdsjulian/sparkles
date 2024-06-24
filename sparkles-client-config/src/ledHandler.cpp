@@ -290,6 +290,68 @@ void ledHandler::syncAsyncBlink() {
 }
 
 
+void ledHandler::rowBlink() {
+
+ 
+  //wait until next step. if all repeats done: done. 
+  if (millis() < animationNextStep) {
+    return;
+  }
+ 
+  if (millis() > animationNextStep and millis() < localAnimationStart+animationMessage.speed) {
+    //redsteps? and backwards?
+    //cyclestart berechnen auch abhängig vom spread und ansonsten einfach runterrattern dat ding
+
+    int elapsedTime = millis()-localAnimationStart;
+    redfloat  = calculateFlash(animationMessage.rgb1[0], elapsedTime);
+    greenfloat = calculateFlash(animationMessage.rgb1[1], elapsedTime);
+    bluefloat = calculateFlash(animationMessage.rgb1[2], elapsedTime);  
+    writeLeds();
+    // how to calculate?
+    animationNextStep = millis()+animationMessage.speed/256;
+  }
+
+  //if a repeat should happen...
+  if (millis()  > localAnimationStart+animationMessage.speed) {
+    repeatCounter++;
+    globalAnimationStart = globalAnimationStart+globalAnimationTimeframe;
+
+    //cycle start noch timen
+    //and figure out the start of next cycle
+    if (repeatCounter % 2 == 0) {
+      //spread time in meters per second"
+      localAnimationStart = globalAnimationStart +(xPos/animationMessage.spread_time)*1000; 
+      globalAnimationTimeframe = animationMessage.maxPos/animationMessage.spread_time;
+    }
+    else {
+      localAnimationStart = globalAnimationStart + (animationMessage.maxPos-xPos/animationMessage.spread_time)*1000; 
+      globalAnimationTimeframe = animationMessage.maxPos/animationMessage.spread_time;
+    }
+
+    //globalAnimationStart = globalAnimationStart+globalAnimationTimeframe;
+
+  }
+
+  
+  //if all repetitions have happened
+  if (repeatCounter == animationMessage.reps) {
+    if (animationRepeatCounter == animationMessage.animationreps) {
+      //either turn off
+      ledsOff();
+      currentAnimation = OFF;
+      return;
+    }
+    else {
+      // or repeat 
+      animationRepeatCounter++;
+      repeatCounter = 0;
+    }
+  }
+  //hier kommt die tatsächliche animation rein
+
+
+}
+
 float ledHandler::calculateFlash(int targetVal, unsigned long timeElapsed){
   if (timeElapsed < 0) {
     timeElapsed = 0;
@@ -457,6 +519,8 @@ void ledHandler::setLocation(int xposition, int yposition, int zposition) {
   xPos = xposition;
   yPos = yposition;
   zPos = zposition;
+  Serial.println("positions set to x:"+String(xPos)+", y: "+String(yPos)+" z: "+String(zPos));
+  delay(10000);
 }
 // IF BOARD == V2
 
@@ -473,18 +537,34 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
 }
   void ledHandler::createSyncAsyncBlink(message_animate *animationMessage) {
     
-    int red = random(0,256);
-    int blue = random(0,256);
-    int green = random(0,256);
+    int red = random(125,256);
+    int blue = random(125,256);
+    int green = random(125,256);
     animationMessage->rgb1[0] =red;
     animationMessage->rgb1[1] =  green;
     animationMessage->rgb1[2] = blue;
-    animationMessage->speed = random(250, 1000);
+    animationMessage->speed = random(100, 400);
     animationMessage->pause = random(100, 1000);
-    animationMessage->spread_time = random(100, 1000);
+    animationMessage->spread_time = random(100, 300);
+    animationMessage->reps = random(10, 50);
+    animationMessage->animationreps = 2000;
+  }
+
+    void ledHandler::createRowBlink(message_animate *animationMessage) {
+    
+    int red = random(125,256);
+    int blue = random(125,256);
+    int green = random(125,256);
+    animationMessage->rgb1[0] =red;
+    animationMessage->rgb1[1] =  green;
+    animationMessage->rgb1[2] = blue;
+    animationMessage->speed = random(100, 400);
+    animationMessage->pause = random(100, 1000);
+    animationMessage->spread_time = random(1, 5);
     animationMessage->reps = random(10, 50);
     animationMessage->animationreps = random(5, 20);
   }
+
 
 
 
@@ -504,6 +584,9 @@ void ledHandler::printStatus() {
   Serial.println("Position"+String(position));
   Serial.println("timerOffset "+String(timeOffset));
   Serial.println("animationMessage.startTime "+String(animationMessage.startTime));
+  Serial.println("xPos "+String(xPos));
+  Serial.println("yPos "+String(xPos));
+  Serial.println("zPos "+String(xPos));
   
 };
 

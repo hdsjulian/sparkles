@@ -150,7 +150,7 @@ struct message_set_sleep_wakeup {
   unsigned long hours;
   unsigned long minutes;
   unsigned long seconds;
-  bool sleep_wakeup;
+  bool isGoodNight;
 };
 
 struct message_battery_status {
@@ -268,6 +268,7 @@ struct message_animate {
   int spread_time = 100;
   float exponent = 5.0;
   uint16_t animationreps = 0;
+  float maxPos;
 } ;
 
 

@@ -50,10 +50,14 @@ void webserver::configRoutes() {
     });
 
     server.on("/submitPositions", HTTP_GET, [this] (AsyncWebServerRequest *request){
+
       this->submitPositions(request);
     });
     server.on("/setTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setTime(request);
+    });
+    server.on("/neutral", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->setNeutral(request);
     });
     server.on("/sendSyncAsyncAnimation", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->sendSyncAsyncAnimation(request);
@@ -130,6 +134,11 @@ void webserver::commandAnimate(AsyncWebServerRequest *request) {
   }
   }
 
+void webserver::setNeutral(AsyncWebServerRequest *request) {
+    messageHandler->pushDataToSendQueue(CMD_STOP_ANIMATION, -1);
+    stateMachine->switchMode(MODE_NEUTRAL);
+
+}
 
 
 void webserver::serveStaticFile(AsyncWebServerRequest *request) {
@@ -171,7 +180,11 @@ void webserver::submitPositions(AsyncWebServerRequest *request) {
   float xpos = request->getParam("xpos")->value().toFloat();
   float ypos = request->getParam("ypos")->value().toFloat();
   float zpos = request->getParam("zpos")->value().toFloat();
-  messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);
+  int boardId = request->getParam("boardId")->value().toInt();
+
+  messageHandler->setPositions(boardId, xpos, ypos, zpos);
+  //rueberschieben
+  messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
   request->send(200, "text/html", "OK");
 }
 void webserver::setTime(AsyncWebServerRequest *request) {
@@ -189,7 +202,8 @@ void webserver::commandGoodNight(AsyncWebServerRequest *request) {
   int hours = request->getParam("hours")->value().toInt();
   int minutes = request->getParam("minutes")->value().toInt();
   int seconds = request->getParam("seconds")->value().toInt();
-  messageHandler->setGoodNightWakeUp(hours, minutes, seconds, false);
+  Serial.println("going to sleep at "+String(hours)+":"+String(minutes)); 
+  messageHandler->setGoodNightWakeUp(hours, minutes, seconds, true);
   messageHandler->pushDataToSendQueue(MSG_SET_SLEEP_WAKEUP, -1);
 }
 void webserver::commandGoodMorning(AsyncWebServerRequest *request) {
@@ -197,7 +211,7 @@ void webserver::commandGoodMorning(AsyncWebServerRequest *request) {
   int hours = request->getParam("hours")->value().toInt();
   int minutes = request->getParam("minutes")->value().toInt();
   int seconds = request->getParam("seconds")->value().toInt();
-  messageHandler->setGoodNightWakeUp(hours, minutes, seconds, true);
+  messageHandler->setGoodNightWakeUp(hours, minutes, seconds, false);
   messageHandler->pushDataToSendQueue(MSG_SET_SLEEP_WAKEUP, -1);
 }
 

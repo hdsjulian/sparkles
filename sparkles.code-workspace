@@ -1,0 +1,93 @@
+{
+	"folders": [
+		{
+			"name": "sparkles-main-config",
+			"path": "sparkles-main-config"
+		},
+		{
+			"name": "sparkles-client-config",
+			"path": "sparkles-client-config"
+		},
+		{
+			"name": "sparkles-webserver",
+			"path": "sparkles-webserver"
+		},
+		{
+			"name": "sparkles-hardware-check",
+			"path": "../../Documents/PlatformIO/Projects/sparkles-hardware-check"
+		},
+		{
+			"name": "hardware_check_client",
+			"path": "../../Documents/PlatformIO/Projects/hardware_check_client"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"cmath": "cpp",
+			"array": "cpp",
+			"atomic": "cpp",
+			"bit": "cpp",
+			"*.tcc": "cpp",
+			"cctype": "cpp",
+			"clocale": "cpp",
+			"compare": "cpp",
+			"concepts": "cpp",
+			"condition_variable": "cpp",
+			"cstdarg": "cpp",
+			"cstddef": "cpp",
+			"cstdint": "cpp",
+			"cstdio": "cpp",
+			"cstdlib": "cpp",
+			"ctime": "cpp",
+			"cwchar": "cpp",
+			"cwctype": "cpp",
+			"deque": "cpp",
+			"string": "cpp",
+			"unordered_map": "cpp",
+			"vector": "cpp",
+			"exception": "cpp",
+			"algorithm": "cpp",
+			"functional": "cpp",
+			"iterator": "cpp",
+			"memory": "cpp",
+			"memory_resource": "cpp",
+			"numeric": "cpp",
+			"random": "cpp",
+			"ratio": "cpp",
+			"string_view": "cpp",
+			"system_error": "cpp",
+			"tuple": "cpp",
+			"type_traits": "cpp",
+			"utility": "cpp",
+			"initializer_list": "cpp",
+			"iosfwd": "cpp",
+			"iostream": "cpp",
+			"istream": "cpp",
+			"limits": "cpp",
+			"mutex": "cpp",
+			"new": "cpp",
+			"numbers": "cpp",
+			"ostream": "cpp",
+			"semaphore": "cpp",
+			"stdexcept": "cpp",
+			"stop_token": "cpp",
+			"streambuf": "cpp",
+			"thread": "cpp",
+			"cinttypes": "cpp",
+			"typeinfo": "cpp",
+			"bitset": "cpp",
+			"chrono": "cpp",
+			"cstring": "cpp",
+			"list": "cpp",
+			"map": "cpp",
+			"set": "cpp",
+			"optional": "cpp",
+			"regex": "cpp",
+			"ranges": "cpp",
+			"span": "cpp",
+			"sstream": "cpp",
+			"variant": "cpp",
+			"queue": "cpp"
+		}
+	}
+}

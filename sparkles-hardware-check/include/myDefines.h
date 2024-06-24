@@ -1,0 +1,1 @@
+../../sparkles-client-config/src/myDefines.h

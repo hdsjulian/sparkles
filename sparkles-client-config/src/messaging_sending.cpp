@@ -38,6 +38,9 @@ void messaging::getClapTimes(int i) {
 void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param) {
     addError("Sending message "+messageCodeToText(messageId)+ "\n");
     addError("To: "+stringAddress(address)+ "\n");
+    if (messageId ==MSG_COMMANDS) {
+        addError("Command "+messageCodeToText(commandMessage.messageId));
+    }
 
     std::lock_guard<std::mutex> lock(sendQueueMutex); // Lock the mutex
     SendData sendData {address, messageId, param};
@@ -60,9 +63,13 @@ void messaging::processDataFromSendQueue() {
         else {
             addError("Sent "+messageCodeToText(sendData.messageId)+" to ");
             addError(stringAddress(sendData.address)+"\n");
-            
+        
+        }
+        if (sendData.messageId == MSG_COMMANDS) {
+            addError("Command = "+messageCodeToText(sendData.param));
 
         }
+
 
         // Process the received data here...
         sendQueue.pop(); // Remove the front element from the queue
@@ -153,7 +160,10 @@ void messaging::processDataFromSendQueue() {
 
  void messaging::sendAddressList() {
     addError( "sending address list\n");
+    addError("addressCounter = "+String(addressCounter));
     for (int i = 1;i < addressCounter; i++){
+        Serial.println("updating address for "+String(i));
+        Serial.println(stringAddress(clientAddresses[i].address));
         pushDataToSendQueue(webserverAddress, MSG_ADDRESS_LIST, i);
     }
 }
@@ -164,9 +174,9 @@ void messaging::updateAddressToWebserver(const uint8_t * address) {
     int addressId = getAddressId(address);
     addError("Should have updated Address to Webserver\n");
     pushDataToSendQueue(webserverAddress, MSG_ADDRESS_LIST, addressId);
-    commandMessage.messageId = CMD_BLINK;
-    commandMessage.param = 100;
-    pushDataToSendQueue(addressListMessage.clientAddress.address, MSG_COMMANDS, -1);
+//    commandMessage.messageId = CMD_BLINK;
+ //   commandMessage.param = 100;
+ //   pushDataToSendQueue(addressListMessage.clientAddress.address, MSG_COMMANDS, -1);
 }
 
 void messaging::updateTimers(int addressId) {

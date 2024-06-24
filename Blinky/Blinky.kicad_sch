@@ -7471,6 +7471,16 @@
 	)
 	(wire
 		(pts
+			(xy 180.34 149.86) (xy 189.23 149.86)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "55e6d54e-4a10-4069-bc3a-6e79d90f61c5")
+	)
+	(wire
+		(pts
 			(xy 367.03 62.23) (xy 374.65 62.23)
 		)
 		(stroke
@@ -8278,6 +8288,16 @@
 			(type default)
 		)
 		(uuid "acfa93f2-d135-440d-abe2-5c7683bc8afc")
+	)
+	(wire
+		(pts
+			(xy 180.34 137.16) (xy 189.23 137.16)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "adf2c855-d1b4-4968-8086-1971ced5f3ca")
 	)
 	(wire
 		(pts
@@ -9403,6 +9423,17 @@
 		)
 		(uuid "3cbc1d54-7783-4db2-981d-11681a455fac")
 	)
+	(label "33_32khz"
+		(at 180.34 132.08 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "3eec6c74-1b01-4557-95b8-8866cc3e0ff2")
+	)
 	(label "VDD_REF"
 		(at 322.58 199.39 0)
 		(fields_autoplaced yes)
@@ -9457,28 +9488,6 @@
 			(justify left bottom)
 		)
 		(uuid "60a8f68b-7307-4cad-bc14-5e3422189f3f")
-	)
-	(label "PIN8"
-		(at 181.61 129.54 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "6752aec9-84f6-4a94-bb1c-27ccee0cf198")
-	)
-	(label "33_32khz"
-		(at 213.36 129.54 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "6c24d946-a14d-4cb7-aaa2-86a64c2d702e")
 	)
 	(label "BAT+"
 		(at 353.06 38.1 0)
@@ -9612,8 +9621,8 @@
 		)
 		(uuid "a3a3420a-3a62-4905-8b77-a08cbf6dacd3")
 	)
-	(label "PIN9"
-		(at 181.61 132.08 0)
+	(label "PIN11"
+		(at 181.61 137.16 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -9621,7 +9630,7 @@
 			)
 			(justify left bottom)
 		)
-		(uuid "a4083d0f-fc65-489a-a5f6-8c185cfcd019")
+		(uuid "a72b56c1-6659-4c9d-a492-88a390c53f8b")
 	)
 	(label "LED2"
 		(at 67.31 204.47 90)
@@ -9644,6 +9653,17 @@
 			(justify left bottom)
 		)
 		(uuid "b4df5aa0-3d36-4753-bcc7-e7d407d04387")
+	)
+	(label "32_32khz"
+		(at 180.34 129.54 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "b932642d-56ff-4dba-aad7-c2e9c4410502")
 	)
 	(label "PIN7"
 		(at 181.61 127 0)
@@ -9711,7 +9731,7 @@
 		)
 		(uuid "d01f8e40-8472-4a03-9f79-0fe15a224e0d")
 	)
-	(label "PIN8"
+	(label "PIN16"
 		(at 247.65 100.33 0)
 		(fields_autoplaced yes)
 		(effects
@@ -9722,7 +9742,7 @@
 		)
 		(uuid "d0d8477e-c22b-4f18-8b86-1e5173ffbefe")
 	)
-	(label "PIN9"
+	(label "PIN11"
 		(at 247.65 102.87 0)
 		(fields_autoplaced yes)
 		(effects
@@ -9810,6 +9830,17 @@
 		)
 		(uuid "eb60be27-c9d2-4d7b-bf01-f30bbe1bae0f")
 	)
+	(label "PIN16"
+		(at 181.61 149.86 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "f03fd8ef-7094-451e-8b3e-64d7f676051f")
+	)
 	(label "BAT+"
 		(at 381 101.6 0)
 		(fields_autoplaced yes)
@@ -9820,17 +9851,6 @@
 			(justify left bottom)
 		)
 		(uuid "f0480471-6440-4870-a551-ce71dc8b9a8d")
-	)
-	(label "32_32khz"
-		(at 213.36 132.08 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "f4aa8171-d080-47ac-a6c3-176719c1ef4a")
 	)
 	(label "BAT+"
 		(at 365.76 40.64 0)
@@ -10400,7 +10420,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "1"
+		(property "Value" "2"
 			(at 102.87 167.64 0)
 			(effects
 				(font
@@ -12238,7 +12258,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "4"
+		(property "Value" "5.6"
 			(at 100.33 200.66 0)
 			(effects
 				(font
@@ -12688,7 +12708,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "4"
+		(property "Value" "5.6"
 			(at 104.14 147.32 0)
 			(effects
 				(font
@@ -13109,7 +13129,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "1"
+		(property "Value" "1.8"
 			(at 101.6 184.15 0)
 			(effects
 				(font
@@ -13394,7 +13414,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical"
+		(property "Footprint" "footprint:CONN-TH_S2B-PH-K-LF-SN"
 			(at 377.19 30.48 0)
 			(effects
 				(font
@@ -16014,7 +16034,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical"
+		(property "Footprint" "footprint:CONN-TH_S2B-PH-K-LF-SN"
 			(at 377.19 38.1 0)
 			(effects
 				(font
@@ -17407,7 +17427,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "1"
+		(property "Value" "2"
 			(at 104.14 114.3 0)
 			(effects
 				(font
@@ -17617,7 +17637,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Library:TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2"
+		(property "Footprint" "footprint:SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL"
 			(at 311.15 191.77 0)
 			(effects
 				(font
@@ -18045,7 +18065,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "1"
+		(property "Value" "1.8"
 			(at 104.14 130.81 0)
 			(effects
 				(font
@@ -18328,7 +18348,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Library:TSSOP-8_L4.4-W3.0-P0.65-LS6.4-BL-2"
+		(property "Footprint" "footprint:SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL"
 			(at 276.86 191.77 0)
 			(effects
 				(font

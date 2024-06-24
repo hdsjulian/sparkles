@@ -56,6 +56,7 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
             return;
         }
     }
+    Serial.println("got timer");
     globalModeHandler->switchMode(MODE_NEUTRAL);
     timersUpdated = addressCounter;
     timerCounter = 0;
@@ -131,9 +132,10 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
                 case CMD_MSG_SEND_ADDRESS_LIST: 
                 if (commandMessage.param != -1) {
                     addError("should update one\n");
+                    int recipientId = commandMessage.param;
                     commandMessage.param = CMD_GET_BATTERY_STATUS;
-                    pushDataToSendQueue(clientAddresses[commandMessage.param].address, MSG_COMMANDS, -1);
-                    updateAddressToWebserver(clientAddresses[commandMessage.param].address);
+                    pushDataToSendQueue(clientAddresses[recipientId].address, MSG_COMMANDS, -1);
+                    updateAddressToWebserver(clientAddresses[recipientId].address);
                 }
                 else {
                     addError("Should update all\n");
@@ -172,14 +174,18 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
                     handleLed->getNextAnimation(&animationMessage);
                     animationMessage.startTime = micros()+1000000;
                     animationMessage.num_devices = addressCounter -1;
-
                     handleLed->printAnimationMessage(animationMessage);
-                    nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
+                    nextAnimationPing = 1000+millis()+handleLed->calculate(&animationMessage);
+                    Serial.println("Next animation ping = "+String(nextAnimationPing));
+                    Serial.println("Now = "+String(millis()));
                     pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
+                    endAnimation == false;
                 break;
                 case CMD_STOP_ANIMATION:
+                    Serial.println("Stop animation");
                     globalModeHandler->switchMode(MODE_NEUTRAL);
                     switchModeMessage.mode = MODE_NEUTRAL;
+                    nextAnimationPing = 0;
                     pushDataToSendQueue(broadcastAddress, MSG_SWITCH_MODE, -1);
                 break;
                 case CMD_BLINK: 
@@ -319,6 +325,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
                     }
                     else {
                         writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
+                        Serial.println("writing structs");
                         globalModeHandler->switchMode(MODE_NEUTRAL);
 
                     }
@@ -332,15 +339,14 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
             if (DEVICE_MODE == MAIN and memcmp(mac->src_addr, webserverAddress, 6) == 0) {
                 memcpy(&animationMessage, incomingData, sizeof(animationMessage));
                 animationMessage.startTime = micros()+3000000;
-                animationMessage.animationreps = 20;
+                animationMessage.animationreps = 1;
                 animationMessage.num_devices = addressCounter -1;
                 Serial.println("Starting animation with num devices "+String(animationMessage.num_devices));
-                delay(10000);
                 pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
                 nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
                 Serial.println("Animation ends at "+String(millis()));
                 globalModeHandler->switchMode(MODE_ANIMATE);
-                endAnimation = true;
+                //endAnimation = true;
             }
             else {
                 if (globalModeHandler->getMode() == MODE_ANIMATE or globalModeHandler->getMode() == MODE_NEUTRAL) {
@@ -349,7 +355,8 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
                 memcpy(&animationMessage, incomingData, sizeof(animationMessage));
                 handleLed->setupAnimation(&animationMessage);
                 nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-                endAnimation = true;
+                Serial.println("setting endanimation to true");
+                //endAnimation = true;
                 }
             }
         break;
@@ -364,6 +371,9 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
             if (DEVICE_MODE == MAIN) {
                 memcpy(&setPositionsMessage, incomingData, sizeof(setPositionsMessage));
                 clientAddresses[setPositionsMessage.id].xLoc = setPositionsMessage.xpos;
+                if (setPositionsMessage.xpos > maxPos) {
+                    maxPos = setPositionsMessage.xpos;
+                }
                 clientAddresses[setPositionsMessage.id].yLoc = setPositionsMessage.ypos;
                 clientAddresses[setPositionsMessage.id].zLoc = setPositionsMessage.zpos;
                 writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
@@ -385,7 +395,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
         case MSG_SET_SLEEP_WAKEUP: {
             memcpy(&setSleepWakeupMessage, incomingData, sizeof(setSleepWakeupMessage));
             addError("Setting Sleep Wakeup\n");
-            if (setSleepWakeupMessage.sleep_wakeup == true) {
+            if (setSleepWakeupMessage.isGoodNight == true) {
                 addError("Setting sleep: "+String(setSleepWakeupMessage.hours)+"\n");
                 sleepTime.hours = setSleepWakeupMessage.hours;
                 sleepTime.minutes = setSleepWakeupMessage.minutes;

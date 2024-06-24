@@ -1,3 +1,4 @@
+#include "Arduino.h"
 #include "myDefines.h"
 #ifndef MODE_MACHINE_H
 #define MODE_MACHINE_H

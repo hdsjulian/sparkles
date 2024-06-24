@@ -69,6 +69,12 @@ void messaging::processDataFromSendQueue() {
             break;
           case MSG_ANIMATION: 
             esp_now_send(hostAddress, (uint8_t *) &animationMessage, sizeof(animationMessage));
+            break;
+          case MSG_SET_SLEEP_WAKEUP:
+          Serial.println("should send host to sleep at "+String(setSleepWakeupMessage.hours)+":"+String(setSleepWakeupMessage.minutes));
+  
+            esp_now_send(hostAddress, (uint8_t *) &setSleepWakeupMessage, sizeof(setSleepWakeupMessage));
+            break;
         }
     }
 } 
@@ -94,7 +100,6 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
         receiveTimer(msgReceiveTime);
     break;
     case MSG_ADDRESS_LIST: 
-      Serial.println("received address List Msg");
       memcpy(&addressListMessage,incomingData,sizeof(addressListMessage));
       receivedJson["index"] = String(addressListMessage.index);
       receivedJson["address"] = stringAddress(addressListMessage.clientAddress.address);
@@ -102,6 +107,11 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
       receivedJson["status"] = modeToText(addressListMessage.status);
       receivedJson["distance"] = String(addressListMessage.clientAddress.distance);
       receivedJson["addressCounter"] = String(addressListMessage.addressCounter);
+      receivedJson["xpos"] = String(addressListMessage.clientAddress.xLoc);
+      receivedJson["ypos"] = String(addressListMessage.clientAddress.yLoc);
+      receivedJson["zpos"] = String(addressListMessage.clientAddress.zLoc);
+      receivedJson["battery"] = String(addressListMessage.clientAddress.batteryStatus);
+
       serializeJson(receivedJson, jsonString);
       Serial.println(jsonString.c_str());
       webServer->events.send(jsonString.c_str(), "new_readings", millis());
@@ -187,7 +197,15 @@ void messaging::setSetTimeMessage(int hours, int minutes, int seconds) {
   setTimeMessage.seconds = seconds;
 }
 
-void setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight) {
+void messaging::setPositions(int id, float xpos, float ypos, float zpos ) {
+
+  setPositionsMessage.xpos = xpos;
+  setPositionsMessage.ypos = ypos;
+  setPositionsMessage.zpos = zpos;
+  setPositionsMessage.id = id;
+
+}
+void messaging::setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight) {
   setSleepWakeupMessage.hours = hours;
   setSleepWakeupMessage.minutes = minutes;
   setSleepWakeupMessage.seconds = seconds;

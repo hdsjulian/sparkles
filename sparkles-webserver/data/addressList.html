@@ -89,7 +89,7 @@
 
 
 
-  var debug = 1;
+  var debug = 0;
   function boardCards(obj) {
     console.log(obj);
     var existingPacket = document.getElementById("boardCard" + obj.index);
@@ -98,15 +98,20 @@
     newCard.className = "card";
     newCard.id = "boardCard" + obj.index;
     //newCard.innerHTML = "<span id='b"+obj.index+"'>Board ID "+obj.index+":</span>\n<span id='addr" + obj.index + "'></span><span id='del"+obj.index+"'></span><span id='dist"+obj.index+"'></span>";
+    const placeholderXText = obj.xpos == 0 ? "placeholder='X position'" : `value='${obj.xpos}'`;
+    const placeholderYText = obj.ypos == 0 ? "placeholder='Y position'" : `value='${obj.ypos}'`;
+    const placeholderZText = obj.zpos == 0 ? "placeholder='Z position'" : `value='${obj.zpos}'`;
+    const placeholderBattery = obj.batteryStatus == 0 ? '': `<span id ='battery${obj.batteryStatus}'></span>`;
     newCard.innerHTML = `
   <span id='b${obj.index}'>Board ID ${obj.index}:</span>
   <span id='addr${obj.index}'></span>
   <span id='del${obj.index}'></span>
   <span id='dist${obj.index}'></span>
+  
   <div class='inputs'>
-    <input type='text' id='xpos_${obj.index}' placeholder='X position'>
-    <input type='text' id='ypos_${obj.index}' placeholder='Y position'>
-    <input type='text' id='zpos_${obj.index}' placeholder='Z position'>
+    <input type='text' id='xpos_${obj.index}' ${placeholderXText} >
+    <input type='text' id='ypos_${obj.index}' ${placeholderYText}>
+    <input type='text' id='zpos_${obj.index}' ${placeholderZText}>
     <button id='submit_${obj.index}'>Submit</button>
     <button id='update_${obj.index}' class='blue-button'>Update Device</button>
   </div>
@@ -143,6 +148,7 @@
     var input3 = document.getElementById('zpos_' + obj.index).value;
     // Handle form submission logic here
     var fetchUrl = `/submitPositions?xpos=${encodeURIComponent(input1)}&ypos=${encodeURIComponent(input2)}&zpos=${encodeURIComponent(input3)}&boardId=${obj.index}`;
+    console.log(fetchUrl);
     fetchMe(fetchUrl);
   });
   };
@@ -157,7 +163,7 @@
       document.getElementById('cmd_calibrate').textContent = "CALIBRATE";
     }
   }
-  function animateUpdate(obj) {
+  function cUpdate(obj) {
     if (obj.status == "true") {
       document.getElementById('cmd_animate').textContent = "END ANIM";
     }
