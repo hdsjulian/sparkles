@@ -214,11 +214,11 @@ void setup() {
   timerDings = micros();
   lastFlash = 0;
   WiFi.macAddress(myAddress);
-  messageHandler.announceAddress();
+
 }
 
 void loop() {
-  if (modeHandler.getMode() == MODE_STARTUP and millis() > 5000+messageHandler.announceTime) {
+  if (modeHandler.getMode() == MODE_STARTUP and messageHandler.gotTimer == false and millis() > 5000+messageHandler.announceTime) {
     messageHandler.announceAddress();
   }
   

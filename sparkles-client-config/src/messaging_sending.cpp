@@ -4,12 +4,21 @@
 #include "WiFi.h"
 #include "messaging.h"
 
+void messaging::announceAddress() {
+    haveSentAddress = true;
+    if (gotTimer == true) {
+        return;
+    }
+    if (globalModeHandler->getMode() == MODE_WAIT_FOR_TIMER) {
+        if (lastTime < millis()+2000 and lastTime != 0) {
+             return;   
+        }
+    }
+    //handleLed->flash(0, 0, 125, 100, 2, 50);
+    announceTime = millis();
+    pushDataToSendQueue(hostAddress, MSG_ADDRESS, -1);
+}
 
-  void messaging::prepareAnnounceMessage() {
-    
-    memcpy(&announceMessage.address, myAddress, 6);
-    announceMessage.sendTime = sendTime;
-  }
   void messaging::prepareTimerMessage() {
     timerMessage.sendTime = sendTime;
     timerMessage.counter = timerCounter;
@@ -19,18 +28,15 @@ void messaging::getClapTimes(int i) {
     addError("Get clap times called" + String(i) + "\n");
     stringAllAddresses();
     if (i == -1) {
-        addError("Asking Webserver for Clap Time\n");
+        addError("Asking Clap Device for Clap Time\n");
         askClapTimesMessage.millisA = millis();
         askClapTimesMessage.debug = "a";
-
-        pushDataToSendQueue(webserverAddress, MSG_ASK_CLAP_TIMES, -1);
+        pushDataToSendQueue(clapDeviceAddress, MSG_ASK_CLAP_TIMES, -1);
     }
     else if (i < addressCounter) {
         addError("asking device " + String(i) + " for clap time\n");
         addError("Address: "+stringAddress(clientAddresses[i].address)+"\n");
         askClapTimesMessage.millisA = millis();
-        askClapTimesMessage.debug = "b";
-
         pushDataToSendQueue(clientAddresses[i].address, MSG_ASK_CLAP_TIMES, -1);
     }
 }
@@ -54,7 +60,7 @@ void messaging::processDataFromSendQueue() {
         SendData sendData = sendQueue.front(); // Get the front element
         Serial.println("processing sent");
 
-        if (memcmp(sendData.address, broadcastAddress, 6) != 0 and memcmp(sendData.address, webserverAddress, 6) != 0) {
+        if (memcmp(sendData.address, broadcastAddress, 6) != 0 and memcmp(sendData.address, clapDeviceAddress, 6) != 0) {
             memcpy(peerAddress, sendData.address, 6);
             foundPeer = addPeer(peerAddress);
             addError("Sent "+messageCodeToText(sendData.messageId)+" to ");
@@ -83,10 +89,6 @@ void messaging::processDataFromSendQueue() {
             case MSG_TIMER_CALIBRATION:
                 esp_now_send(sendData.address, (uint8_t*) &timerMessage, sizeof(timerMessage));
                 //todo timer reset
-                if (timerMessage.reset == true) {
-                    timerMessage.reset = false;
-                    globalModeHandler->switchMode(MODE_PING_RESET);
-                }
                 break;
             case MSG_GOT_TIMER:
                 esp_now_send(sendData.address, (uint8_t*) &gotTimerMessage, sizeof(gotTimerMessage));
@@ -126,20 +128,6 @@ void messaging::processDataFromSendQueue() {
                     ESP.restart();
                 }
                 break;
-            case MSG_ADDRESS_LIST:
-                addError("addressList called for "+String(sendData.param));
-                if (sendData.param != -1) {
-                    addressListMessage.status = globalModeHandler->getMode();
-                    addressListMessage.addressCounter = addressCounter-1;
-                    memcpy(&addressListMessage.clientAddress, &clientAddresses[sendData.param], sizeof(client_address));
-                    addressListMessage.index = sendData.param;
-                    esp_now_send(sendData.address, (uint8_t*) &addressListMessage, sizeof(addressListMessage));
-                }
-                else {
-                    addError("minus one called on msg_address_list(messaging_sending.cpp line 106)");
-                }
-                
-                break;
             case MSG_SET_POSITIONS:
                 esp_now_send(sendData.address, (uint8_t*) &setPositionsMessage, sizeof(setPositionsMessage));
                 break;
@@ -150,7 +138,7 @@ void messaging::processDataFromSendQueue() {
                 addError("Message to send: unknown\n");
                 break;
         }
-        if (memcmp(sendData.address, hostAddress, 6) != 0 and memcmp(sendData.address, broadcastAddress, 6) != 0 and memcmp(sendData.address, webserverAddress, 6) != 0 and foundPeer >0) {
+        if (memcmp(sendData.address, hostAddress, 6) != 0 and memcmp(sendData.address, broadcastAddress, 6) != 0 and memcmp(sendData.address, clapDeviceAddress, 6) != 0 and foundPeer >0) {
 
             removePeer(peerAddress);
             addError("Removed Peer "+stringAddress(peerAddress)+"\n"); 
@@ -158,39 +146,83 @@ void messaging::processDataFromSendQueue() {
     }
 }   
 
- void messaging::sendAddressList() {
-    addError( "sending address list\n");
-    addError("addressCounter = "+String(addressCounter));
-    for (int i = 1;i < addressCounter; i++){
-        Serial.println("updating address for "+String(i));
-        Serial.println(stringAddress(clientAddresses[i].address));
-        pushDataToSendQueue(webserverAddress, MSG_ADDRESS_LIST, i);
-    }
-}
 
-
-
-void messaging::updateAddressToWebserver(const uint8_t * address) {
-    int addressId = getAddressId(address);
-    addError("Should have updated Address to Webserver\n");
-    pushDataToSendQueue(webserverAddress, MSG_ADDRESS_LIST, addressId);
-//    commandMessage.messageId = CMD_BLINK;
- //   commandMessage.param = 100;
- //   pushDataToSendQueue(addressListMessage.clientAddress.address, MSG_COMMANDS, -1);
-}
 
 void messaging::updateTimers(int addressId) {
+    globalModeHandler->switchMode(MODE_RESET_TIMER);
     addError("Updating timers for address "+String(addressId)+"\n");
     memcpy(&timerReceiver, clientAddresses[addressId].address, 6);
     addPeer(timerReceiver);
     timerMessage.reset = true;
-    updatingAddress = addressId;
     timerMessage.addressId = addressId;
-    pushDataToSendQueue(timerReceiver, MSG_TIMER_CALIBRATION, -1);
     clientAddresses[addressId].active = SETTING_TIMER;
-
 }
 
+
+void messaging::sendCommand(int commandId) {
+    addError("Sending command "+messageCodeToText(commandId)+"\n");
+    pushDataToSendQueue(broadcastAddress, commandId, -1);
+}
+void messaging::sendMode(int modeId) {
+    addError("Sending mode "+messageCodeToText(modeId)+"\n");
+    pushDataToSendQueue(broadcastAddress, MSG_SWITCH_MODE, modeId);
+}
+void messaging::sendMessageById(int messageId, int addressId, int param) {
+    addError("Sending Message by Id "+messageCodeToText(messageId)+" address "+stringAddress(clientAddresses[addressId].address));
+    if (param != -1) {
+        addError(" Command "+messageCodeToText(param)+"\n");
+    }
+    else {
+        addError("\n");
+    }
+    pushDataToSendQueue(clientAddresses[addressId].address, messageId, param);
+}
+
+void messaging::nextRetry() {
+    if (timeoutRetry.lastMsg == 0) {return;}
+    if (timeoutRetry.currentId > 0) {return;}
+    if (timeoutRetry.currentId == 0 and millis() < timeoutRetry.lastMsg+60000) {
+        return;
+    } 
+    else if (timeoutRetry.currentId == 0 and millis() > timeoutRetry.lastMsg+60000 and timeoutRetry.lastMsg > 0) {
+        addError("Starting all over");
+        timeoutRetry.lastMsg = 0;
+        timeoutRetry.unavailableCounter = 0; 
+        timeoutRetryHandler();
+    }
+    
+}
+
+void messaging::timeoutRetryHandler() {
+    Serial.println("Timeout Retry Handler  ");
+    Serial.println("Current Id: "+String(timeoutRetry.currentId));
+    Seria.println("Address Counter: "+String(addressCounter));
+    
+    if (timeoutRetry.currentId == addressCounter-1) {
+        timeoutRetry.currentId = 0;
+        timeoutRetry.lastMsg = millis();
+        addError("reached Address counter, waiting 60 seconds");
+        if (timeoutRetry.unavailableCounter == 0) {
+            addError("all done");
+            globalModeHandler->switchMode(MODE_NEUTRAL);
+            return;
+        }
+    }
+    timeoutRetry.currentId++;
+     switch (globalModeHandler->getMode()) {
+        case MODE_GET_CALIBRATION_DATA:
+                getClapTimes(timeoutRetry.currentId);
+            break;
+        case MODE_RESET_TIMER:
+                handleTimerUpdates();
+            break;
+        case MODE_SENDING_TIMER:
+                globalModeHandler->switchMode(MODE_NEUTRAL);
+            break;
+        
+    }
+
+}
 
 
 

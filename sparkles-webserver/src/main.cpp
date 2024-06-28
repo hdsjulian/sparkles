@@ -7,8 +7,6 @@
 #include <ArduinoJson.h>
 #include <myDefines.h>
 //#include <ESPAsyncTCP.h>
-#include <index_html.h>
-//#include <addressList.h>
 #include <queue>
 #include <mutex>
 #include <cstdint>
@@ -33,7 +31,6 @@ const char* password = "sparkles";
 esp_now_peer_info_t peerInfo;
 const char* PARAM_INPUT_1 = "input1";
 
-webserver myWebserver(&LittleFS);
 messaging messageHandler;
 modeMachine stateMachine;
 

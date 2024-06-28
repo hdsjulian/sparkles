@@ -12,7 +12,8 @@
 #include <stateMachine.h>
 #include <messaging.h>
 #include <LittleFS.h>
-#define SWITCH_PIN 39
+#include <webserver.h>
+#define SWITCH_PIN 45
 //#include "ESP32TimerInterrupt.h"
 //#include "driver/gptimer.h"
 #define TIMER_INTERVAL_MS       600
@@ -28,6 +29,7 @@ ledHandler handleLed;
 modeMachine modeHandler;
 messaging messageHandler;
 message_send_clap_times clapTimes;
+webserver myWebserver(&LittleFS);
 
 int interruptCounter;  //for counting interrupt
 int totalInterruptCounter;   	//total interrupt counting
@@ -69,12 +71,12 @@ void IRAM_ATTR onTimer()
     timerCounter++;
     //wait for timer vs wait for calibrate
     if (timerCounter == 100) {
-      modeHandler.switchMode(MODE_NEUTRAL);
-      messageHandler.setTimerReceiverUnavailable();
-      return;
+      //messageHandler.timeoutRetryHandler();
+      //what to do here?
+      messageHandler.setNoSuccess();
+      timerCounter = 0;
     }    
     if (modeHandler.getMode() == MODE_SENDING_TIMER or modeHandler.getMode() == MODE_RESET_TIMER) {
-
       messageHandler.timerMessage.messageType = MSG_TIMER_CALIBRATION; 
       messageHandler.timerMessage.sendTime = msgSendTime;
       messageHandler.timerMessage.counter = timerCounter;
@@ -84,21 +86,15 @@ void IRAM_ATTR onTimer()
         messageHandler.timerMessage.reset = true;
       }
       messageHandler.addError(messageHandler.stringAddress(messageHandler.timerReceiver)+"\n");
-
       esp_err_t result = esp_now_send(messageHandler.timerReceiver, (uint8_t *) &messageHandler.timerMessage, sizeof(messageHandler.timerMessage));
       
     }
-    /*else if (modeHandler.getMode() != MODE_CALIBRATE and modeHandler.getMode() != MODE_NEUTRAL) {
-      //todo announce thing raus und einfach host address hardcoden.
-      messageHandler.announceMessage.sendTime = msgSendTime;
-      esp_err_t result = esp_now_send(messageHandler.broadcastAddress, (uint8_t *) &messageHandler.announceMessage, sizeof(messageHandler.announceMessage));
-    }*/
 
 }
 
 
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-  Serial.println("rcvd");
+  Serial.println("rcvd "+messageHandler.messageCodeToText(incomingData[0])+" from "+messageHandler.stringAddress(mac->src_addr));
   msgReceiveTime = micros();
   messageHandler.pushDataToReceivedQueue(mac, incomingData, len, msgReceiveTime);
 }
@@ -107,23 +103,15 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
 
 
 void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
-  if (modeHandler.getMode() == MODE_PING_RESET or modeHandler.getMode() == MODE_RESET_TIMER) {
-    if (sendStatus == ESP_NOW_SEND_SUCCESS) {
-      modeHandler.switchMode(MODE_RESET_TIMER);
-    }
-    else {
-      messageHandler.addError("Ping reset not sent\n");      
-    }
-  }
   if (modeHandler.getMode() == MODE_SENDING_TIMER or modeHandler.getMode() == MODE_RESET_TIMER) {
     if (sendStatus == ESP_NOW_SEND_SUCCESS) {
       msgArriveTime = micros();
       lastDelay = msgArriveTime-msgSendTime;
       messageHandler.addError("SUCCESS "+String(lastDelay)+"\n");
     }
-    else {
+    else if (timerCounter % 5 == 0) {
       messageHandler.addError("No SUCCESS");
-     msgArriveTime = 0;
+     messageHandler.setNoSuccess();
     }
   }
   else{
@@ -142,7 +130,7 @@ void setup() {
   Serial.begin(115200);
   unsigned long startTime = millis();
   while (!Serial) {
-    if (millis() - startTime > 2000) {
+    if (millis() - startTime > 3000) {
       break;
     }
   }
@@ -150,6 +138,8 @@ void setup() {
     Serial.println("LittleFS mount failed");
     lfs_started = false;
   }
+  myWebserver.setup(messageHandler, modeHandler);
+
   timer = timerBegin(1000000);           	// timer 0, prescalar: 80, UP counting
   timerAttachInterrupt(timer, &onTimer); 	// Attach interrupt
   timerWrite(timer, 0);  		// Match value= 1000000 for 1 sec. delay.
@@ -163,7 +153,7 @@ void setup() {
   }
   handleLed.setup();
   modeHandler.switchMode(MODE_NEUTRAL);
-  messageHandler.setup(modeHandler, handleLed, peerInfo);
+  messageHandler.setup(modeHandler, handleLed, peerInfo, myWebserver);
   Serial.println("after setup");
   //esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
   memcpy(&peerInfo.peer_addr, messageHandler.broadcastAddress, 6);
@@ -235,13 +225,14 @@ void loop() {
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
     int* sysTime = messageHandler.getSystemTime();
+    /*
     Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));
     Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
     Serial.println("Time is "+String(millis()));
     Serial.println("Next animation in "+String(int(messageHandler.nextAnimationPing-millis())));
     Serial.println("sleep in "+String(messageHandler.calculateGoodNight(true)));
     Serial.println("Wakeup in "+String(messageHandler.calculateGoodNight(false)));
-
+    */
 
 
     //messageHandler.printAddress(myAddress);
@@ -270,6 +261,8 @@ void loop() {
   if (messageHandler.nextAnimationPing > 0) {
     messageHandler.nextAnimation();
   }
-  
+  if (modeHandler.getMode() == MODE_RESET_TIMER or modeHandler.getMode() == MODE_GET_CALIBRATION_DATA) {
+     messageHandler.nextRetry();
+  }
   messageHandler.goodNight();
 }

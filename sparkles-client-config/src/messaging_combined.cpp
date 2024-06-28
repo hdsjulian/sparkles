@@ -22,8 +22,8 @@ void messaging::printAddress(const uint8_t * mac_addr){
         Serial.println("HOST ADDRESS");
         return;
     }
-    if (memcmp(mac_addr, webserverAddress, 6) ==0) {
-        Serial.println("WEBSERVER");
+    if (memcmp(mac_addr, clapDeviceAddress, 6) ==0) {
+        Serial.println("CLAP DEVICE");
         return;
     }
     char macStr[18];
@@ -36,8 +36,8 @@ String messaging::stringAddress(const uint8_t * mac_addr){
     if (memcmp(mac_addr, hostAddress, 6) == 0) {
         return "HOST ADDRESS";
     }
-    if (memcmp(mac_addr, webserverAddress, 6) ==0) {
-        return "WEBSERVER";
+    if (memcmp(mac_addr, clapDeviceAddress, 6) ==0) {
+        return "CLAP DEVICE";
 
     }
     char macStr[18];
@@ -325,29 +325,13 @@ void messaging::receiveTimer(int messageArriveTime) {
       //timeOffset = messageArriveTime-timerMessage.sendTime-delayAvg/2;
       gotTimerMessage.timerOffset = timeOffset;
       gotTimer = true;
-      #if DEVICE_MODE != WEBSERVER
       handleLed->setTimeOffset(timeOffset, offsetMultiplier);
       pushDataToSendQueue(hostAddress, MSG_GOT_TIMER, -1);
       gotTimer = true;
       handleLed->flash(125,0,0, 200, 3, 300);
       globalModeHandler->switchMode(MODE_NEUTRAL);
-
       addError("switched mode to Neutral");
-      #else
-      //todo eigentlich quark
-      pushDataToSendQueue(CMD_START_CALIBRATION_MODE, -1);
-      addError("SWITCHING TO CALIBRATE");
-      JsonDocument jsonDoc;
 
-      String jsonString;
-      jsonDoc["calibrateEnd"] = "true";
-      serializeJson(jsonDoc, jsonString);
-      webServer->events.send(jsonString.c_str(), "calibrationStatus", millis());
-      globalModeHandler->switchMode(MODE_CALIBRATE);
-      gotTimer = true;
-
-      #endif
-      
       
     }
     arrayCounter++;
@@ -374,6 +358,7 @@ void messaging::pushDataToReceivedQueue(const esp_now_recv_info * mac, const uin
 }
 
 void messaging::addClap(unsigned long timeStamp) {
+    //todo refactor
     #if DEVICE_MODE == WEBSERVER || DEVICE_MODE == CLIENT
     
     if (sendClapTimes.clapCounter < NUM_CLAPS) {

@@ -34,9 +34,13 @@
 #define NUM_CLAPS 20
 #define CLAP_THRESHOLD 1000000
 
+//messaging retries
+#define NUM_RETRIES 3
+
 #define V1 1
 #define V2 2
 #define V3 3
+#define V4 5
 
 
 
@@ -58,6 +62,13 @@
     const int ledPinRed2 = 9;
     const int ledPinBlue2 = 37;
 #elif (DEVICE_USED == V3)
+    const int ledPinBlue1 = 17;  // 16 corresponds to GPIO16
+    const int ledPinRed1 = 38; // 17 cmsgrorresponds to GPIO17
+    const int ledPinGreen1 = 8;  // 5 corresponds to GPIO5
+    const int ledPinGreen2 = 3;
+    const int ledPinRed2 = 9;
+    const int ledPinBlue2 = 37;
+#elif (DEVICE_USED == V4)
     const int ledPinBlue1 = 17;  // 16 corresponds to GPIO16
     const int ledPinRed1 = 38; // 17 cmsgrorresponds to GPIO17
     const int ledPinGreen1 = 8;  // 5 corresponds to GPIO5
@@ -88,13 +99,14 @@ const int ledChannelBlue2 = 5;
 #define MSG_ANIMATION 7
 #define MSG_SWITCH_MODE 8
 #define MSG_DISTANCE 9
+#define MSG_SET_TIME 10
 #define MSG_NOCLAPFOUND -1
 #define MSG_COMMANDS 101
 #define MSG_ADDRESS_LIST 102
 #define MSG_STATUS_UPDATE 103
 #define MSG_END_CALIBRATION 104
 #define MSG_WAKEUP 105
-#define MSG_SET_TIME 106
+
 #define MSG_SET_POSITIONS 107
 #define MSG_BATTERY_STATUS 108
 #define MSG_SET_SLEEP_WAKEUP 109
@@ -230,8 +242,8 @@ struct client_address {
   message_send_clap_times clapTimes;
   float distance;
   activeStatus active = INACTIVE;
-  int tries = 0;
   int batteryStatus;
+  int tries;
 } ;
 
 
@@ -241,6 +253,13 @@ struct message_address_list {
   client_address clientAddress;
   int addressCounter = 0;
   int status;
+};
+
+struct timeout_retry {
+  int currentId;
+  unsigned long lastMsg;
+  int tries;
+  int unavailableCounter;
 };
 
 
@@ -286,13 +305,6 @@ struct message_set_positions {
   float ypos;
   float zpos;
 } ;
-struct message_set_time {
-  int messageType = MSG_SET_TIME;
-  int hours;
-  int minutes;
-  int seconds;
-
-} ;
 
 
 struct message_status_update {
@@ -330,6 +342,7 @@ struct concentric_animation {
 #define MODE_SEND_ADDRESS_LIST 95
 #define MODE_RESET_TIMER 96
 #define MODE_PING_RESET 97
+#define MODE_GET_CALIBRATION_DATA 98
 
 
 
