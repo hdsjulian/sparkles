@@ -191,7 +191,6 @@
     sourceEvents.addEventListener('new_readings', function(e) {
       var obj = JSON.parse(e.data);
       boardCards(obj);
-      
     })
     sourceEvents.addEventListener('calibrationStatus', function(e) {
       var obj = JSON.parse(e.data);

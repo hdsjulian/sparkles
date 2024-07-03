@@ -1,17 +1,12 @@
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
-#include <FS.h>
-#include "ESPAsyncWebServer.h"
-#include <LittleFS.h>
-#include <ArduinoJson.h>
 #include <myDefines.h>
 //#include <ESPAsyncTCP.h>
 #include <queue>
 #include <mutex>
 #include <cstdint>
 #include <helperFuncs.h>
-#include <webserver.h>
 #include <messaging.h>
 #include <stateMachine.h>
 // put function declarations here:
@@ -22,12 +17,9 @@ uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 uint8_t myAddress[6]= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t hostAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xe9, 0xae};
 int sent = 0;
-int msgCounter = 0;
 
 std::mutex sendQueueMutex;
 std::mutex receiveQueueMutex;
-const char* ssid = "Spargels";
-const char* password = "sparkles";
 esp_now_peer_info_t peerInfo;
 const char* PARAM_INPUT_1 = "input1";
 
@@ -53,10 +45,7 @@ message_command commandMessage;
 message_status_update statusUpdateMessage;
 message_address_list addressListMessage;
 
-
-
 int msgType = 0;
-int deviceId = -1;
 
 bool calibrationStatus = false;
 unsigned long lastDings = 0;
@@ -65,9 +54,11 @@ unsigned long buttonPressTime = 0;
 bool buttonOn = false;
 bool previousButton = false;
 bool buttonPressStarted = false;
+int count = 0;
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
   Serial.println("Sent");
+  count = 2000;
    if (sendStatus == 0) {
       sent = 1;
     }
@@ -76,7 +67,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
     }
 }
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-  
+  Serial.print("Received ");
   if (incomingData[0] != MSG_ANNOUNCE) {
     Serial.print("Received ");
   messageHandler.printAddress(mac->src_addr);
@@ -86,9 +77,6 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
 }
 
 
-bool connected = false;
-int count = 0;
-int something = 1;
 
 void setup() {
     Serial.begin(115200);
@@ -103,20 +91,23 @@ void setup() {
   ledsOff();
 }
     #endif
-  if (!LittleFS.begin()) {
-    Serial.println("Failed to mount LittleFS");
-    return;
-  }
- 
+  int startTime = millis();
 
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssid, password);
+  while (!Serial) {
+    if ((int)millis() - startTime > 10000) {
+      count = 5000;
+      break;
+    }
+    count = 1000;
+  }
+  WiFi.mode(WIFI_STA);
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
-  myWebserver.setup(messageHandler, stateMachine);
-  messageHandler.setup(myWebserver, stateMachine, peerInfo);
+  WiFi.macAddress(myAddress);
+
+  messageHandler.setup(stateMachine, peerInfo);
   Serial.print("Station IP Address: ");
   Serial.println(WiFi.localIP());
   Serial.print("Wi-Fi Channel: ");
@@ -129,10 +120,8 @@ void setup() {
     Serial.println("Failed to add peer");
     return;
   }
-  messageHandler.setHostAddress(hostAddress);
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);
-  WiFi.macAddress(myAddress);
     // put your setup code here, to run once:
 }
 
@@ -142,17 +131,10 @@ void loop() {
   messageHandler.handleErrors();
   messageHandler.processDataFromReceivedQueue();
   messageHandler.processDataFromSendQueue();
-  if (stateMachine.getMode() == MODE_NEUTRAL) {
-    if (something == 1) {
-      messageHandler.addPeer(hostAddress);
-      something = -1;
-    }
-    else if (something == 0){
-      Serial.println("something wrong");
-      something = -1;
-    }
-    
-  }
+ if (count == 0 ) {
+  Serial.println("auf"+String(count));
+  count = 1001;
+ }
   if (stateMachine.getMode() == MODE_CALIBRATE) {
     buttonOn = digitalRead(CLAP_PIN);
     if (buttonOn and previousButton == false and buttonPressStarted == false) {
@@ -162,7 +144,7 @@ void loop() {
     }
     if (buttonOn and previousButton == true and micros() - buttonPressTime > 100000) {
       messageHandler.addClap(buttonPressTime);
-      Serial.println("CLAP!");
+      Serial.println("CLAP!" );
       previousButton = false;
     }
     else
@@ -190,6 +172,7 @@ void loop() {
         size_t freeHeap = ESP.getFreeHeap();
         Serial.print(freeHeap);
         Serial.println(" bytes");
+        messageHandler.printTimerStuff(); 
 
         count++;
         //printAddress(myAddress);

@@ -1,5 +1,9 @@
 #include "Arduino.h"
 #include "myDefines.h"
+#if DEVICE_MODE == MAIN
+#include "webserver.h"
+class webserver;
+#endif
 #ifndef MODE_MACHINE_H
 #define MODE_MACHINE_H
 
@@ -8,8 +12,14 @@
         private: 
             int currentMode = MODE_INIT;
             String modeLog = "";
+            #if DEVICE_MODE == MAIN
+            webserver* webServer = nullptr;
+            #endif
         public:
             modeMachine();
+            #if DEVICE_MODE == MAIN
+            void setup(webserver &myWebserver);
+            #endif
             void switchMode(int mode);
             void logMode(int mode);
             void printLog();

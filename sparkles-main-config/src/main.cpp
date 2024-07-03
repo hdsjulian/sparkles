@@ -13,7 +13,7 @@
 #include <messaging.h>
 #include <LittleFS.h>
 #include <webserver.h>
-#define SWITCH_PIN 45
+#define SWITCH_PIN 48
 //#include "ESP32TimerInterrupt.h"
 //#include "driver/gptimer.h"
 #define TIMER_INTERVAL_MS       600
@@ -40,6 +40,7 @@ esp_now_peer_info_t peerInfo;
 int audioPin = 5;
 int cycleCounter = 0;
 
+bool isSetup = false;
 
 
 
@@ -67,6 +68,9 @@ uint32_t lastClapTime;
 void IRAM_ATTR onTimer()
 {   
  msgSendTime = micros();
+ if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER) {
+  return;
+ }
   //Serial.println(msgSendTime/1000);
     timerCounter++;
     //wait for timer vs wait for calibrate
@@ -111,7 +115,7 @@ void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
     }
     else if (timerCounter % 5 == 0) {
       messageHandler.addError("No SUCCESS");
-     messageHandler.setNoSuccess();
+     //messageHandler.setNoSuccess();
     }
   }
   else{
@@ -138,7 +142,7 @@ void setup() {
     Serial.println("LittleFS mount failed");
     lfs_started = false;
   }
-  myWebserver.setup(messageHandler, modeHandler);
+    myWebserver.setup(messageHandler, modeHandler);
 
   timer = timerBegin(1000000);           	// timer 0, prescalar: 80, UP counting
   timerAttachInterrupt(timer, &onTimer); 	// Attach interrupt
@@ -146,14 +150,16 @@ void setup() {
   timerStart(timer);   
   timerAlarm(timer, TIMER_INTERVAL_MS*1000, true, 0);
 
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
   handleLed.setup();
-  modeHandler.switchMode(MODE_NEUTRAL);
+  
   messageHandler.setup(modeHandler, handleLed, peerInfo, myWebserver);
+  modeHandler.setup(myWebserver);
+  modeHandler.switchMode(MODE_NEUTRAL);
   Serial.println("after setup");
   //esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);
   memcpy(&peerInfo.peer_addr, messageHandler.broadcastAddress, 6);
@@ -166,50 +172,47 @@ void setup() {
   }
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);  
-  //esp_now_add_peer(broadcastAddress, ESP_NOW_ROLE_SLAVE, 1, NULL, 0);
   WiFi.macAddress(messageHandler.announceMessage.address);
   if (DEVICE_USED == D1) {
-    audioPin = 35;
+    audioPin = 35; 
   }
-  //pinMode(audioPin, INPUT); 
+  pinMode(audioPin, INPUT); 
   peakDetection.begin(30, 3, 0);   
   lastClap = millis(); 
   timerCounter = 0;
   WiFi.macAddress(myAddress);
   pinMode(SWITCH_PIN, INPUT_PULLDOWN); 
+
   randomSeed(analogRead(33));
   
 }
 
 void loop() {
+
   messageHandler.processDataFromReceivedQueue();
   messageHandler.processDataFromSendQueue();
   if (digitalRead(SWITCH_PIN) == HIGH) {
-    if (LittleFS.format()) {
-      Serial.println("LittleFS formatted successfully");
-    }
-    else {
-      Serial.println("LittleFS formatting failed");
-    }
+    Serial.println("switch pin high");
+    messageHandler.deleteFile("/clientAddress");
     delay(5000);
     ESP.restart();
   }
-  if (lastClap+5000 < millis()) {
-    if (lfs_started == false) {
-      if (LittleFS.format()) {
-        Serial.println("LittleFS formatted successfully, retrying mount...");
-        if (LittleFS.begin()) {
-            Serial.println("LittleFS mount succeeded after formatting");
-            lfs_started = true;
-        } else {
-            Serial.println("LittleFS mount failed after formatting");
-            lfs_started = false;
-        }
-      } else {
-        Serial.println("LittleFS formatting failed");
-        lfs_started = false;
-      }
+ 
+
+  if (modeHandler.getMode() == MODE_CALIBRATE ) {
+    double data = (double)analogRead(audioPin)/512-1;
+    peakDetection.add(data); 
+    int peak = peakDetection.getPeak(); 
+    double filtered = peakDetection.getFilt(); 
+    //Serial.println(sensorValue);
+    if (peak == -1 and millis() > lastClap+1000) {
+      messageHandler.addClap(micros());
+      lastClap = millis();
+      Serial.println("Clap!");
+      handleLed.flash(125, 0, 55, 200, 1, 50);
     }
+  }
+ else if (lastClap+5000 < millis()) {
     messageHandler.handleErrors();
     modeHandler.printCurrentMode();
     lastClap = millis();
@@ -221,10 +224,10 @@ void loop() {
     Serial.println("---All addresses---- "+String(messageHandler.addressCounter));
     messageHandler.printAllAddresses();
     Serial.println("-----------");
-    //messageHandler.printAllAddresses();
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
     int* sysTime = messageHandler.getSystemTime();
+    //messageHandler.checkFile("/clientAddress");
     /*
     Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));
     Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
@@ -237,19 +240,6 @@ void loop() {
 
     //messageHandler.printAddress(myAddress);
 
-  }
-
-  if (modeHandler.getMode() == MODE_CALIBRATE) {
-    double data = (double)analogRead(audioPin)/512-1;
-    peakDetection.add(data); 
-    int peak = peakDetection.getPeak(); 
-    double filtered = peakDetection.getFilt(); 
-    //Serial.println(sensorValue);
-    if (peak == -1 and millis() > lastClap+1000) {
-      messageHandler.addClap(micros());
-      lastClap = millis();
-      Serial.println("Clap!");
-    }
   }
   if (messageHandler.clapsReceived == messageHandler.addressCounter && messageHandler.clapsReceived != 0) {
     Serial.println("All clap Times received");

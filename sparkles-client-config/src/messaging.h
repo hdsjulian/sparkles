@@ -2,7 +2,9 @@
 #include "myDefines.h"
 #include "Arduino.h"
 #include "stateMachine.h"
+#if DEVICE_MODE != WEBSERVER
 #include "ledHandler.h"
+#endif
 #if DEVICE_MODE == MAIN
 #include "webserver.h"
 class webserver;
@@ -13,6 +15,7 @@ class webserver;
 #include <vector>
 #include <cstdint>
 #include "LittleFS.h"
+#include <ArduinoJson.h>
 
 #ifndef MESSAGING_H
 #define MESSAGING_H
@@ -24,12 +27,16 @@ class messaging {
     private:  
         client_address clientAddresses[NUM_DEVICES];
         client_address clapDevice;
+        float myDistances[NUM_CLAPS];
         modeMachine* globalModeHandler;
         #if DEVICE_MODE == MAIN
         webserver* webServer;
         #endif
-        modeMachine messagingModeHandler;
+        #if DEVICE_MODE != WEBSERVER
         ledHandler* handleLed;
+        #endif
+        modeMachine messagingModeHandler;
+        int debugVariable = 0;
         struct SendData {
           const uint8_t * address;
           int messageId;
@@ -63,8 +70,8 @@ class messaging {
         int announceTime = 0;
         int myAddressId = 0;
         message_animate animationMessage;
-        message_send_clap_times sendClapTimes;
-        message_address addressMessage;
+        message_send_clap_times sendClapTimes, myClapTimes;
+        message_address addressMessage; 
         message_timer timerMessage;
         message_got_timer gotTimerMessage;
         message_announce announceMessage;
@@ -72,11 +79,10 @@ class messaging {
         message_timer_received timerReceivedMessage;
         message_address_list addressListMessage;
         message_command commandMessage;
-        message_ask_clap_times askClapTimesMessage;
         message_status_update statusUpdateMessage;
         message_distance distanceMessage;
         message_set_positions setPositionsMessage;
-        message_battery_status batteryStatusMessage;
+        message_status statusMessage;
         message_set_sleep_wakeup setSleepWakeupMessage;
         String error_message = "";
         String message_received = "";
@@ -99,7 +105,6 @@ class messaging {
         int clapsReceived = 0;
         timeout_retry timeoutRetry;
         int timersUpdated =0;
-        int timerUpdateCounter = 0; 
         int goToSleepTime = 0;
         int forcedDebugCounter = 0;
         unsigned long lastTry = 0;
@@ -108,12 +113,16 @@ class messaging {
         int maxPos;
         //esp8266
         //uint8_t webserverAddress[6] = {0xe8, 0xdb, 0x84, 0x99, 0x5e, 0x44};
-        uint8_t clapDeviceAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
+        //        uint8_t clapDeviceAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
+        uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
         messaging();
-        #if DEVICE_MODE != MAIN
-        void setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp_now_peer_info_t &globalPeerInfo);
+        #if DEVICE_MODE == WEBSERVER
+          void setup(modeMachine &modeHandler, esp_now_peer_info_t &globalPeerInfo);
+        #elif DEVICE_MODE == MAIN
+          void setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp_now_peer_info_t &globalPeerInfo, webserver &myWebserver);
         #else
-        void setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp_now_peer_info_t &globalPeerInfo, webserver &myWebserver);
+          void setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp_now_peer_info_t &globalPeerInfo);
+
         #endif
         void blink();
         void removePeer(uint8_t address[6]);
@@ -125,6 +134,7 @@ class messaging {
         void setLastDelay(int delay);
         void handleClapTimes(const uint8_t *incomingData);
         void calculateDistances(int id);
+        void triangulateDistances(int id);
         void addClap(unsigned long timeStamp);
         void getClapTimes(int i);
         int getTimerCounter();
@@ -171,6 +181,8 @@ class messaging {
         void filterClaps(int index);
         void writeStructsToFile(const client_address* data, int count, const char* filename);
         bool readStructsFromFile(client_address* data, int count, const char* filename);
+        void deleteFile(const char* filename);
+        void checkFile(const char* filename);
         void updateTimers(int addressId);
         void goToSleep(unsigned long sleepTime);
         void handleTimerUpdates();
@@ -184,6 +196,7 @@ class messaging {
         double calculateTimeDifference(int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2);
         void setSetTimeMessage(int hours, int minutes, int seconds);
         void setBattery();
+        float getBattery();
         void setTimerReceiverUnavailable();
         void setAnimation(message_animate* message);
         void nextAnimation();
@@ -199,7 +212,14 @@ class messaging {
         void timeoutRetryHandler();
         void setUnreachable(int id);
         void nextRetry();
-
+        void updateDevice(int id);
+        void orderClaps(int id);
+        void startCalibrationMode();
+        void printTimerStuff();
+        void clientAddressToJsonObject(JsonObject& jsonObj, client_address& client);
+        String allClientAddressesToJson();
+        String printClapTimes(unsigned long* array, int size);
+        void updateAddressesToWebserver();
 };
 
 

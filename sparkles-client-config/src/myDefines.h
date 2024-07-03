@@ -96,20 +96,20 @@ const int ledChannelBlue2 = 5;
 #define MSG_GOT_TIMER 3
 #define MSG_ASK_CLAP_TIMES 5
 #define MSG_SEND_CLAP_TIMES 6
-#define MSG_ANIMATION 7
 #define MSG_SWITCH_MODE 8
 #define MSG_DISTANCE 9
 #define MSG_SET_TIME 10
+#define MSG_ANIMATION 11
 #define MSG_NOCLAPFOUND -1
 #define MSG_COMMANDS 101
 #define MSG_ADDRESS_LIST 102
 #define MSG_STATUS_UPDATE 103
 #define MSG_END_CALIBRATION 104
 #define MSG_WAKEUP 105
-
 #define MSG_SET_POSITIONS 107
-#define MSG_BATTERY_STATUS 108
+#define MSG_STATUS 108
 #define MSG_SET_SLEEP_WAKEUP 109
+#define MSG_SEND_CLAP 110
 
 #define CMD_START 200
 #define CMD_MSG_SEND_ADDRESS_LIST 201
@@ -125,7 +125,8 @@ const int ledChannelBlue2 = 5;
 #define CMD_GO_TO_SLEEP 211
 #define CMD_RESET 212
 #define CMD_RESET_SYSTEM 213
-#define CMD_GET_BATTERY_STATUS 214
+#define CMD_GET_STATUS 214
+#define CMD_GET_CLAP_TIMES 215
 
 #define CMD_END 220
 
@@ -155,6 +156,7 @@ struct message_got_timer {
   uint8_t messageType = MSG_GOT_TIMER;
   uint16_t delayAvg;
   uint32_t timerOffset;
+  float batteryPercentage = 0;
 };
 
 struct message_set_sleep_wakeup {
@@ -165,9 +167,9 @@ struct message_set_sleep_wakeup {
   bool isGoodNight;
 };
 
-struct message_battery_status {
-  uint8_t messageType = MSG_BATTERY_STATUS;
-  uint8_t batteryStatus;
+struct message_status {
+  uint8_t messageType = MSG_STATUS;
+  float batteryPercentage;
 };
 
 //9 bytes
@@ -201,13 +203,6 @@ struct message_distance{
 
 // 7 bytes
 
-struct message_ask_clap_times {
-  uint8_t message_type = MSG_ASK_CLAP_TIMES;
-  int deviceId;
-  int millisA = 0;
-  int millisB = 0;
-  String debug = "";
-};
 
 
 struct message_send_clap_times {
@@ -216,7 +211,8 @@ struct message_send_clap_times {
   unsigned long timeStamp[NUM_CLAPS]; //offsetted.
 };
 
-struct sleep_wakeup_time {
+
+struct sleep_wakeup_time { 
   int hours;
   int minutes;
   int seconds;
@@ -240,9 +236,9 @@ struct client_address {
   uint32_t timerOffset;
   int delay;
   message_send_clap_times clapTimes;
-  float distance;
+  float distances[NUM_CLAPS];
   activeStatus active = INACTIVE;
-  int batteryStatus;
+  float batteryPercentage;
   int tries;
 } ;
 

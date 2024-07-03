@@ -43,105 +43,7 @@ void messaging::filterClaps(int index) {
 }
 
 
-void messaging::calculateDistances(int id) {
-    // todoclapdevice claptimes
-    Serial.println("Calculating distances");
-    addError("CalculatingDistances\n");
-    //filterClaps(0);
-    //go through all devices
 
-    //filterClaps(i);
-    //initialize cumulative distance value and clap counter
-    int cumul = 0;
-    int clapCount = 0;
-    //initialize bools for "this clap was found in the other device"
-    bool countmeCD = false;
-    bool countmeMain = false;
-    //initialize last clap index for webserver and main device so that i don't have to start the loops again
-    int lastClapDeviceClap = 0;
-    int lastMainClap = 0;
-
-    //output some stuff
-    addError("Device: "+String(id)+"\n");
-    addError("Clap Counter: "+String(clientAddresses[id].clapTimes.clapCounter)+"\n");
-    //if there are no claps, lets just move on
-    if (clientAddresses[id].clapTimes.clapCounter == 0) { addError("No claps detected\n"); return; }
-    //iterate through the claps of the device
-    addError("claps for device "+String(id)+"\n");
-    for (int j = 0 ; j < clientAddresses[id].clapTimes.clapCounter; j++) {
-        addError("Clap: "+String(j)+" at Time "+String(clientAddresses[id].clapTimes.timeStamp[j])+"\n");
-        //iterate through the webserver/s claps
-        addError("claps for webserver "+String(clapDevice.clapTimes.clapCounter)+"\n");
-        for (int k = lastClapDeviceClap; k < clapDevice.clapTimes.clapCounter; k++) {
-            //calculate the difference between the claps on the webserver and the device
-            //addError("Clap: "+String(k)+" at Time "+String(webserverClapTimes.timeStamp[k])+"\n");
-            unsigned long timeStampDifference = (clientAddresses[id].clapTimes.timeStamp[j] > clapDevice.clapTimes.timeStamp[k]) ?
-                                            (clientAddresses[id].clapTimes.timeStamp[j] - clapDevice.clapTimes.timeStamp[k]) :
-                                            (clapDevice.clapTimes.timeStamp[k] - clientAddresses[id].clapTimes.timeStamp[j]);
-            //if the difference is less than a second we count the clap                                                
-            if (timeStampDifference < CLAP_THRESHOLD) {
-                //addError("Web should count\n");
-                countmeCD = true;
-                //set the index so that the next iteration starts appropriately
-                lastClapDeviceClap = k-1;
-                break;
-            }
-            //if we have iterated too far, we break the loop. the device's clap could not be found on the webserver. false positive.
-            if (clientAddresses[id].clapTimes.timeStamp[j]+CLAP_THRESHOLD < clapDevice.clapTimes.timeStamp[k]) {
-                //addError("Web didn't count\n");
-                lastClapDeviceClap = k-1;
-                break;
-            }
-        }
-        //do the same for the host device
-        //addError("Claps for main "+String(clientAddresses[0].clapTimes.clapCounter)+"\n");
-        for (int k = lastMainClap; k < clientAddresses[0].clapTimes.clapCounter; k++) {
-            // addError("Clap: "+String(k)+" at Time "+String(clientAddresses[0].clapTimes.timeStamp[k])+"\n");
-            unsigned long timeStampDifference = (clientAddresses[id].clapTimes.timeStamp[j] > clientAddresses[0].clapTimes.timeStamp[k]) ?
-                                            (clientAddresses[id].clapTimes.timeStamp[j] - clientAddresses[0].clapTimes.timeStamp[k]) :
-                                            (clientAddresses[0].clapTimes.timeStamp[k] - clientAddresses[id].clapTimes.timeStamp[j]);
-            if (timeStampDifference < CLAP_THRESHOLD) {
-                // addError("Main should count\n");
-                countmeMain = true;
-                lastMainClap = k-1;
-                break;
-            }
-            if (clientAddresses[id].clapTimes.timeStamp[j]+CLAP_THRESHOLD < clientAddresses[0].clapTimes.timeStamp[k]) {
-                //addError("Main didn't count\n");
-                lastMainClap = k-1;
-                countmeMain = false;
-                break;
-            }
-        }
-        //for all claps that were found on all three devices devices, calculate the difference and add it to the cumulative distance
-        if (countmeCD and countmeMain) {
-            clapCount++;
-            
-            unsigned long timeStampDifference = (clientAddresses[0].clapTimes.timeStamp[lastMainClap+1] > clientAddresses[id].clapTimes.timeStamp[j]) ?
-                                            (clientAddresses[0].clapTimes.timeStamp[lastMainClap+1] - clientAddresses[id].clapTimes.timeStamp[j]) :
-                                            (clientAddresses[id].clapTimes.timeStamp[j] - clientAddresses[0].clapTimes.timeStamp[lastMainClap+1]);
-            cumul += timeStampDifference;
-            addError("Adding timeStampDifference: "+String(timeStampDifference)+"\n");
-        }
-    }
-        //make sure i don't divide by zero, then divide.
-    if( cumul > 0 and clapCount != 0) {
-        float dist = (float)((float)cumul/clapCount);
-        dist = 34300*(dist/1000000);
-        Serial.println("dist"+String(dist));
-        clientAddresses[id].distance = dist;
-        distanceMessage.distance = dist;
-        pushDataToSendQueue(clientAddresses[id].address, MSG_DISTANCE, -1);
-        addError("Distance calculated"+String(clientAddresses[id].distance)+" Centimeters\n");
-    }
-    else {
-        //if there are no claps, or the claps are too far apart, set the distance to 0
-        addError("No distances found\n");
-        clientAddresses[id].distance = 0;
-    }
-
-    Serial.println("Done Calculating distances");
-}
 /*
 void messaging::calculateDistances() {
     //go through all devices
@@ -248,6 +150,9 @@ void messaging::printMessageModeLog() {
 
 
 void messaging::writeStructsToFile(const client_address* data, int count, const char* filename) {
+    if (!LittleFS.exists(filename)) {
+        addError("File doesn't exist while writing");
+    }
     File file = LittleFS.open(filename, "w");
     if (!file) {
         addError("Failed to open file for writing");
@@ -260,9 +165,33 @@ void messaging::writeStructsToFile(const client_address* data, int count, const 
     file.close();
 }
 
+void messaging::deleteFile(const char* filename) {
+
+    if (!LittleFS.exists(filename)) {
+        addError("File doesn't exist");
+        return;
+    }
+    Serial.println("delete file");
+    memset(clientAddresses, 0, sizeof(clientAddresses));
+    writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
+}
+
+void messaging::checkFile(const char* filename) {
+    if (!LittleFS.exists(filename)) {
+        addError("File doesn't exist");
+        return;
+    }
+    else {
+        addError("File exists");
+        return;
+    }
+}
 // Function to read an array of structs from a file
 bool messaging::readStructsFromFile(client_address* data, int count, const char* filename) {
-    Serial.println("reading Structs from file");
+    if (!LittleFS.exists(filename)) {
+        addError("File doesn't exist");
+        return false;
+    }
     File file = LittleFS.open(filename, "r");
     if (!file) {
         Serial.println("Failed to open file for reading");
@@ -297,29 +226,53 @@ bool messaging::readStructsFromFile(client_address* data, int count, const char*
     return true;
 
 }
+void messaging::timeoutRetryHandler() {
+    addError("Timeout Retry Handler  ");
+    addError("Current Id: "+String(timeoutRetry.currentId));
+    addError("Address Counter: "+String(addressCounter));
+    
+    if (timeoutRetry.currentId == addressCounter-1) {
+        timeoutRetry.currentId = 0;
+        timeoutRetry.lastMsg = millis();
+        addError("reached Address counter, waiting 60 seconds");
+        if (timeoutRetry.unavailableCounter == 0 or timersUpdated == addressCounter) {
+            addError("all done");
+            globalModeHandler->switchMode(MODE_NEUTRAL);
+            return;
+        }
+    }
+    else {
+        timeoutRetry.currentId++;
+    }
+     switch (globalModeHandler->getMode()) {
+        case MODE_GET_CALIBRATION_DATA:
+                getClapTimes(timeoutRetry.currentId);
+            break;
+        case MODE_RESET_TIMER:
+                handleTimerUpdates();
+            break;
+        case MODE_SENDING_TIMER:
+                globalModeHandler->switchMode(MODE_NEUTRAL);
+            break;
+        
+    }
+
+}
 
 
 void messaging::handleTimerUpdates() {
 
  if (timersUpdated == addressCounter)  {  
-    Serial.println("all timers updated. TimersUpdated: "+String(timersUpdated)+" addressCounter: "+String(addressCounter));
-    delay(1000);
     return;
  }
 
  if (timeoutRetry.currentId < addressCounter) {
     for (int i = timeoutRetry.currentId; i < addressCounter; i++) {
         //darf natürlich nicht weiter gehen. entweder hier noch mit status check oder die ganze funktion nur alle sekunde aufrufen
-        if (clientAddresses[i].active == WAITING or clientAddresses[i].active == UNREACHABLE) {
+        if (clientAddresses[i].active == INACTIVE or clientAddresses[i].active == UNREACHABLE) {
             addError("Updating timers for device "+String(i)+"\n");
             updateTimers(i);
             return;
-        }
-        else if (clientAddresses[i].active == INACTIVE) {
-               clientAddresses[i].active = WAITING;
-            }
-        else if (clientAddresses[i].active == ACTIVE) {
-            timerUpdateCounter++;
         }
     }
  }
@@ -327,12 +280,13 @@ void messaging::handleTimerUpdates() {
 }
 void messaging::setNoSuccess() {
     addError("setting no success\n");
-    if (timeoutRetry.tries == NUM_RETRIES) {
+    if (clientAddresses[timeoutRetry.currentId].tries == NUM_RETRIES) {
         addError("setting "+String(timeoutRetry.currentId)+" to dead\n");
         clientAddresses[timeoutRetry.currentId].active = DEAD;   
         if (globalModeHandler->getMode() == MODE_RESET_TIMER) {
             timersUpdated++;
         }
+        timeoutRetry.unavailableCounter--;
         
         }
     else {
@@ -340,6 +294,7 @@ void messaging::setNoSuccess() {
         clientAddresses[timeoutRetry.currentId].active = UNREACHABLE;
         clientAddresses[timeoutRetry.currentId].tries++;
         timeoutRetry.unavailableCounter++;
+        addError("retries "+String(clientAddresses[timeoutRetry.currentId].tries)+"\n");
     }
     if (timeoutRetry.unavailableCounter == addressCounter) {
         addError("All devices are unreachable\n");

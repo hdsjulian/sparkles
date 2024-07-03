@@ -236,7 +236,7 @@ if (modeHandler.getMode() == MODE_CALIBRATE) {
   double filtered = peakDetection.getFilt(); 
   //Serial.println(sensorValue);
   if (peak == -1 and millis() > lastClap+1000) {
-     messageHandler.addClap(micros()-timeOffset);
+     messageHandler.addClap(micros());
     lastClap = millis();
     Serial.println("Clap!");
     handleLed.flash(125, 0, 55, 200, 1, 50);

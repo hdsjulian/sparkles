@@ -24,28 +24,56 @@ void messaging::announceAddress() {
     timerMessage.counter = timerCounter;
     timerMessage.lastDelay = lastDelay;
   }
+
+
+void messaging::getClapTimes(int i) {
+    addError("get clap times called "+String(i)+"\n");
+    if (i == -1) {
+
+        commandMessage.messageId = CMD_GET_CLAP_TIMES;
+        addError("pushing to send queue "+String(CMD_GET_CLAP_TIMES));
+        pushDataToSendQueue(clapDevice.address, MSG_COMMANDS, CMD_GET_CLAP_TIMES);
+   }
+   else {
+    if (memcmp(clientAddresses[i].address, emptyAddress, 6) == 0) {
+        globalModeHandler->switchMode(MODE_NEUTRAL);
+        return;
+    }
+    if (clientAddresses[i].active != ACTIVE) { i++;}
+        commandMessage.messageId = CMD_GET_CLAP_TIMES;
+        pushDataToSendQueue(clientAddresses[i].address, MSG_COMMANDS, CMD_GET_CLAP_TIMES);
+    }
+}
+
+  /*
 void messaging::getClapTimes(int i) {
     addError("Get clap times called" + String(i) + "\n");
+    Serial.println("get clap times called");
     stringAllAddresses();
     if (i == -1) {
-        addError("Asking Clap Device for Clap Time\n");
+        Serial.println("Asking Clap Device for Clap Time\n");
         askClapTimesMessage.millisA = millis();
         askClapTimesMessage.debug = "a";
         pushDataToSendQueue(clapDeviceAddress, MSG_ASK_CLAP_TIMES, -1);
     }
     else if (i < addressCounter) {
-        addError("asking device " + String(i) + " for clap time\n");
-        addError("Address: "+stringAddress(clientAddresses[i].address)+"\n");
+        Serial.println("asking device " + String(i) + " for clap time\n");
+        Serial.println("Address: "+stringAddress(clientAddresses[i].address)+"\n");
         askClapTimesMessage.millisA = millis();
-        pushDataToSendQueue(clientAddresses[i].address, MSG_ASK_CLAP_TIMES, -1);
+        if (clientAddresses[i].active == ACTIVE) {
+            pushDataToSendQueue(clientAddresses[i].address, MSG_ASK_CLAP_TIMES, -1);
+        }
+        else {
+            getClapTimes(i+1);
+        }       
     }
-}
+}*/
 
 void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param) {
     addError("Sending message "+messageCodeToText(messageId)+ "\n");
     addError("To: "+stringAddress(address)+ "\n");
     if (messageId ==MSG_COMMANDS) {
-        addError("Command "+messageCodeToText(commandMessage.messageId));
+        addError("Command "+messageCodeToText(commandMessage.messageId)+"\n");
     }
 
     std::lock_guard<std::mutex> lock(sendQueueMutex); // Lock the mutex
@@ -93,15 +121,11 @@ void messaging::processDataFromSendQueue() {
             case MSG_GOT_TIMER:
                 esp_now_send(sendData.address, (uint8_t*) &gotTimerMessage, sizeof(gotTimerMessage));
                 break;
-            case MSG_ASK_CLAP_TIMES:
-                addError("ASK CLAP TIMES CALLED, sending to "+stringAddress(sendData.address)+" and ask clap times message type is "+String(askClapTimesMessage.message_type)+"\n");
-                askClapTimesMessage.millisB = millis();
-                esp_now_send(sendData.address, (uint8_t*) &askClapTimesMessage, sizeof(askClapTimesMessage));
-                break;
             case MSG_SWITCH_MODE: 
                 esp_now_send(sendData.address, (uint8_t*) &switchModeMessage, sizeof(switchModeMessage));
                 break;
             case MSG_SEND_CLAP_TIMES:
+                memcpy(&sendClapTimes, &myClapTimes, sizeof(sendClapTimes));
                 esp_now_send(sendData.address, (uint8_t*) &sendClapTimes, sizeof(sendClapTimes));
                 break;
             case MSG_ANIMATION:
@@ -116,8 +140,9 @@ void messaging::processDataFromSendQueue() {
                 // Handle MSG_NOCLAPFOUND message type
                 break;
             case MSG_COMMANDS:
+                Serial.println("sending command "+messageCodeToText(sendData.param));
                 if (sendData.param != -1) {
-                    commandMessage.param = sendData.param;
+                    commandMessage.messageId = sendData.param;
                 }
                 esp_now_send(sendData.address, (uint8_t*) &commandMessage, sizeof(commandMessage));
                 commandMessage.param = -1;
@@ -131,8 +156,8 @@ void messaging::processDataFromSendQueue() {
             case MSG_SET_POSITIONS:
                 esp_now_send(sendData.address, (uint8_t*) &setPositionsMessage, sizeof(setPositionsMessage));
                 break;
-            case MSG_BATTERY_STATUS:
-                esp_now_send(sendData.address, (uint8_t*) &batteryStatusMessage, sizeof(batteryStatusMessage));
+            case MSG_STATUS:
+                esp_now_send(sendData.address, (uint8_t*) &statusMessage, sizeof(statusMessage));
                 break;
             default: 
                 addError("Message to send: unknown\n");
@@ -178,6 +203,7 @@ void messaging::sendMessageById(int messageId, int addressId, int param) {
     pushDataToSendQueue(clientAddresses[addressId].address, messageId, param);
 }
 
+
 void messaging::nextRetry() {
     if (timeoutRetry.lastMsg == 0) {return;}
     if (timeoutRetry.currentId > 0) {return;}
@@ -193,36 +219,7 @@ void messaging::nextRetry() {
     
 }
 
-void messaging::timeoutRetryHandler() {
-    Serial.println("Timeout Retry Handler  ");
-    Serial.println("Current Id: "+String(timeoutRetry.currentId));
-    Seria.println("Address Counter: "+String(addressCounter));
-    
-    if (timeoutRetry.currentId == addressCounter-1) {
-        timeoutRetry.currentId = 0;
-        timeoutRetry.lastMsg = millis();
-        addError("reached Address counter, waiting 60 seconds");
-        if (timeoutRetry.unavailableCounter == 0) {
-            addError("all done");
-            globalModeHandler->switchMode(MODE_NEUTRAL);
-            return;
-        }
-    }
-    timeoutRetry.currentId++;
-     switch (globalModeHandler->getMode()) {
-        case MODE_GET_CALIBRATION_DATA:
-                getClapTimes(timeoutRetry.currentId);
-            break;
-        case MODE_RESET_TIMER:
-                handleTimerUpdates();
-            break;
-        case MODE_SENDING_TIMER:
-                globalModeHandler->switchMode(MODE_NEUTRAL);
-            break;
-        
-    }
 
-}
 
 
 

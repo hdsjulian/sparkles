@@ -9,13 +9,18 @@ webserver::webserver(FS* fs) : server(80), events("/events"), filesystem(fs) {
 
 
 void webserver::setup(messaging &Messaging, modeMachine &modeHandler) {
+  debugVariable++;
     WiFi.mode(WIFI_AP_STA);
+    Serial.println("setting up webserver "+String(ssid));
     WiFi.softAP(ssid, password);  
+    debugVariable++;
     configRoutes(); 
+    debugVariable++;
     messageHandler = &Messaging;
     server.addHandler(&events);
     server.begin();
     stateMachine = &modeHandler;
+    debugVariable++;
 }
 
 
@@ -60,6 +65,13 @@ void webserver::configRoutes() {
     server.on("/sendSyncAsyncAnimation", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->sendSyncAsyncAnimation(request);
     });
+    server.on("/updateDeviceList", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->updateDeviceList(request);
+    });
+        server.on("/updateStatus", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->statusUpdate(request);
+    });
+    
 
 }
 
@@ -70,8 +82,8 @@ void webserver::handleClientConnect(AsyncEventSourceClient *client) {
 
 
 void webserver::commandCalibrate(AsyncWebServerRequest *request) {
-     // messageHandler->addError("Called Calibrate");
-      if (stateMachine->getMode() != MODE_NEUTRAL) {
+      messageHandler->addError("Called Calibrate");
+      if (stateMachine->getMode() != MODE_NEUTRAL and stateMachine->getMode() != MODE_CALIBRATE) {
         //todo: send something that causes an alert
         request->send(400);
         return;
@@ -81,18 +93,19 @@ void webserver::commandCalibrate(AsyncWebServerRequest *request) {
         request->send(204);
         String jsonString;
         jsonString = "{\"status\" : \"true\"}";
-        events.send(jsonString.c_str(), "calibrateStatus", millis()); 
+        events.send(jsonString.c_str(), "calibrateStatus"); 
         stateMachine->switchMode(MODE_CALIBRATE);
-        messageHandler->addError("starting calibration mode");
-
+        messageHandler->addError("starting calibration mode\n");
+        messageHandler->startCalibrationMode();
+        
       }
       else if (stateMachine->getMode() == MODE_CALIBRATE) {
         messageHandler->sendMode(MODE_NEUTRAL);
-        Serial.println("ENDING CALIBRATION MODE");
+        Serial.println("ENDING CALIBRATION MODE\n");
         request->send(204);
         String jsonString;
         jsonString = "{\"status\" : \"false\"}";
-        events.send(jsonString.c_str(), "calibrateStatus", millis());
+        events.send(jsonString.c_str(), "calibrateStatus");
         stateMachine->switchMode(MODE_GET_CALIBRATION_DATA);
         messageHandler->getClapTimes(-1);
 
@@ -186,6 +199,16 @@ void webserver::setTime(AsyncWebServerRequest *request) {
   request->send(200, "text/html", "OK");
 }
 
+void webserver::statusUpdate(AsyncWebServerRequest *request) {
+  String returnString = "{\"status\":\""+stateMachine->modeToText(stateMachine->getMode())+"\"}";
+  request->send(200, "text/html", returnString.c_str());
+  //events.send(stateMachine->modeToText(stateMachine->getMode()).c_str(), "statusUpdate");
+}
+void webserver::statusUpdate() {
+  String returnString = "{\"status\":\""+stateMachine->modeToText(stateMachine->getMode())+"\"}";
+  events.send(returnString.c_str(), "statusUpdate");
+}
+
 void webserver::commandGoodNight(AsyncWebServerRequest *request) {
   messageHandler->addError("Calling good Night");
   int hours = request->getParam("hours")->value().toInt();
@@ -202,6 +225,23 @@ void webserver::commandSetWakeup(AsyncWebServerRequest *request) {
   int minutes = request->getParam("minutes")->value().toInt();
   int seconds = request->getParam("seconds")->value().toInt();
   messageHandler->setWakeup(hours, minutes, seconds);
+}
+void webserver::updateDeviceList(AsyncWebServerRequest *request) {
+  if (request->hasParam("id")) {
+    messageHandler->updateDevice(request->getParam("id")->value().toInt());
+  }
+  else {
+    messageHandler->addError("Updating Device list");
+    String jsonString = messageHandler->allClientAddressesToJson();
+    Serial.println(jsonString);
+    request->send(200, "text/html", jsonString.c_str( ));
+  }
+}
+void webserver::updateDeviceList() {
+  messageHandler->addError("Updating Device list");
+  String jsonString = messageHandler->allClientAddressesToJson();
+  Serial.println(jsonString);
+  events.send(jsonString.c_str( ), "updateDeviceList");
 }
 
 void webserver::sendSyncAsyncAnimation(AsyncWebServerRequest *request) {
@@ -222,4 +262,9 @@ void webserver::sendSyncAsyncAnimation(AsyncWebServerRequest *request) {
   //messageHandler->setAnimation(&animationMessage);
   //messageHandler->pushDataToSendQueue(MSG_ANIMATION, -1);
   request->send(200, "text/html", "OK");
+}
+
+void webserver::updateMode(String modeText) {
+  Serial.println("switched to "+modeText);
+    events.send(modeText.c_str(), "statusUpdate");
 }

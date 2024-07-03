@@ -9,19 +9,13 @@ webserver::webserver(FS* fs) : server(80), events("/events"), filesystem(fs) {
 
 
 void webserver::setup(messaging &Messaging, modeMachine &modeHandler) {
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(ssid, password);  
+    WiFi.mode(WIFI_STA);
     configRoutes(); 
     messageHandler = &Messaging;
     server.addHandler(&events);
     server.begin();
     stateMachine = &modeHandler;
 }
-
-
-
-
-
 
 void webserver::configRoutes() {
   events.onConnect([this](AsyncEventSourceClient *client){

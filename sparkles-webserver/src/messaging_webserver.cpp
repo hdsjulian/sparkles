@@ -1,27 +1,44 @@
-#include <webserver.h>
+
 #define DEVICE_MODE 2
 #include <messaging.h>
 #include <helperFuncs.h>
+#include <ArduinoJson.h>
 
 
 
 
-void messaging::setup(webserver &Webserver, modeMachine &modeHandler, esp_now_peer_info_t &globalPeerInfo) {
-    webServer = &Webserver;
+void messaging::setup(modeMachine &modeHandler, esp_now_peer_info_t &globalPeerInfo) {
+    debugVariable = 1;
     globalModeHandler = &modeHandler;
     peerInfo = &globalPeerInfo;
+    setHostAddress(hostAddress);
+    addError("This should somehow...\n");
+    Serial.println("why");
+
 }
 
 
 void messaging::setHostAddress(uint8_t address[6]) {
-    memcpy (&hostAddress, address, 6);
+    debugVariable = 2;
+    memcpy (hostAddress, address, 6);
     addPeer(hostAddress);
+    memcpy(addressMessage.address, clapDeviceAddress, 6);
+    addError("my address "+stringAddress(clapDeviceAddress));
+    pushDataToSendQueue(hostAddress, MSG_ADDRESS, -1);
 }
 
-void messaging::pushDataToSendQueue(int messageId, int param) {
-    std::lock_guard<std::mutex> lock(sendQueueMutex);
-    sendQueue.push({messageId, param}); // Push the received data into the queue
-} 
+void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param) {
+  debugVariable = 3;
+    addError("Sending message "+messageCodeToText(messageId)+ "\n");
+    addError("To: "+stringAddress(address)+ "\n");
+    if (messageId ==MSG_COMMANDS) {
+        addError("Command "+messageCodeToText(commandMessage.messageId));
+    }
+
+    std::lock_guard<std::mutex> lock(sendQueueMutex); // Lock the mutex
+    SendData sendData {address, messageId, param};
+    sendQueue.push(sendData); // Push the received data into the queue
+}
 
 
 void messaging::processDataFromReceivedQueue() {
@@ -37,6 +54,7 @@ void messaging::processDataFromReceivedQueue() {
 }  
 
 void messaging::processDataFromSendQueue() {
+  debugVariable = 4;
     std::lock_guard<std::mutex> lock(sendQueueMutex);
     while (!sendQueue.empty()) {
         SendData sendData = sendQueue.front(); // Get the front element
@@ -53,42 +71,20 @@ void messaging::processDataFromSendQueue() {
           return;
         } 
         switch (sendData.messageId) {
+          case MSG_ADDRESS: 
+            esp_now_send(hostAddress, (uint8_t *) &addressMessage, sizeof(addressMessage));
+            break;
+          case MSG_GOT_TIMER: 
+            esp_now_send(hostAddress, (uint8_t *) &gotTimerMessage, sizeof(gotTimerMessage));
+            break;
           case MSG_SEND_CLAP_TIMES: 
-            Serial.println("Sending clap times");
-            Serial.print("Number of claps ");
-            Serial.println(sendClapTimes.clapCounter);
-            esp_now_send(hostAddress, (uint8_t *) &sendClapTimes, sizeof(sendClapTimes));
-            break;
-          case MSG_SET_TIME:
-            Serial.println("Sending set timer");
-            esp_now_send(hostAddress, (uint8_t *) &setTimeMessage, sizeof(setTimeMessage));
-            break;
-          case MSG_SET_POSITIONS:
-            Serial.println("Sending set positions");
-            esp_now_send(hostAddress, (uint8_t *) &setPositionsMessage, sizeof(setPositionsMessage));
-            break;
-          case MSG_ANIMATION: 
-            esp_now_send(hostAddress, (uint8_t *) &animationMessage, sizeof(animationMessage));
-            break;
-          case MSG_SET_SLEEP_WAKEUP:
-          Serial.println("should send host to sleep at "+String(setSleepWakeupMessage.hours)+":"+String(setSleepWakeupMessage.minutes));
-  
-            esp_now_send(hostAddress, (uint8_t *) &setSleepWakeupMessage, sizeof(setSleepWakeupMessage));
-            break;
+          sendClapTimes.clapCounter = 10;
+            esp_now_send(hostAddress, (uint8_t* ) &sendClapTimes, sizeof(sendClapTimes));
         }
     }
 } 
 
-
 void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
-  if (incomingData[0] != MSG_ANNOUNCE) {
-    Serial.print("Received ");
-    Serial.print(msgCounter);
-    Serial.print(" - ");
-    Serial.println(messageCodeToText(incomingData[0]));
-    //printAddress(mac->src_addr);
-    Serial.print("aha");
-  }
   msgCounter++;
   String jsonString;
   JsonDocument receivedJson;
@@ -99,44 +95,22 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
             //handleLed->flash(0, 0, 125 , 100, 2, 50); 
         receiveTimer(msgReceiveTime);
     break;
-    case MSG_ADDRESS_LIST: 
-      memcpy(&addressListMessage,incomingData,sizeof(addressListMessage));
-      receivedJson["index"] = String(addressListMessage.index);
-      receivedJson["address"] = stringAddress(addressListMessage.clientAddress.address);
-      receivedJson["delay"] = String(addressListMessage.clientAddress.delay);
-      receivedJson["status"] = modeToText(addressListMessage.status);
-      receivedJson["distance"] = String(addressListMessage.clientAddress.distance);
-      receivedJson["addressCounter"] = String(addressListMessage.addressCounter);
-      receivedJson["xpos"] = String(addressListMessage.clientAddress.xLoc);
-      receivedJson["ypos"] = String(addressListMessage.clientAddress.yLoc);
-      receivedJson["zpos"] = String(addressListMessage.clientAddress.zLoc);
-      receivedJson["battery"] = String(addressListMessage.clientAddress.batteryStatus);
-
-      serializeJson(receivedJson, jsonString);
-      Serial.println(jsonString.c_str());
-      webServer->events.send(jsonString.c_str(), "new_readings", millis());
-      break;
-    case MSG_STATUS_UPDATE: 
-      Serial.println("received status update");
-      memcpy(&statusUpdateMessage, incomingData, sizeof(statusUpdateMessage));
-      receivedJson["status"] = modeToText(statusUpdateMessage.mode);
-      receivedJson["statusId"] = String(statusUpdateMessage.mode);
-      serializeJson(receivedJson, jsonString);
-      webServer->events.send(jsonString.c_str(), "new_status", millis());
-      break;
-    case MSG_ASK_CLAP_TIMES: 
-    memcpy(&askClapTimesMessage, incomingData, sizeof(askClapTimesMessage));
-    Serial.println(" asked for clap times");
-    Serial.println("Num Claps: "+String(sendClapTimes.clapCounter));
-    Serial.println("millisA: "+String(askClapTimesMessage.millisA));
-    Serial.println("millisB: "+String(askClapTimesMessage.millisB));
-    Serial.println("debug string "+String(askClapTimesMessage.debug));
-    for (int i = 0; i<sendClapTimes.clapCounter; i++) {
-      Serial.println("Clap: "+String(sendClapTimes.timeStamp[i]));
+    case MSG_COMMANDS: {
+      memcpy(&commandMessage,incomingData,sizeof(commandMessage));
+      Serial.println("received cmd "+String(commandMessage.messageId));
+      switch (commandMessage.messageId) {
+        case CMD_START_CALIBRATION_MODE: 
+          globalModeHandler->switchMode(MODE_CALIBRATE);
+          break;
+        case CMD_END_CALIBRATION_MODE: 
+          globalModeHandler->switchMode(MODE_NEUTRAL);
+          break;
+        case CMD_GET_CLAP_TIMES: 
+        Serial.println("received cmd get clap times");
+          pushDataToSendQueue(hostAddress, MSG_SEND_CLAP_TIMES, -1);
+      }
     }
-    Serial.println("Pushing Send clap times to queue");
-    pushDataToSendQueue(MSG_SEND_CLAP_TIMES, 0);
-    break;
+ 
   }
 
 }
@@ -191,23 +165,17 @@ void messaging::receiveTimer(int messageArriveTime) {
   }
    lastTime = messageArriveTime;
 }*/
-void messaging::setSetTimeMessage(int hours, int minutes, int seconds) {
-  setTimeMessage.hours = hours;
-  setTimeMessage.minutes = minutes;
-  setTimeMessage.seconds = seconds;
-}
 
-void messaging::setPositions(int id, float xpos, float ypos, float zpos ) {
 
-  setPositionsMessage.xpos = xpos;
-  setPositionsMessage.ypos = ypos;
-  setPositionsMessage.zpos = zpos;
-  setPositionsMessage.id = id;
 
-}
-void messaging::setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight) {
-  setSleepWakeupMessage.hours = hours;
-  setSleepWakeupMessage.minutes = minutes;
-  setSleepWakeupMessage.seconds = seconds;
-  setSleepWakeupMessage.isGoodNight = isGoodNight;
+void messaging::addClap(unsigned long timeStamp) {
+    //todo refactor
+   
+    if (sendClapTimes.clapCounter < NUM_CLAPS) {
+        sendClapTimes.timeStamp[sendClapTimes.clapCounter] = timeStamp+timeOffset;
+    }
+    else {
+        addError("TOO MANY CLAPS");
+    }
+    sendClapTimes.clapCounter++;
 }

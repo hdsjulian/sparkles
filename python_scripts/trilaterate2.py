@@ -9,7 +9,7 @@ def calculate_distances(point, points_array):
 def scaling_factor(value):
     # Define the range and scaling
     min_val, max_val = 1, 50
-    max_inaccuracy, min_inaccuracy = 0.3, 0.05
+    max_inaccuracy, min_inaccuracy = 0.15, 0.05
     
     # Normalize value to range [0, 1]
     normalized = (value - min_val) / (max_val - min_val)
@@ -21,9 +21,9 @@ def scaling_factor(value):
     return np.random.uniform(1 - inaccuracy, 1 + inaccuracy)
 
 
-point_searched = np.array([40, 50, 4])
+point_searched = np.array([37, 25, 2])
 # Known points
-points = np.array([[0, 0, 0], [0, 10, 0], [0, 10, 3], [10, 0, 0], [10, 0, 3]])
+points = np.array([[0, 0, 0], [0, 0, 3], [0, 50, 0], [0, 50, 3], [50, 0, 0], [50, 0, 3], [50, 50, 0], [50, 50, 3]])
 # Distances to the unknown point (example values)
 distances = np.array(calculate_distances(point_searched, points))  # Replace with actual distances
 print("Distances:", distances)
@@ -32,7 +32,7 @@ print("Multiplicator:", scaling_factors)
 distances = distances * scaling_factors
 print("Distances:", distances)
 # Weights for each measurement (example values, replace with actual weights if known)
-weights = np.array([1, 1, 1, 1, 1])  # Equal weights for simplicity
+weights = np.array([1, 1, 1, 1, 1, 1, 1, 1])  # Equal weights for simplicity
 
 # Function to calculate weighted distances from a point to the known points
 def weighted_distances_to_points(x, points, distances, weights):
