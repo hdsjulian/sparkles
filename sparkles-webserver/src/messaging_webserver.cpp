@@ -13,7 +13,6 @@ void messaging::setup(modeMachine &modeHandler, esp_now_peer_info_t &globalPeerI
     peerInfo = &globalPeerInfo;
     setHostAddress(hostAddress);
     addError("This should somehow...\n");
-    Serial.println("why");
 
 }
 
@@ -80,6 +79,10 @@ void messaging::processDataFromSendQueue() {
           case MSG_SEND_CLAP_TIMES: 
           sendClapTimes.clapCounter = 10;
             esp_now_send(hostAddress, (uint8_t* ) &sendClapTimes, sizeof(sendClapTimes));
+          break;
+          case MSG_TIME_THING: 
+          esp_now_send(hostAddress, (uint8_t *) &timeThingMessage, sizeof(timeThingMessage));
+          break;
         }
     }
 } 
@@ -173,9 +176,19 @@ void messaging::addClap(unsigned long timeStamp) {
    
     if (sendClapTimes.clapCounter < NUM_CLAPS) {
         sendClapTimes.timeStamp[sendClapTimes.clapCounter] = timeStamp+timeOffset;
+        Serial.println("clap! TS: "+String(timeStamp)+" TS+O"+String(timeStamp+timeOffset));
     }
     else {
         addError("TOO MANY CLAPS");
     }
     sendClapTimes.clapCounter++;
+}
+
+void messaging::sendTimeThing(unsigned long buttonPressTime){
+  timeThingMessage.timeStamp = micros()+timeOffset;
+  timeThingMessage.clapTime = buttonPressTime+timeOffset;
+  Serial.println("NOw: "+String(micros()+timeOffset));
+  timeThingMessage.offset = timeOffset;
+  esp_now_send(hostAddress, (uint8_t *) &timeThingMessage, sizeof(timeThingMessage));
+
 }

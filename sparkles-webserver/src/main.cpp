@@ -67,6 +67,13 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
     }
 }
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
+  if (stateMachine.getMode() == MODE_CALIBRATE) {    
+    if (incomingData[0] == MSG_COMMANDS and incomingData[1] != CMD_END_CALIBRATION_MODE) { 
+      stateMachine.switchMode(MODE_NEUTRAL);
+    }
+    Serial.println("recvd during calibraiton mode");
+  return;
+  }
   Serial.print("Received ");
   if (incomingData[0] != MSG_ANNOUNCE) {
     Serial.print("Received ");
@@ -76,7 +83,9 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
   messageHandler.pushDataToReceivedQueue(mac, incomingData, len, micros());
 }
 
-
+int debugcounter = 0;
+int timeadd = 0;
+unsigned long debugtime = 0;
 
 void setup() {
     Serial.begin(115200);
@@ -106,15 +115,9 @@ void setup() {
     return;
   }
   WiFi.macAddress(myAddress);
-
   messageHandler.setup(stateMachine, peerInfo);
-  Serial.print("Station IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("Wi-Fi Channel: ");
-  Serial.println(WiFi.channel());
   pinMode(CLAP_PIN, INPUT_PULLDOWN);
   stateMachine.switchMode(MODE_NEUTRAL);
-
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add peer");
@@ -127,15 +130,17 @@ void setup() {
 
 
 void loop() {
-  sent = false;
-  messageHandler.handleErrors();
-  messageHandler.processDataFromReceivedQueue();
-  messageHandler.processDataFromSendQueue();
- if (count == 0 ) {
-  Serial.println("auf"+String(count));
-  count = 1001;
- }
   if (stateMachine.getMode() == MODE_CALIBRATE) {
+    if (debugtime == 0) {
+      debugtime = micros();
+      lastDings = millis();
+      Serial.println("first");
+    }
+    else {
+      debugcounter++;
+      timeadd = micros() - debugtime;
+      debugtime = micros();
+    }
     buttonOn = digitalRead(CLAP_PIN);
     if (buttonOn and previousButton == false and buttonPressStarted == false) {
       buttonPressTime = micros();
@@ -144,7 +149,8 @@ void loop() {
     }
     if (buttonOn and previousButton == true and micros() - buttonPressTime > 100000) {
       messageHandler.addClap(buttonPressTime);
-      Serial.println("CLAP!" );
+      Serial.println("CLAP! BPT: "+String(buttonPressTime) );
+      messageHandler.sendTimeThing(buttonPressTime);
       previousButton = false;
     }
     else
@@ -152,21 +158,22 @@ void loop() {
       previousButton = false;
       buttonPressStarted = false;
     }
+    if (lastDings + 1000 < millis()  and false) {
+      Serial.println("Average time: "+String(timeadd/debugcounter));
+      lastDings = millis();
+    }
   }
   else {
   // put your main code here, to run repeatedly:
-    if (outputJson != "")  {
-      Serial.print ("JSON: \n");
-      Serial.println(outputJson);
-      outputJson = "";
-    }
-  }
+     sent = false;
+    messageHandler.handleErrors();
+    messageHandler.processDataFromReceivedQueue();
+    messageHandler.processDataFromSendQueue();
+
       if (lastDings + 5000 < millis() )
       {
         Serial.print("Webserver still alive ");
         Serial.println(count);
-        Serial.println(WiFi.softAPIP());
-        Serial.println(WiFi.channel());
         messageHandler.printAddress(myAddress);
         Serial.print("Free Heap: ");
         size_t freeHeap = ESP.getFreeHeap();
@@ -177,25 +184,8 @@ void loop() {
         count++;
         //printAddress(myAddress);
         lastDings = millis();
+        //messageHandler.sendTimeThing();
       }
+  }
   
 }
-
-/*
-  //server.on("/async", HTTP_GET, );)
-
-  server.on("/get", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    String inputMessage;
-    String inputParam;
-    int foo = 1;
-    // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
-    
-    if (request->hasParam(PARAM_INPUT_1)) {
-      inputMessage = request->getParam(PARAM_INPUT_1)->value();
-      inputParam = PARAM_INPUT_1;
-      foo = 1;
-
-
-    }
-  });
-*/

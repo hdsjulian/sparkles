@@ -161,6 +161,9 @@ String messaging::messageCodeToText(int message) {
     case MSG_SEND_CLAP:
         out = "MSG_SEND_CLAP";
         break;
+    case MSG_TIME_THING:
+        out = "MSG_TIME_THING";
+        break;
     case CMD_START:
         out = "CMD_START";
         break;
@@ -209,6 +212,7 @@ String messaging::messageCodeToText(int message) {
     case CMD_GET_CLAP_TIMES:
         out = "CMD_GET_CLAP_TIMES";
         break;
+    default:
         out = "UNKNOWN_MESSAGE";
         break;
 }

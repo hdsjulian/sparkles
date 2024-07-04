@@ -84,6 +84,7 @@ class messaging {
         message_set_positions setPositionsMessage;
         message_status statusMessage;
         message_set_sleep_wakeup setSleepWakeupMessage;
+        time_thing_message timeThingMessage;
         String error_message = "";
         String message_received = "";
         String message_sent = "";
@@ -220,6 +221,7 @@ class messaging {
         String allClientAddressesToJson();
         String printClapTimes(unsigned long* array, int size);
         void updateAddressesToWebserver();
+        void sendTimeThing(unsigned long buttonPressTime);
 };
 
 

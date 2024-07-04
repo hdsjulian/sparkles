@@ -98,6 +98,9 @@ void IRAM_ATTR onTimer()
 
 
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
+    if (incomingData[0] == MSG_TIME_THING) {
+        messageHandler.addError("time thing arrived at "+String(micros()));
+    }
   Serial.println("rcvd "+messageHandler.messageCodeToText(incomingData[0])+" from "+messageHandler.stringAddress(mac->src_addr));
   msgReceiveTime = micros();
   messageHandler.pushDataToReceivedQueue(mac, incomingData, len, msgReceiveTime);
@@ -208,8 +211,8 @@ void loop() {
     if (peak == -1 and millis() > lastClap+1000) {
       messageHandler.addClap(micros());
       lastClap = millis();
-      Serial.println("Clap!");
-      handleLed.flash(125, 0, 55, 200, 1, 50);
+      Serial.println("Clap at "+String(micros()));
+      //handleLed.flash(125, 0, 55, 200, 1, 50);
     }
   }
  else if (lastClap+5000 < millis()) {

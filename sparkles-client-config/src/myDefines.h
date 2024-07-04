@@ -110,6 +110,7 @@ const int ledChannelBlue2 = 5;
 #define MSG_STATUS 108
 #define MSG_SET_SLEEP_WAKEUP 109
 #define MSG_SEND_CLAP 110
+#define MSG_TIME_THING 111
 
 #define CMD_START 200
 #define CMD_MSG_SEND_ADDRESS_LIST 201
@@ -318,6 +319,12 @@ struct concentric_animation {
   uint8_t rgb2[3] = {0,0,0};
 };
 
+struct time_thing_message { 
+  int messageType = MSG_TIME_THING;
+  unsigned long offset;
+  unsigned long timeStamp;
+  unsigned long clapTime;
+};
 
 //STATE MACHINE
 #define MODE_INIT -1
