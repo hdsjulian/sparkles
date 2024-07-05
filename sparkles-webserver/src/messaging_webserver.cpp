@@ -184,11 +184,10 @@ void messaging::addClap(unsigned long timeStamp) {
     sendClapTimes.clapCounter++;
 }
 
-void messaging::sendTimeThing(unsigned long buttonPressTime){
-  timeThingMessage.timeStamp = micros()+timeOffset;
-  timeThingMessage.clapTime = buttonPressTime+timeOffset;
+void messaging::sendSingleClap(unsigned long buttonPressTime){
+  sendSingleClapMessage.clapTime = buttonPressTime+timeOffset;
   Serial.println("NOw: "+String(micros()+timeOffset));
-  timeThingMessage.offset = timeOffset;
-  esp_now_send(hostAddress, (uint8_t *) &timeThingMessage, sizeof(timeThingMessage));
+  sendSingleClapMessage.clapCounter = sendClapTimes.clapCounter;
+  esp_now_send(hostAddress, (uint8_t *) &sendSingleClapMessage, sizeof(sendSingleClapMessage));
 
 }

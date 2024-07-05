@@ -109,7 +109,7 @@ const int ledChannelBlue2 = 5;
 #define MSG_SET_POSITIONS 107
 #define MSG_STATUS 108
 #define MSG_SET_SLEEP_WAKEUP 109
-#define MSG_SEND_CLAP 110
+#define MSG_SEND_SINGLE_CLAP 110
 #define MSG_TIME_THING 111
 
 #define CMD_START 200
@@ -210,8 +210,20 @@ struct message_send_clap_times {
   uint8_t messageType = MSG_SEND_CLAP_TIMES;
   int clapCounter;
   unsigned long timeStamp[NUM_CLAPS]; //offsetted.
+  float xLoc = 0.0;
+  float yLoc = 0.0;
+  float zLoc = 0.0;
 };
 
+struct message_send_single_clap {
+  uint8_t messageType = MSG_SEND_SINGLE_CLAP;
+  int clapCounter;
+  unsigned long timeStamp; //offsetted.
+  float xLoc = 0.0;
+  float yLoc = 0.0;
+  float zLoc = 0.0;
+
+}
 
 struct sleep_wakeup_time { 
   int hours;
@@ -319,12 +331,7 @@ struct concentric_animation {
   uint8_t rgb2[3] = {0,0,0};
 };
 
-struct time_thing_message { 
-  int messageType = MSG_TIME_THING;
-  unsigned long offset;
-  unsigned long timeStamp;
-  unsigned long clapTime;
-};
+
 
 //STATE MACHINE
 #define MODE_INIT -1

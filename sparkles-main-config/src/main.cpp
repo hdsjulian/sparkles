@@ -211,7 +211,7 @@ void loop() {
     if (peak == -1 and millis() > lastClap+1000) {
       messageHandler.addClap(micros());
       lastClap = millis();
-      Serial.println("Clap at "+String(micros()));
+      messageHandler.ClapTime = micros();
       //handleLed.flash(125, 0, 55, 200, 1, 50);
     }
   }

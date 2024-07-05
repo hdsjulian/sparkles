@@ -134,12 +134,14 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
             
         break;    
         }
-        case MSG_TIME_THING:
-        Serial.println("Time thing message at "+String(micros())+"\n");
-        memcpy(&timeThingMessage, incomingData, sizeof(timeThingMessage));
-        Serial.println("TimeThing timestamp "+String(timeThingMessage.timeStamp)+"\n");
-        Serial.println("Difference "+String(micros() - timeThingMessage.timeStamp)+"\n");
-        Serial.println("button pressed at"+String(timeThingMessage.clapTime));
+        case MSG_SEND_SINGLE_CLAP:
+        Serial.println("Time thing message at "+String(micros()));
+        memcpy(&sendSingleClapMessage, incomingData, sizeof(sendSingleClapMessage));
+        Serial.println("TimeThing timestamp "+String(sendSingleClapMessage.timeStamp));
+        Serial.println("Clap Counter: "+String(sendSingleClapMessage.clapCounter));
+        Serial.println("Difference "+String(micros() - sendSingleClapMessage.timeStamp));
+        clapDevice.clapTimes.timeStamp[clapDevice.clapTimes.clapCounter] = sendSingleClapMessage.timeStamp;
+        updateAddressesToWebserver();
         break;
         default: 
             addError("message not recognized: ");
@@ -155,12 +157,17 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
 void messaging::calculateDistances(int id) {
 
     orderClaps(id);
+    addError("---- after orderclaps----\n");
+    addError(printClapTimes(clapDevice.clapTimes.timeStamp, NUM_CLAPS));
+    addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
     if (id > -1) {
         for (int i = 0; i<clientAddresses[id].clapTimes.clapCounter; i++) {
             if (clientAddresses[id].clapTimes.timeStamp[i] == 0) {continue;}
             else {
                 int timeDifference = clientAddresses[id].clapTimes.timeStamp[i]-clapDevice.clapTimes.timeStamp[i];
-                clientAddresses[id].distances[i] = 34300*(timeDifference/1000000);
+                clientAddresses[id].distances[i] = 0.0343*(timeDifference);
+                Serial.println("distance found "+String(myDistances[i]));
+
             }   
         }
     }
@@ -168,16 +175,18 @@ void messaging::calculateDistances(int id) {
         Serial.println("calculating distances");
         //here somewhere is an error if the orderclaps doesn't do what it's told. especially if there's a zero somewhere. 
         
-        Serial.println(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
         for (int i = 0; i<myClapTimes.clapCounter; i++) {
-            if (clientAddresses[id].clapTimes.timeStamp[i] == 0) {continue;}
+            addError("clap "+String(i)+"\n");
+            if (myClapTimes.timeStamp[i] == 0) {continue;}
             else {
                 int timeDifference = myClapTimes.timeStamp[i]-clapDevice.clapTimes.timeStamp[i];
-                myDistances[i] = 34300*(timeDifference/1000000);
+                myDistances[i] = 0.0343*(timeDifference);
+                addError("distance found "+String(myDistances[i])+"\n");
         }   
+        
     }
     }
-    Serial.println("---calculate distances---");
+    addError("---calculate distances---\n");
     updateAddressesToWebserver();
 
 }
@@ -191,7 +200,7 @@ void messaging::orderClaps(int id) {
             if (clapDevice.clapTimes.timeStamp[i] == 0) {addError(String(i)+" is zero\n"); return;}
             for (int j = 0; j<myClapTimes.clapCounter; j++) {
                 if (myClapTimes.timeStamp[j] == 0) {addError(String(j)+" is zero\n");break;}
-                if (myClapTimes.timeStamp[j] <= clapDevice.clapTimes.timeStamp[i]+500000 or myClapTimes.timeStamp[j]>=clapDevice.clapTimes.timeStamp[i] -500000 ) {
+                if (myClapTimes.timeStamp[j] <= clapDevice.clapTimes.timeStamp[i]+500000 and myClapTimes.timeStamp[j]>=clapDevice.clapTimes.timeStamp[i] -500000 ) {
                     addError("fits"+String(myClapTimes.timeStamp[j])+"\n");
                         newClapTimes.timeStamp[j] = myClapTimes.timeStamp[j];
                         break;
@@ -332,6 +341,7 @@ void messaging::receiveClapTimes(const esp_now_recv_info * mac) {
         getClapTimes(0);
         addError("from within receiveClapTimes");
         addError(printClapTimes(clapDevice.clapTimes.timeStamp, NUM_CLAPS));
+        addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
         timeoutRetry.currentId = 0;
         timeoutRetry.tries = 0;
         timeoutRetry.unavailableCounter = 0;
@@ -471,11 +481,16 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
     if (memcmp(timerReceiver, clapDeviceAddress, 6) != 0) {
         removePeer(timerReceiver);
         int addressId = getAddressId(macAddress);
+        addError("Delay "+String(clientAddresses[addressId].delay=gotTimerMessage.delayAvg));
         clientAddresses[addressId].delay=gotTimerMessage.delayAvg;
         clientAddresses[addressId].timerOffset = gotTimerMessage.timerOffset;
         clientAddresses[addressId].active = ACTIVE;
         clientAddresses[addressId].batteryPercentage = gotTimerMessage.batteryPercentage;
         
+    }
+    else {
+        clapDevice.delay=gotTimerMessage.delayAvg;
+        clapDevice.timerOffset = gotTimerMessage.timerOffset;
     }
     addError("sending client addresses to JSON");
     updateAddressesToWebserver();
@@ -496,9 +511,9 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
     writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
 }
 void messaging::updateAddressesToWebserver() {
-    Serial.println("Cap Times");
-    Serial.println(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
-    Serial.println(allClientAddressesToJson().c_str());
+    addError("Cap Times\n");
+    addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS)+"\n");
+    addError(allClientAddressesToJson()+"\n");
         webServer->events.send(allClientAddressesToJson().c_str(), "updateDeviceList");
 
 }

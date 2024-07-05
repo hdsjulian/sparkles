@@ -140,6 +140,7 @@
   <span id='hostaddr'></span>
   <span id='hostTS'></span>
   <span id ='hostBatt'></span>
+  <span id='hostDist'></span>
 `;
 var cardsContainer = document.getElementById("boardCardContainer");
 cardsContainer.appendChild(newCard);
@@ -147,6 +148,10 @@ cardsContainer.appendChild(newCard);
   document.getElementById("hostaddr").textContent = "Address: "+decimalArrayToMacAddress(obj.address);
   document.getElementById("hostTS").textContent = "Timestamps: "+formatNonZeroFloats(obj.clapTimes.timeStamp);
   document.getElementById("hostBatt").textContent = "Battery: "+obj.batteryPercentage;
+  console.log("dist");
+  console.log(obj.distances);
+  document.getElementById("hostDist").textContent = "Distances: "+formatNonZeroFloats(obj.distances);
+
   };
 
   function clapCard(obj) {

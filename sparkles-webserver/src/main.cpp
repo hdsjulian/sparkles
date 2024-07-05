@@ -56,6 +56,17 @@ bool previousButton = false;
 bool buttonPressStarted = false;
 int count = 0;
 
+volatile bool buttonPressed = false;
+  static bool isInterruptAttached = false;
+
+void IRAM_ATTR handleButtonPress() {
+  if (buttonPressed == false and (micros()-buttonPressTime)>2500000) {
+    buttonPressTime = micros();
+    buttonPressed = true;
+  }
+  
+}
+
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
   Serial.println("Sent");
   count = 2000;
@@ -67,13 +78,6 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
     }
 }
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-  if (stateMachine.getMode() == MODE_CALIBRATE) {    
-    if (incomingData[0] == MSG_COMMANDS and incomingData[1] != CMD_END_CALIBRATION_MODE) { 
-      stateMachine.switchMode(MODE_NEUTRAL);
-    }
-    Serial.println("recvd during calibraiton mode");
-  return;
-  }
   Serial.print("Received ");
   if (incomingData[0] != MSG_ANNOUNCE) {
     Serial.print("Received ");
@@ -126,49 +130,41 @@ void setup() {
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);
     // put your setup code here, to run once:
+
 }
 
 
 void loop() {
+
+  int currentMode = stateMachine.getMode();
+      messageHandler.handleErrors();
+
+  messageHandler.processDataFromReceivedQueue();
+  messageHandler.processDataFromSendQueue();
+  // Attach the interrupt if the state is MODE_CALIBRATE
   if (stateMachine.getMode() == MODE_CALIBRATE) {
-    if (debugtime == 0) {
-      debugtime = micros();
-      lastDings = millis();
-      Serial.println("first");
-    }
-    else {
-      debugcounter++;
-      timeadd = micros() - debugtime;
-      debugtime = micros();
-    }
-    buttonOn = digitalRead(CLAP_PIN);
-    if (buttonOn and previousButton == false and buttonPressStarted == false) {
-      buttonPressTime = micros();
-      buttonPressStarted = true;
-      previousButton = true;
-    }
-    if (buttonOn and previousButton == true and micros() - buttonPressTime > 100000) {
+  if (!isInterruptAttached) {
+    attachInterrupt(digitalPinToInterrupt(CLAP_PIN), handleButtonPress, RISING);
+    isInterruptAttached = true;
+    Serial.println("Interrupt attached");
+  } 
+  // Detach the interrupt if the state is not MODE_CALIBRATE
+    if (buttonPressed == true) {
+      buttonPressed = false;
       messageHandler.addClap(buttonPressTime);
       Serial.println("CLAP! BPT: "+String(buttonPressTime) );
-      messageHandler.sendTimeThing(buttonPressTime);
-      previousButton = false;
-    }
-    else
-    if (!buttonOn and buttonPressStarted == true) {
-      previousButton = false;
-      buttonPressStarted = false;
-    }
-    if (lastDings + 1000 < millis()  and false) {
-      Serial.println("Average time: "+String(timeadd/debugcounter));
-      lastDings = millis();
+      messageHandler.sendSingleClapMessage(buttonPressTime, clapCounter);
     }
   }
   else {
+   if (isInterruptAttached) {
+    detachInterrupt(digitalPinToInterrupt(CLAP_PIN));
+    isInterruptAttached = false;
+    Serial.println("Interrupt detached");
+  }
+
   // put your main code here, to run repeatedly:
-     sent = false;
-    messageHandler.handleErrors();
-    messageHandler.processDataFromReceivedQueue();
-    messageHandler.processDataFromSendQueue();
+     sent = false;    
 
       if (lastDings + 5000 < millis() )
       {

@@ -84,7 +84,7 @@ class messaging {
         message_set_positions setPositionsMessage;
         message_status statusMessage;
         message_set_sleep_wakeup setSleepWakeupMessage;
-        time_thing_message timeThingMessage;
+        messaage_send_single_clap sendSingleClapMessage;
         String error_message = "";
         String message_received = "";
         String message_sent = "";
@@ -102,7 +102,7 @@ class messaging {
         uint8_t clientAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xbd, 0x8a};
         uint8_t myAddress[6];
         uint8_t timerReceiver[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        
+        unsigned long ClapTime; 
         int clapsReceived = 0;
         timeout_retry timeoutRetry;
         int timersUpdated =0;
@@ -221,7 +221,7 @@ class messaging {
         String allClientAddressesToJson();
         String printClapTimes(unsigned long* array, int size);
         void updateAddressesToWebserver();
-        void sendTimeThing(unsigned long buttonPressTime);
+        void sendSingleClap(unsigned long buttonPressTime);
 };
 
 
