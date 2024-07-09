@@ -73,7 +73,8 @@ class ledHandler {
     void createSyncAsyncBlink(message_animate *animationMessage);
     void createRowBlink(message_animate *animationMessage);
     void printAnimationMessage(const message_animate &animationMessage);
-
+    void startFlashTask();
+    void flashTask(void *parameters);
 };
 
 #endif

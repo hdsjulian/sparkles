@@ -153,7 +153,8 @@ void loop() {
       buttonPressed = false;
       messageHandler.addClap(buttonPressTime);
       Serial.println("CLAP! BPT: "+String(buttonPressTime) );
-      messageHandler.sendSingleClapMessage(buttonPressTime, clapCounter);
+      stateMachine.switchMode(MODE_NEUTRAL);
+      //messageHandler.sendSingleClap(buttonPressTime);
     }
   }
   else {
@@ -175,7 +176,7 @@ void loop() {
         size_t freeHeap = ESP.getFreeHeap();
         Serial.print(freeHeap);
         Serial.println(" bytes");
-        messageHandler.printTimerStuff(); 
+        messageHandler.printTimerStuff();
 
         count++;
         //printAddress(myAddress);

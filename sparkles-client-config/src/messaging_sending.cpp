@@ -69,7 +69,7 @@ void messaging::getClapTimes(int i) {
     }
 }*/
 
-void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param) {
+void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param1, int param2) {
     addError("Sending message "+messageCodeToText(messageId)+ "\n");
     addError("To: "+stringAddress(address)+ "\n");
     if (messageId ==MSG_COMMANDS) {
@@ -77,7 +77,7 @@ void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int 
     }
 
     std::lock_guard<std::mutex> lock(sendQueueMutex); // Lock the mutex
-    SendData sendData {address, messageId, param};
+    SendData sendData {address, messageId, param1, param2};
     sendQueue.push(sendData); // Push the received data into the queue
 }
 void messaging::processDataFromSendQueue() {
@@ -86,7 +86,7 @@ void messaging::processDataFromSendQueue() {
     int foundPeer = 0;
     while (!sendQueue.empty()) {
         SendData sendData = sendQueue.front(); // Get the front element
-        Serial.println("processing sent");
+        addError("processing sent\n");
 
         if (memcmp(sendData.address, broadcastAddress, 6) != 0 and memcmp(sendData.address, clapDeviceAddress, 6) != 0) {
             memcpy(peerAddress, sendData.address, 6);
@@ -100,7 +100,7 @@ void messaging::processDataFromSendQueue() {
         
         }
         if (sendData.messageId == MSG_COMMANDS) {
-            addError("Command = "+messageCodeToText(sendData.param));
+            addError("Command = "+messageCodeToText(sendData.param1)+"\n");
 
         }
 
@@ -140,12 +140,13 @@ void messaging::processDataFromSendQueue() {
                 // Handle MSG_NOCLAPFOUND message type
                 break;
             case MSG_COMMANDS:
-                Serial.println("sending command "+messageCodeToText(sendData.param));
-                if (sendData.param != -1) {
-                    commandMessage.messageId = sendData.param;
+                Serial.println("sending command "+messageCodeToText(sendData.param1));
+                if (sendData.param1 != -1) {
+                    commandMessage.messageId = sendData.param1;
                 }
+                commandMessage.param = sendData.param2;
                 esp_now_send(sendData.address, (uint8_t*) &commandMessage, sizeof(commandMessage));
-                commandMessage.param = -1;
+                commandMessage.param = 0;
                 if (commandMessage.messageId == CMD_RESET) {
                     memset(clientAddresses, 0, sizeof(clientAddresses));
                     addError("Resetting Addresses\n");

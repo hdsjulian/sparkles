@@ -26,7 +26,7 @@ void messaging::setHostAddress(uint8_t address[6]) {
     pushDataToSendQueue(hostAddress, MSG_ADDRESS, -1);
 }
 
-void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param) {
+void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int param1, int param2) {
   debugVariable = 3;
     addError("Sending message "+messageCodeToText(messageId)+ "\n");
     addError("To: "+stringAddress(address)+ "\n");
@@ -35,7 +35,7 @@ void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int 
     }
 
     std::lock_guard<std::mutex> lock(sendQueueMutex); // Lock the mutex
-    SendData sendData {address, messageId, param};
+    SendData sendData {address, messageId, param1, param2};
     sendQueue.push(sendData); // Push the received data into the queue
 }
 
@@ -61,11 +61,11 @@ void messaging::processDataFromSendQueue() {
         sendQueue.pop(); // Remove the front element from the queue
         if (sendData.messageId > CMD_START and commandMessage.messageId < CMD_END) {
           commandMessage.messageId = sendData.messageId;
-          commandMessage.param = sendData.param;
+          commandMessage.param = sendData.param2;
           Serial.print("Sending");
           Serial.print(messageCodeToText(sendData.messageId));
           Serial.print(" -- ");
-          Serial.println(sendData.param);
+          Serial.println(sendData.param2);
           esp_now_send(hostAddress, (uint8_t *) &commandMessage, sizeof(commandMessage));
           return;
         } 
@@ -77,15 +77,27 @@ void messaging::processDataFromSendQueue() {
             esp_now_send(hostAddress, (uint8_t *) &gotTimerMessage, sizeof(gotTimerMessage));
             break;
           case MSG_SEND_CLAP_TIMES: 
-          sendClapTimes.clapCounter = 10;
+            addError("Sending Clap Times \n");
+            addError(printClapTimes(sendClapTimes.timeStamp, NUM_CLAPS), false);
             esp_now_send(hostAddress, (uint8_t* ) &sendClapTimes, sizeof(sendClapTimes));
           break;
-          case MSG_TIME_THING: 
-          esp_now_send(hostAddress, (uint8_t *) &timeThingMessage, sizeof(timeThingMessage));
-          break;
+
         }
     }
 } 
+
+String messaging::printClapTimes(unsigned long* array, int size) {
+  String returnString;
+  for (int i = 0; i < NUM_CLAPS; i++) {
+    returnString +=array[i];
+    if (i < size - 1) {
+      returnString +=", ";
+    }
+  }
+  returnString += "\n";
+  return returnString;
+}
+
 
 void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
   msgCounter++;
@@ -111,83 +123,43 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
         case CMD_GET_CLAP_TIMES: 
         Serial.println("received cmd get clap times");
           pushDataToSendQueue(hostAddress, MSG_SEND_CLAP_TIMES, -1);
+        break;
+        case CMD_DELETE_CLAP: 
+          Serial.println("deleting clap "+String(commandMessage.param));
+          sendClapTimes.timeStamp[commandMessage.param] = 0;
+          sendClapTimes.clapCounter--;
+          break;
       }
     }
  
   }
 
 }
-/*
-void messaging::receiveTimer(int messageArriveTime) {
-  //add condition that if nothing happened after 5 seconds, situation goes back to start
-  //wenn die letzte message maximal 300 mikrosekunden abweicht und der letzte delay auch nicht mehr als 1500ms her war, dann muss die msg korrekt sein
-  int difference = messageArriveTime - lastTime;
-  lastDelay = timerMessage.lastDelay;
-
-  if (abs(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS) < 1000 and abs(timerMessage.lastDelay) <2500) {
-    addMessageLog("Counts. Arraycounter: ");
-    addMessageLog(String(arrayCounter));
-    addMessageLog("\n");
-
-    if (arrayCounter <TIMER_ARRAY_COUNT) {
-      timerArray[arrayCounter] = timerMessage.lastDelay;
-    }
-    else {
-      for (int i = 0; i< TIMER_ARRAY_COUNT; i++) {
-        delayAvg += timerArray[i];
-      } 
-      delayAvg = delayAvg/TIMER_ARRAY_COUNT;
-      gotTimerMessage.delayAvg = delayAvg;
-      timeOffset = messageArriveTime-timerMessage.sendTime-delayAvg/2;
-      gotTimerMessage.timerOffset = timeOffset;
-      pushDataToSendQueue(MSG_GOT_TIMER, -1);
-      gotTimer = true;
-      #if DEVICE_MODE != 2
-      handleLed->flash(255,0,0, 200, 3, 300);
-      globalModeHandler->switchMode(MODE_GOT_TIMER);
-      #else
-      pushDataToSendQueue(CMD_START_CALIBRATION_MODE, -1);
-      globalModeHandler->switchMode(MODE_CALIBRATE);
-      #endif
-      
-      
-    }
-    arrayCounter++;
-  }
-  else {
-    addMessageLog("Doesn't Count.");
-    if (abs(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS) >= 500) {
-        addMessageLog(" Difference ");
-        addMessageLog(String(abs(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS)));
-    }
-    else if (abs(timerMessage.lastDelay) >=2500) {
-    addMessageLog(" Last delay = ");
-    addMessageLog(String(abs(timerMessage.lastDelay)));
-    }
-    addMessageLog("\n");
-  }
-   lastTime = messageArriveTime;
-}*/
 
 
 
 void messaging::addClap(unsigned long timeStamp) {
     //todo refactor
-   
     if (sendClapTimes.clapCounter < NUM_CLAPS) {
         sendClapTimes.timeStamp[sendClapTimes.clapCounter] = timeStamp+timeOffset;
-        Serial.println("clap! TS: "+String(timeStamp)+" TS+O"+String(timeStamp+timeOffset));
+        addError("Clap Counter" + String(sendClapTimes.clapCounter), false);
+        addError("clap! TS: "+String(timeStamp)+" TS+O"+String(timeStamp+timeOffset), false);
     }
     else {
         addError("TOO MANY CLAPS");
     }
     sendClapTimes.clapCounter++;
+    sendSingleClap(timeStamp);
+    globalModeHandler->switchMode(MODE_NEUTRAL);
+    addError("send clap times is "+String(printClapTimes(sendClapTimes.timeStamp, NUM_CLAPS)), false);
+
 }
 
 void messaging::sendSingleClap(unsigned long buttonPressTime){
-  sendSingleClapMessage.clapTime = buttonPressTime+timeOffset;
+  sendSingleClapMessage.timeStamp = buttonPressTime+timeOffset;
   Serial.println("NOw: "+String(micros()+timeOffset));
   sendSingleClapMessage.clapCounter = sendClapTimes.clapCounter;
   esp_now_send(hostAddress, (uint8_t *) &sendSingleClapMessage, sizeof(sendSingleClapMessage));
 
 }
+

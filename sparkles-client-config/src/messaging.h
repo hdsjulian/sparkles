@@ -40,7 +40,8 @@ class messaging {
         struct SendData {
           const uint8_t * address;
           int messageId;
-          int param =-1;
+          int param1 =-1;
+          int param2 =0;
         };
         
         unsigned long arriveTime, receiveTime, sendTime, lastDelay, lastTime, timeOffset;
@@ -84,7 +85,8 @@ class messaging {
         message_set_positions setPositionsMessage;
         message_status statusMessage;
         message_set_sleep_wakeup setSleepWakeupMessage;
-        messaage_send_single_clap sendSingleClapMessage;
+        message_send_single_clap sendSingleClapMessage;
+        clap_device_location clapDeviceLocations[NUM_CLAPS];
         String error_message = "";
         String message_received = "";
         String message_sent = "";
@@ -135,7 +137,7 @@ class messaging {
         void setLastDelay(int delay);
         void handleClapTimes(const uint8_t *incomingData);
         void calculateDistances(int id);
-        void triangulateDistances(int id);
+        void unifyDistances(int id);
         void addClap(unsigned long timeStamp);
         void getClapTimes(int i);
         int getTimerCounter();
@@ -161,14 +163,14 @@ class messaging {
         int getMessagingMode();
         void setMessagingMode(int mode);
         void handleErrors();
-        void addError(String error);
+        void addError(String error, bool noNL = true);
         void handleReceived();
         void handleSent();
         void addSent(String sent);
         void pushDataToReceivedQueue(const esp_now_recv_info* mac, const uint8_t* incomingData, int len, unsigned long msgReceiveTime);
         void processDataFromReceivedQueue();
-        void pushDataToSendQueue(const uint8_t * address, int messageId, int param);
-        void pushDataToSendQueue(int messageId, int param);
+        void pushDataToSendQueue(const uint8_t * address, int messageId, int param1, int param2=0);
+        void pushDataToSendQueue(int messageId, int param1, int param2=0);
         void processDataFromSendQueue();
         void handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime);
         void printMessagingMode();
@@ -203,6 +205,7 @@ class messaging {
         void nextAnimation();
         void forceDebug(int i = 0);
         void setGoodNightWakeUp(int hours, int minutes, int seconds, bool isGoodNight);
+        void confirmClap(int id, float xpos, float  ypos, float zpos);
         void setPositions(int id, float xpos, float  ypos, float zpos);
         double calculateGoodNight(bool sleepWakeup);
         void switchMode(int mode);
@@ -222,6 +225,10 @@ class messaging {
         String printClapTimes(unsigned long* array, int size);
         void updateAddressesToWebserver();
         void sendSingleClap(unsigned long buttonPressTime);
+        void deleteClap(int clapId);
+        void resetCalibration();
+        bool arePointsEqual(clap_device_location &point1, clap_device_location &point2);
+
 };
 
 

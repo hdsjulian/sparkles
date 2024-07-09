@@ -41,6 +41,7 @@ int audioPin = 5;
 int cycleCounter = 0;
 
 bool isSetup = false;
+bool isTimerSet = false;
 
 
 
@@ -59,6 +60,7 @@ int delayAvg = 0;
 //calibration
 int sensorValue;
 int lastClap = 0;
+int clapStop = 0;
 uint32_t lastClapTime;
 
 
@@ -85,11 +87,11 @@ void IRAM_ATTR onTimer()
       messageHandler.timerMessage.sendTime = msgSendTime;
       messageHandler.timerMessage.counter = timerCounter;
       messageHandler.timerMessage.lastDelay = lastDelay;
-      messageHandler.addError("Sending Timer+ "+String(timerCounter)+"\n");
+      //messageHandler.addError("Sending Timer+ "+String(timerCounter)+"\n");
       if (modeHandler.getMode() == MODE_RESET_TIMER) {
         messageHandler.timerMessage.reset = true;
       }
-      messageHandler.addError(messageHandler.stringAddress(messageHandler.timerReceiver)+"\n");
+      //messageHandler.addError(messageHandler.stringAddress(messageHandler.timerReceiver)+"\n");
       esp_err_t result = esp_now_send(messageHandler.timerReceiver, (uint8_t *) &messageHandler.timerMessage, sizeof(messageHandler.timerMessage));
       
     }
@@ -101,7 +103,7 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
     if (incomingData[0] == MSG_TIME_THING) {
         messageHandler.addError("time thing arrived at "+String(micros()));
     }
-  Serial.println("rcvd "+messageHandler.messageCodeToText(incomingData[0])+" from "+messageHandler.stringAddress(mac->src_addr));
+  messageHandler.addError("rcvd "+messageHandler.messageCodeToText(incomingData[0])+" from "+messageHandler.stringAddress(mac->src_addr)+"\n");
   msgReceiveTime = micros();
   messageHandler.pushDataToReceivedQueue(mac, incomingData, len, msgReceiveTime);
 }
@@ -148,10 +150,7 @@ void setup() {
     myWebserver.setup(messageHandler, modeHandler);
 
   timer = timerBegin(1000000);           	// timer 0, prescalar: 80, UP counting
-  timerAttachInterrupt(timer, &onTimer); 	// Attach interrupt
-  timerWrite(timer, 0);  		// Match value= 1000000 for 1 sec. delay.
-  timerStart(timer);   
-  timerAlarm(timer, TIMER_INTERVAL_MS*1000, true, 0);
+  //timerAttachInterrupt(timer, &onTimer); 	// Attach interrupt
 
   WiFi.mode(WIFI_AP_STA);
   if (esp_now_init() != ESP_OK) {
@@ -191,6 +190,23 @@ void setup() {
 }
 
 void loop() {
+  if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER) {
+    if (isTimerSet == false ){
+      Serial.println("attaching interrupt");
+      timerAttachInterrupt(timer, &onTimer); 
+      timerWrite(timer, 0);  		// Match value= 1000000 for 1 sec. delay.
+      timerStart(timer);   
+      timerAlarm(timer, TIMER_INTERVAL_MS*1000, true, 0);
+
+      isTimerSet = true;
+    }
+  } 
+   else {
+      if (isTimerSet == true ) {
+        timerDetachInterrupt(timer);
+        isTimerSet = false;
+      }
+    }
 
   messageHandler.processDataFromReceivedQueue();
   messageHandler.processDataFromSendQueue();
@@ -202,7 +218,7 @@ void loop() {
   }
  
 
-  if (modeHandler.getMode() == MODE_CALIBRATE ) {
+  if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
     double data = (double)analogRead(audioPin)/512-1;
     peakDetection.add(data); 
     int peak = peakDetection.getPeak(); 
@@ -213,6 +229,18 @@ void loop() {
       lastClap = millis();
       messageHandler.ClapTime = micros();
       //handleLed.flash(125, 0, 55, 200, 1, 50);
+      if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+        modeHandler.switchMode(MODE_NEUTRAL);
+      }
+    }
+    if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+      if (clapStop == 0) {
+        clapStop = millis();
+      }
+      if (millis() > clapStop+500) {
+        modeHandler.switchMode(MODE_NEUTRAL);
+        clapStop = 0;
+      }
     }
   }
  else if (lastClap+5000 < millis()) {
@@ -230,6 +258,8 @@ void loop() {
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
     int* sysTime = messageHandler.getSystemTime();
+    size_t freeHeap = ESP.getFreeHeap();
+    Serial.print(freeHeap);
     //messageHandler.checkFile("/clientAddress");
     /*
     Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));

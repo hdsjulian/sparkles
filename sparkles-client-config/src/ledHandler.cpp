@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <ledHandler.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 #ifndef DEVICE
 #define V1 1
 #define V2 2 
@@ -7,6 +10,11 @@
 #define DEVICE V2
 #endif 
 
+typedef struct {
+    int ledPinRed1, ledPinGreen1, ledPinBlue1;
+    int ledPinRed2, ledPinGreen2, ledPinBlue2;
+    int r, g, b, duration, reps, pause;
+} FlashParams;
 
 ledHandler::ledHandler() {
 
@@ -93,6 +101,44 @@ void ledHandler::flash(int r, int g, int b, int duration, int reps, int pause) {
     ledsOff(); 
   }
 }  
+
+/*
+void ledHandler::startFlashTask() {
+    FlashParams *flashParams = new FlashParams;
+
+    // Initialize flashParams with your values...
+    
+    xTaskCreate(flashTask, "FlashLEDs", 2048, (void *)flashParams, 5, NULL);
+}
+
+void ledHandler::flashTask(void *parameters) {
+    // Assuming ledcFade is adapted for RTOS and non-blocking
+    // Structure to hold parameters, cast from void* to the actual type expected
+    FlashParams *params = (FlashParams *)parameters;
+
+    for (int i = 0; i < params->reps; i++) {
+        ledcFade(params->ledPinRed1, 0, params->r, params->duration);
+        ledcFade(params->ledPinGreen1, 0, params->g, params->duration);
+        ledcFade(params->ledPinBlue1, 0, params->b, params->duration);
+        ledcFade(params->ledPinRed2, 0, params->r, params->duration);
+        ledcFade(params->ledPinGreen2, 0, params->g, params->duration);
+        ledcFade(params->ledPinBlue2, 0, params->b, params->duration);
+        vTaskDelay(pdMS_TO_TICKS(params->duration));
+        
+        ledcFade(params->ledPinRed1, params->r, 0, params->duration);
+        ledcFade(params->ledPinGreen1, params->g, 0, params->duration);
+        ledcFade(params->ledPinBlue1, params->b, 0, params->duration);
+        ledcFade(params->ledPinRed2, params->r, 0, params->duration);
+        ledcFade(params->ledPinGreen2, params->g, 0, params->duration);
+        ledcFade(params->ledPinBlue2, params->b, 0, params->duration);
+        vTaskDelay(pdMS_TO_TICKS(params->pause));
+        
+        ledsOff(); // Ensure this is also RTOS friendly
+    }
+
+    // Optionally delete the task if it should only run once
+    vTaskDelete(NULL);
+}*/
 
 void ledHandler::ledOn(int r, int g, int b, int duration, int  frontback) {
   if (DEVICE == D1) {

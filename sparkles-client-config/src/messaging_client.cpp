@@ -72,7 +72,19 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
                 case CMD_GET_STATUS:
                     setBattery();
                     //todo ledhandler:flash
+                    handleLed->flash(0, 255, 0, 300, 1, 0);
                     pushDataToSendQueue(hostAddress, MSG_STATUS, -1);
+                break;
+                case CMD_START_CALIBRATION_MODE: 
+                    globalModeHandler->switchMode(MODE_CALIBRATE);
+                break;
+                case CMD_END_CALIBRATION_MODE: 
+                    globalModeHandler->switchMode(MODE_NEUTRAL);
+                break;
+                case CMD_RESET_CALIBRATION: 
+                    globalModeHandler->switchMode(MODE_NEUTRAL);
+                    memset(&myClapTimes, 0, sizeof(myClapTimes));
+                break;
             }
             break;
         case MSG_SWITCH_MODE: 
@@ -108,7 +120,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
         }
         break;
         case MSG_ASK_CLAP_TIMES: 
-        {
+        {   
             pushDataToSendQueue(hostAddress, MSG_SEND_CLAP_TIMES, -1);
         }
         break;

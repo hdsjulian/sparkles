@@ -41,6 +41,12 @@ void webserver::configRoutes() {
     server.on("/commandCalibrate", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandCalibrate(request);
     });
+    server.on("/commandCalculate", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandCalculate(request);
+    });
+    server.on("/endCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->endCalibration(request);
+    } );
     server.on("/commandAnimate", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandAnimate(request);
     });
@@ -71,6 +77,18 @@ void webserver::configRoutes() {
         server.on("/updateStatus", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->statusUpdate(request);
     });
+        server.on("/confirmClap", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->confirmClap(request);
+    });
+      server.on("/cancelClap", HTTP_GET, [this] (AsyncWebServerRequest *request){
+    this->cancelClap(request);
+    });
+    server.on("/resetCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+    this->resetCalibration(request);
+    });
+    server.on("/updateCalibrationStatus", HTTP_GET, [this] (AsyncWebServerRequest *request){
+    this->updateCalibrationStatus(request);
+    });
     
 
 }
@@ -82,36 +100,49 @@ void webserver::handleClientConnect(AsyncEventSourceClient *client) {
 
 
 void webserver::commandCalibrate(AsyncWebServerRequest *request) {
+  messageHandler->addError("Called Calibrate");
+  if (stateMachine->getMode() != MODE_NEUTRAL or stateMachine->getMode() == MODE_CALIBRATE) {  
+    request->send(400);
+    Serial.println("sending 400");
+    return;
+  }
+    if (stateMachine->getMode() == MODE_NEUTRAL or stateMachine->getMode() == MODE_MASTERCLAP_OCCURRED) {
+      messageHandler->sendCommand(CMD_START_CALIBRATION_MODE);
+      String jsonString;
+      jsonString = "{\"status\" : \""+String(CALIBRATION_IN_PROGRESS)+"\"}";
+      calibrationStatus == CALIBRATION_IN_PROGRESS;
+      request->send(200, "text/html", jsonString.c_str()); 
+      stateMachine->switchMode(MODE_CALIBRATE);
+      messageHandler->addError("starting calibration mode\n");
+      messageHandler->startCalibrationMode();
+    }
+}
+
+void webserver::updateCalibrationStatus(AsyncWebServerRequest *request) {
+      String jsonString;
+      jsonString = "{\"status\" : \""+String(calibrationStatus)+"\"}";
+      request->send(200, "text/html", jsonString.c_str()); 
+}
+
+void webserver::endCalibration(AsyncWebServerRequest *request) {
       messageHandler->addError("Called Calibrate");
-      if (stateMachine->getMode() != MODE_NEUTRAL and stateMachine->getMode() != MODE_CALIBRATE) {
-        //todo: send something that causes an alert
-        request->send(400);
-        return;
-      }
-      if (stateMachine->getMode() != MODE_CALIBRATE) {
-        messageHandler->sendCommand(CMD_START_CALIBRATION_MODE);
-        request->send(204);
-        String jsonString;
-        jsonString = "{\"status\" : \"true\"}";
-        events.send(jsonString.c_str(), "calibrateStatus"); 
-        stateMachine->switchMode(MODE_CALIBRATE);
-        messageHandler->addError("starting calibration mode\n");
-        messageHandler->startCalibrationMode();
-        
-      }
-      else if (stateMachine->getMode() == MODE_CALIBRATE) {
         messageHandler->sendMode(MODE_NEUTRAL);
         Serial.println("ENDING CALIBRATION MODE\n");
-        request->send(204);
+        //request->send(204);
         String jsonString;
-        jsonString = "{\"status\" : \"false\"}";
-        events.send(jsonString.c_str(), "calibrateStatus");
-        stateMachine->switchMode(MODE_GET_CALIBRATION_DATA);
-        messageHandler->getClapTimes(-1);
+        calibrationStatus = CALIBRATION_ENDED;
+        jsonString = "{\"status\" : \""+String(CALIBRATION_ENDED)+"\"}";
+        request->send(200, "text/html", jsonString.c_str()); 
 
 
-      }
-    
+}
+void webserver::commandCalculate(AsyncWebServerRequest *request) {
+      messageHandler->addError("Called Calculate");
+      stateMachine->switchMode(MODE_GET_CALIBRATION_DATA);
+      messageHandler->getClapTimes(-1);
+      String jsonString;
+      jsonString = "{\"status\" : \""+String(CALIBRATION_NOT_HAPPENED)+"\"}";
+      request->send(200, "text/html", jsonString.c_str());
 }
 
 void webserver::commandAnimate(AsyncWebServerRequest *request) {
@@ -189,6 +220,51 @@ void webserver::submitPositions(AsyncWebServerRequest *request) {
   //rueberschieben
   //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
   request->send(200, "text/html", "OK");
+}
+
+void webserver::confirmClap(AsyncWebServerRequest *request) {
+  Serial.println("called ConfirmClap");
+  messageHandler->addError("Called ConfirmClap");
+  if (request->hasParam("xpos") && request->hasParam("ypos") && request->hasParam("zpos") && request->hasParam("clapId")) {
+      float xpos = request->getParam("xpos")->value().toFloat();
+      float ypos = request->getParam("ypos")->value().toFloat();
+      float zpos = request->getParam("zpos")->value().toFloat();
+      int clapId = request->getParam("clapId")->value().toInt();
+      Serial.println("calling msghandlerconfirmclap");
+      messageHandler->confirmClap(clapId, xpos, ypos, zpos);
+      calibrationStatus = CALIBRATION_IN_BETWEEN;
+      String jsonString;
+      jsonString = "{\"status\" : \""+String(calibrationStatus)+"\"}";
+      request->send(200, "text/html", jsonString.c_str( ));
+
+      // Process parameters
+  } else {
+      // Handle missing parameters
+      request->send(400, "text/plain", "Missing parameters");
+  }
+  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
+  //rueberschieben
+  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
+}
+void webserver::cancelClap(AsyncWebServerRequest *request) {
+  messageHandler->addError("Called CancelClap");
+  int clapId = request->getParam("clapId")->value().toInt();
+  messageHandler->deleteClap(clapId);
+  calibrationStatus = CALIBRATION_IN_BETWEEN;
+  request->send(200, "text/html", "{\"status\" : \""+String(calibrationStatus)+"\"}");
+  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
+  //rueberschiebenudn z
+  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
+}
+void webserver::resetCalibration(AsyncWebServerRequest *request) {
+  messageHandler->addError("Called CancelClap");
+  messageHandler->resetCalibration();
+  calibrationStatus = CALIBRATION_NOT_HAPPENED;
+  request->send(200, "text/html", "{\"status\" : \""+String(calibrationStatus)+"\"}");
+
+  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
+  //rueberschieben
+  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
 }
 void webserver::setTime(AsyncWebServerRequest *request) {
   messageHandler->addError("Called SetTime");

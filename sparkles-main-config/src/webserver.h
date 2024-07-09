@@ -13,14 +13,18 @@
 //#include <helperFuncs.h>
 #include <messaging.h>
 #include <stateMachine.h>
-
+#define CALIBRATION_NOT_HAPPENED 0
+#define CALIBRATION_IN_PROGRESS 1
+#define CALIBRATION_CLAP_CHECK 2
+#define CALIBRATION_ENDED 3
+#define CALIBRATION_IN_BETWEEN 4
 class webserver {
     private:
         const char* ssid = "Sparkles-Admin";
         const char* password = "sparkles";
         int msgType;
         String outputJson;
-        bool calibrationStatus = false;
+        int calibrationStatus;
         bool connected = false;
         bool isSetup = false;
 
@@ -37,8 +41,6 @@ class webserver {
     int debugVariable = 0;
     void configRoutes();
     void handleClientConnect(AsyncEventSourceClient *client);
-    
-    void commandCalibrate(AsyncWebServerRequest *request);
     void commandAnimate(AsyncWebServerRequest *request);
     void commandGoToSleep(AsyncWebServerRequest *request);
     void updateDeviceList(AsyncWebServerRequest *request);
@@ -47,6 +49,13 @@ class webserver {
     void commandSetWakeup(AsyncWebServerRequest *request);
     void setTime(AsyncWebServerRequest *request);
     void submitPositions(AsyncWebServerRequest *request);
+    void confirmClap(AsyncWebServerRequest *request);
+    void cancelClap(AsyncWebServerRequest *request);    
+    void resetCalibration(AsyncWebServerRequest *request); 
+    void commandCalibrate(AsyncWebServerRequest *request);
+    void updateCalibrationStatus(AsyncWebServerRequest *request);
+    void commandCalculate(AsyncWebServerRequest *request);
+    void endCalibration(AsyncWebServerRequest *request);   
     void sendSyncAsyncAnimation(AsyncWebServerRequest *request);
     void statusUpdate(AsyncWebServerRequest *request);
     void statusUpdate();

@@ -229,7 +229,7 @@ void loop() {
   messageHandler.handleErrors();
   messageHandler.handleSent();
   handleLed.run();
-if (modeHandler.getMode() == MODE_CALIBRATE) {
+if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
   double data = (double)analogRead(audioPin)/512-1;
   peakDetection.add(data); 
   int peak = peakDetection.getPeak(); 
@@ -240,6 +240,9 @@ if (modeHandler.getMode() == MODE_CALIBRATE) {
     lastClap = millis();
     Serial.println("Clap!");
     handleLed.flash(125, 0, 55, 200, 1, 50);
+    if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+      modeHandler.switchMode(MODE_NEUTRAL);
+    }
   } 
   else if (millis()>(lastClap+5000)) 
   {

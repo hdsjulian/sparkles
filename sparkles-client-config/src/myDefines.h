@@ -111,6 +111,7 @@ const int ledChannelBlue2 = 5;
 #define MSG_SET_SLEEP_WAKEUP 109
 #define MSG_SEND_SINGLE_CLAP 110
 #define MSG_TIME_THING 111
+#define MSG_CONFIRM_CLAP 112
 
 #define CMD_START 200
 #define CMD_MSG_SEND_ADDRESS_LIST 201
@@ -128,6 +129,8 @@ const int ledChannelBlue2 = 5;
 #define CMD_RESET_SYSTEM 213
 #define CMD_GET_STATUS 214
 #define CMD_GET_CLAP_TIMES 215
+#define CMD_DELETE_CLAP 216
+#define CMD_RESET_CALIBRATION 217 
 
 #define CMD_END 220
 
@@ -215,6 +218,13 @@ struct message_send_clap_times {
   float zLoc = 0.0;
 };
 
+struct clap_device_location {
+  int id;
+  float xLoc;
+  float yLoc;
+  float zLoc;
+};
+
 struct message_send_single_clap {
   uint8_t messageType = MSG_SEND_SINGLE_CLAP;
   int clapCounter;
@@ -223,7 +233,8 @@ struct message_send_single_clap {
   float yLoc = 0.0;
   float zLoc = 0.0;
 
-}
+};
+
 
 struct sleep_wakeup_time { 
   int hours;
@@ -249,7 +260,7 @@ struct client_address {
   uint32_t timerOffset;
   int delay;
   message_send_clap_times clapTimes;
-  float distances[NUM_CLAPS];
+  float distances[NUM_CLAPS];  
   activeStatus active = INACTIVE;
   float batteryPercentage;
   int tries;
@@ -315,6 +326,14 @@ struct message_set_positions {
   float zpos;
 } ;
 
+struct message_confirm_clap {
+  int messageType = MSG_CONFIRM_CLAP;
+  int id;
+  float xpos;
+  float ypos;
+  float zpos;
+} ;
+
 
 struct message_status_update {
   int messageType = MSG_STATUS_UPDATE;
@@ -353,6 +372,7 @@ struct concentric_animation {
 #define MODE_RESET_TIMER 96
 #define MODE_PING_RESET 97
 #define MODE_GET_CALIBRATION_DATA 98
+#define MODE_MASTERCLAP_OCCURRED 99
 
 
 

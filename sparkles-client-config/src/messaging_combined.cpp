@@ -33,6 +33,19 @@ void messaging::printAddress(const uint8_t * mac_addr){
 }
 
 String messaging::stringAddress(const uint8_t * mac_addr){
+
+    String macStr;
+    macStr += String(mac_addr[0], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[1], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[2], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[3], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[4], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[5], HEX);
     if (memcmp(mac_addr, hostAddress, 6) == 0) {
         return "HOST ADDRESS";
     }
@@ -40,10 +53,7 @@ String messaging::stringAddress(const uint8_t * mac_addr){
         return "CLAP DEVICE";
 
     }
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-    return(String(macStr));
+    return macStr;
 }
 
 
@@ -158,8 +168,8 @@ String messaging::messageCodeToText(int message) {
     case MSG_SET_SLEEP_WAKEUP:
         out = "MSG_SET_SLEEP_WAKEUP";
         break;
-    case MSG_SEND_CLAP:
-        out = "MSG_SEND_CLAP";
+    case MSG_SEND_SINGLE_CLAP:
+        out = "MSG_SEND_SINGLE_CLAP";
         break;
     case MSG_TIME_THING:
         out = "MSG_TIME_THING";
@@ -284,9 +294,11 @@ void messaging::handleSent() {
         message_sent = "";
     } 
 }
-void messaging::addError(String error) {
+void messaging::addError(String error, bool noNL) {
     error_message += error;
-
+    if (noNL == false) {
+        error_message += "\n";
+    }
 }
 void messaging::addSent(String sent) {
     message_sent += sent;
@@ -373,12 +385,16 @@ void messaging::addClap(unsigned long timeStamp) {
     //todo refactor
        //todo send clap times / my clap times
     if (myClapTimes.clapCounter < NUM_CLAPS) {
+        addError("clap occurred at "+String(timeStamp+timeOffset)+"\n");
         myClapTimes.timeStamp[myClapTimes.clapCounter] = timeStamp+timeOffset;
     }
     else {
         addError("TOO MANY CLAPS");
     }
     myClapTimes.clapCounter++;
+    if (DEVICE_MODE == MAIN) {
+        updateAddressesToWebserver();
+    }
 
 }
 #endif
