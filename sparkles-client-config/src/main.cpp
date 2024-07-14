@@ -78,6 +78,7 @@ int delayAvg = 0;
 int sensorValue;
 int microphonePin = A0;
 int lastClap;
+int lastTick;
 int clapStop = 0;
 
 int lastFlash;
@@ -231,6 +232,10 @@ void loop() {
   messageHandler.handleErrors();
   messageHandler.handleSent();
   handleLed.run();
+  if (modeHandler.getMode() == MODE_CALIBRATE && lastClap == 0) 
+  {
+    lastClap == millis();
+  }
   if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
     double data = (double)analogRead(audioPin)/2048-1;
     peakDetection.add(data); 
@@ -256,21 +261,21 @@ void loop() {
       }
     }
   }
-  else if (millis()>(lastClap+5000)) 
+  else if (millis()>(lastTick+5000)) 
   {
         //handleLed.flash(0, 255, 0, 200, 1, 50);
 
     Serial.println("Client still alive");
     modeHandler.printCurrentMode();
     messageHandler.printAddress(myAddress);
-    lastClap = millis();
+    lastTick = millis();
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
 
   }
 
   }
-  else if (millis()>(lastClap+10000)) 
+  else if (millis()>(lastTick+10000)) 
   {
   if (didIreset == true) {
     Serial.println("I RESETTED. WTF");
@@ -278,7 +283,7 @@ void loop() {
   }
     //handleLed.flash(255, 0, 0, 200, 1, 50);
     //modeHandler.printLog();
-    lastClap = millis();
+    lastTick = millis();
     cycleCounter++;
     Serial.println("-----\nClient Still Alive");
     Serial.println(cycleCounter);

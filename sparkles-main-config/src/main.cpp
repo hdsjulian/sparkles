@@ -60,6 +60,7 @@ int delayAvg = 0;
 //calibration
 int sensorValue;
 int lastClap = 0;
+int lastTick = 0;
 int clapStop = 0;
 uint32_t lastClapTime;
 
@@ -103,9 +104,11 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
     if (incomingData[0] == MSG_TIME_THING) {
         messageHandler.addError("time thing arrived at "+String(micros()));
     }
+  uint8_t senderAddress[6];
+  memcpy(senderAddress, mac->src_addr, 6);
   messageHandler.addError("rcvd "+messageHandler.messageCodeToText(incomingData[0])+" from "+messageHandler.stringAddress(mac->src_addr)+"\n");
   msgReceiveTime = micros();
-  messageHandler.pushDataToReceivedQueue(mac, incomingData, len, msgReceiveTime);
+  messageHandler.pushDataToReceivedQueue(senderAddress, incomingData, len, msgReceiveTime);
 }
 
 
@@ -180,7 +183,7 @@ void setup() {
   }
   pinMode(audioPin, INPUT); 
   peakDetection.begin(48, 9, 0.6);   
-  lastClap = millis(); 
+  lastTick = millis(); 
   timerCounter = 0;
   WiFi.macAddress(myAddress);
   pinMode(SWITCH_PIN, INPUT_PULLDOWN); 
@@ -240,6 +243,9 @@ void loop() {
       handleLed.flash(125, 0, 55, 150, 1, 50);
     }
   }
+  if (modeHandler.getMode() == MODE_CALIBRATE && lastClap == 0) {
+    lastClap = millis();
+  }
   if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
     double data = (double)analogRead(audioPin)/2048-1;
     peakDetection.add(data); 
@@ -253,6 +259,7 @@ void loop() {
       handleLed.flash(125, 0, 55, 200, 1, 50);
       if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
         modeHandler.switchMode(MODE_NEUTRAL);
+        lastClap = 0;
       }
     }
     if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
@@ -262,13 +269,14 @@ void loop() {
       if (millis() > clapStop+500) {
         modeHandler.switchMode(MODE_NEUTRAL);
         clapStop = 0;
+        lastClap = 0;
       }
     }
   }
- else if (lastClap+5000 < millis()) {
+ else if (lastTick+5000 < millis()) {
     messageHandler.handleErrors();
     modeHandler.printCurrentMode();
-    lastClap = millis();
+    lastTick = millis();
     cycleCounter++;
     Serial.print(DEVICE_MODE);
     Serial.print("-----\nMain still Alive ");

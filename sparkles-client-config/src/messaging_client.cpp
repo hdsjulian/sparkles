@@ -31,8 +31,8 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
 
 
 
-void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
-    if (memcmp(mac->src_addr, hostAddress, 6) !=0 and incomingData[0] != MSG_ANNOUNCE) {
+void messaging::handleReceive(uint8_t senderAddress[6], const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+    if (memcmp(senderAddress, hostAddress, 6) !=0 and incomingData[0] != MSG_ANNOUNCE) {
         forceDebug();
         addError("received command from untrusted source\n");
         return;
@@ -40,7 +40,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
     addError("Handling Received ");
     addError(messageCodeToText(incomingData[0]));
     addError(" from ");
-    addError(stringAddress(mac->src_addr));
+    addError(stringAddress(senderAddress));
     addError("\n");
     switch (incomingData[0]) {
         //cases for main
@@ -146,7 +146,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
         break;
         case MSG_ANIMATION:
             addError("Animation Message Incoming\n");
-            if (DEVICE_MODE == MAIN and memcmp(mac->src_addr, clapDeviceAddress, 6) == 0) {
+            if (DEVICE_MODE == MAIN and memcmp(senderAddress, clapDeviceAddress, 6) == 0) {
                 memcpy(&animationMessage, incomingData, sizeof(animationMessage));
                 animationMessage.startTime = micros()+3000000;
                 animationMessage.animationreps = 1;

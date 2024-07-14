@@ -33,7 +33,14 @@ void messaging::printAddress(const uint8_t * mac_addr){
 }
 
 String messaging::stringAddress(const uint8_t * mac_addr){
+    
+    if (memcmp(mac_addr, hostAddress, 6) == 0) {
+        return "HOST ADDRESS";
+    }
+    if (memcmp(mac_addr, clapDeviceAddress, 6) ==0) {
+        return "CLAP DEVICE";
 
+    }
     String macStr;
     macStr += String(mac_addr[0], HEX);
     macStr += ":";
@@ -46,13 +53,7 @@ String messaging::stringAddress(const uint8_t * mac_addr){
     macStr += String(mac_addr[4], HEX);
     macStr += ":";
     macStr += String(mac_addr[5], HEX);
-    if (memcmp(mac_addr, hostAddress, 6) == 0) {
-        return "HOST ADDRESS";
-    }
-    if (memcmp(mac_addr, clapDeviceAddress, 6) ==0) {
-        return "CLAP DEVICE";
 
-    }
     return macStr;
 }
 
@@ -381,9 +382,9 @@ void messaging::receiveTimer(int messageArriveTime) {
 }
 
 
-void messaging::pushDataToReceivedQueue(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
     std::lock_guard<std::mutex> lock(receiveQueueMutex); // Lock the mutex
-    dataQueue.push({mac, incomingData, len, msgReceiveTime}); // Push the received data into the queue
+    dataQueue.push(ReceivedData{senderAddress, incomingData, len, msgReceiveTime}); // Push the received data into the queue
 }
 #if DEVICE_MODE != WEBSERVER
 void messaging::addClap(unsigned long timeStamp) {

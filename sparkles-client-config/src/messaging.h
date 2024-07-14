@@ -54,10 +54,11 @@ class messaging {
         esp_now_peer_info_t* peerInfo;
         bool haveSentAddress = false;
       struct ReceivedData {
-          const esp_now_recv_info* mac;
+          uint8_t* senderAddress;
           const uint8_t* incomingData;
           int len;
           unsigned long msgReceiveTime;
+          
       };
 
       std::queue<ReceivedData> dataQueue;
@@ -169,12 +170,12 @@ class messaging {
         void handleReceived();
         void handleSent();
         void addSent(String sent);
-        void pushDataToReceivedQueue(const esp_now_recv_info* mac, const uint8_t* incomingData, int len, unsigned long msgReceiveTime);
+        void pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t* incomingData, int len, unsigned long msgReceiveTime);
         void processDataFromReceivedQueue();
         void pushDataToSendQueue(const uint8_t * address, int messageId, int param1, int param2=0);
         void pushDataToSendQueue(int messageId, int param1, int param2=0);
         void processDataFromSendQueue();
-        void handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime);
+        void handleReceive(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime);
         void printMessagingMode();
         String stringAddress(const uint8_t * mac_addr);
         void printMessageModeLog();
@@ -214,7 +215,7 @@ class messaging {
         void sendCommand(int commandId);
         void sendMode(int modeId);
         void sendMessageById(int messageId, int addressId, int param) ;
-        void receiveClapTimes(const esp_now_recv_info * mac);
+        void receiveClapTimes(uint8_t * senderAdddress);
         void timeoutRetryHandler();
         void setUnreachable(int id);
         void nextRetry();

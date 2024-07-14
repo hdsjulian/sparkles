@@ -54,12 +54,12 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
 
 
 
-void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
     addError("Handling Received "+String(incomingData[0]), false);
     //Serial.println(messageCodeToText(incomingData[0]));
     addError(" from ");
-    if (mac!=NULL) {
-        addError(stringAddress(mac->src_addr));
+    if (senderAddress!=NULL) {
+        //addError(String(mac->src_addr[0])+":"+String(mac->src_addr[1])+":"+String(mac->src_addr[2])+":"+String(mac->src_addr[3])+":"+String(mac->src_addr[4])+":"+String(mac->src_addr[5]));
         addError("\n");
     }
     else {
@@ -96,13 +96,13 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
             break;
 
         case MSG_GOT_TIMER:
-            handleGotTimer(incomingData, mac->src_addr);
+            handleGotTimer(incomingData, senderAddress);
             break; 
         case MSG_SEND_CLAP_TIMES:
         Serial.println("1");
             memcpy(&sendClapTimes, incomingData, sizeof(sendClapTimes));
             
-            receiveClapTimes(mac);
+            receiveClapTimes(senderAddress);
         break;
 
         /*
@@ -136,7 +136,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
         case MSG_STATUS: {
             memcpy(&statusMessage, incomingData, sizeof(statusMessage));
             addError("Battery Status: "+String(statusMessage.batteryPercentage)+"\n");
-            int id = getAddressId(mac->src_addr);
+            int id = getAddressId(senderAddress);
             clientAddresses[id].batteryPercentage = statusMessage.batteryPercentage;
                 Serial.println("---msgstatus---");
 
@@ -192,9 +192,9 @@ void messaging::deleteClap(int clapId) {
 
 
 
-void messaging::receiveClapTimes(const esp_now_recv_info * mac) {
+void messaging::receiveClapTimes(uint8_t *senderAddress) {
     Serial.println(2);
-    if (memcmp(mac->src_addr, clapDeviceAddress, 6) == 0) {
+    if (memcmp(senderAddress, clapDeviceAddress, 6) == 0) {
         Serial.println(3);
         memcpy(&clapDevice.clapTimes, &sendClapTimes, sizeof(clapDevice.clapTimes));
         if (addressCounter > 0) {
@@ -215,7 +215,7 @@ void messaging::receiveClapTimes(const esp_now_recv_info * mac) {
         calculateDistances(-1);
     }
     else {
-        int id = getAddressId(mac->src_addr);
+        int id = getAddressId(senderAddress);
         if (id != -1) {
             memcpy(&clientAddresses[id].clapTimes, &sendClapTimes, sizeof(clientAddresses[id].clapTimes));
             clientAddresses[id].active = ACTIVE;

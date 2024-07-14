@@ -54,7 +54,7 @@ void messaging::processDataFromReceivedQueue() {
 
     // Call handleReceive outside the mutex scope
     for (const auto& receivedData : receivedDataList) {
-        handleReceive(receivedData.mac, receivedData.incomingData, receivedData.len, receivedData.msgReceiveTime);
+        handleReceive(receivedData.senderAddress, receivedData.incomingData, receivedData.len, receivedData.msgReceiveTime);
     }
 }
 

@@ -123,6 +123,7 @@ void messaging::processDataFromSendQueue() {
                 esp_now_send(sendData.address, (uint8_t*) &gotTimerMessage, sizeof(gotTimerMessage));
                 break;
             case MSG_SWITCH_MODE: 
+                addError("Calling and sending switchmode with mode "+globalModeHandler->modeToText(switchModeMessage.mode));
                 esp_now_send(sendData.address, (uint8_t*) &switchModeMessage, sizeof(switchModeMessage));
                 break;
             case MSG_SEND_CLAP_TIMES:
@@ -192,7 +193,8 @@ void messaging::sendCommand(int commandId) {
 }
 void messaging::sendMode(int modeId) {
     addError("Sending mode "+messageCodeToText(modeId)+"\n");
-    pushDataToSendQueue(broadcastAddress, MSG_SWITCH_MODE, modeId);
+    switchModeMessage.mode = modeId;
+    pushDataToSendQueue(broadcastAddress, MSG_SWITCH_MODE, -1 );
 }
 void messaging::sendMessageById(int messageId, int addressId, int param) {
     addError("Sending Message by Id "+messageCodeToText(messageId)+" address "+stringAddress(clientAddresses[addressId].address));
