@@ -155,6 +155,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
             jsonString = "{\"status\" : \"2\", \"clapId\" : "+String(sendSingleClapMessage.clapCounter)+", \"timeStamp\" : "+String(sendSingleClapMessage.timeStamp)+"}";
             webServer->events.send(jsonString.c_str(), "clapCheck");
             globalModeHandler->switchMode(MODE_MASTERCLAP_OCCURRED);
+            pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_MASTERCLAP_OCCURRED);
             break;
         default: 
             addError("message not recognized: ");

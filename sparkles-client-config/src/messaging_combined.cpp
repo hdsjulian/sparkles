@@ -222,6 +222,10 @@ String messaging::messageCodeToText(int message) {
     case CMD_GET_CLAP_TIMES:
         out = "CMD_GET_CLAP_TIMES";
         break;
+
+    case CMD_MASTERCLAP_OCCURRED:
+        out = "CMD_MASTERCLAP_OCCURRED";
+        break;
     default:
         out = "UNKNOWN_MESSAGE";
         break;

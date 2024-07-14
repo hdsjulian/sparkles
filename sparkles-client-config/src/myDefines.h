@@ -132,6 +132,7 @@ const int ledChannelBlue2 = 5;
 #define CMD_GET_CLAP_TIMES 215
 #define CMD_DELETE_CLAP 216
 #define CMD_RESET_CALIBRATION 217 
+#define CMD_MASTERCLAP_OCCURRED 218
 
 #define CMD_END 220
 

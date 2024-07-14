@@ -78,6 +78,8 @@ int delayAvg = 0;
 int sensorValue;
 int microphonePin = A0;
 int lastClap;
+int clapStop = 0;
+
 int lastFlash;
 bool clapSent = false;
 
@@ -209,7 +211,7 @@ void setup() {
   Serial.println(peerNum.total_num);
    Serial.println("huch");
   pinMode(audioPin, INPUT); 
-  peakDetection.begin(30, 3, 0);   
+  peakDetection.begin(48, 9, 0.6);   
   delay(1000);
   timerDings = micros();
   lastFlash = 0;
@@ -229,21 +231,31 @@ void loop() {
   messageHandler.handleErrors();
   messageHandler.handleSent();
   handleLed.run();
-if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
-  double data = (double)analogRead(audioPin)/512-1;
-  peakDetection.add(data); 
-  int peak = peakDetection.getPeak(); 
-  double filtered = peakDetection.getFilt(); 
-  //Serial.println(sensorValue);
-  if (peak == -1 and millis() > lastClap+1000) {
-     messageHandler.addClap(micros());
-    lastClap = millis();
-    Serial.println("Clap!");
-    handleLed.flash(125, 0, 55, 200, 1, 50);
-    if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
-      modeHandler.switchMode(MODE_NEUTRAL);
+  if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
+    double data = (double)analogRead(audioPin)/2048-1;
+    peakDetection.add(data); 
+    int peak = peakDetection.getPeak(); 
+    double filtered = peakDetection.getFilt(); 
+    //Serial.println(sensorValue);
+    if (peak == -1 and millis() > lastClap+1000) {
+      messageHandler.addClap(micros());
+      lastClap = millis();
+      messageHandler.ClapTime = micros();
+      handleLed.flash(125, 0, 55, 200, 1, 50);
+      if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+        modeHandler.switchMode(MODE_NEUTRAL);
+      }
     }
-  } 
+    if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+      if (clapStop == 0) {
+        clapStop = millis();
+      }
+      if (millis() > clapStop+500) {
+        modeHandler.switchMode(MODE_NEUTRAL);
+        clapStop = 0;
+      }
+    }
+  }
   else if (millis()>(lastClap+5000)) 
   {
         //handleLed.flash(0, 255, 0, 200, 1, 50);
@@ -254,11 +266,10 @@ if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MAS
     lastClap = millis();
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
-    Serial.println("haeh");
 
   }
 
-}
+  }
   else if (millis()>(lastClap+10000)) 
   {
   if (didIreset == true) {
@@ -277,8 +288,6 @@ if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MAS
     handleLed.printStatus();
 
   }
-
-}
   else {
     handleLed.ledOn(255, 0, 0, 10000, true);
   handleLed.ledOn(0, 255, 0, 10000, true);
@@ -288,7 +297,7 @@ if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MAS
   if (modeHandler.getMode() == MODE_ANIMATE) {
     messageHandler.nextAnimation();
   }
-  
+
 
 
 } 

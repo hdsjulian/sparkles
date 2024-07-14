@@ -6,7 +6,6 @@
 
 
 void messaging::calculateDistances(int id) {
-    Serial.println(6);
     addError("Calculate distances with id "+String(id)+" called \n");
     orderClaps(id);
     addError("---- after orderclaps----\n");

@@ -81,9 +81,16 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
                 case CMD_END_CALIBRATION_MODE: 
                     globalModeHandler->switchMode(MODE_NEUTRAL);
                 break;
+                case CMD_MASTERCLAP_OCCURRED: 
+                    globalModeHandler->switchMode(MODE_MASTERCLAP_OCCURRED);
+                break;
                 case CMD_RESET_CALIBRATION: 
                     globalModeHandler->switchMode(MODE_NEUTRAL);
                     memset(&myClapTimes, 0, sizeof(myClapTimes));
+                break;
+                case CMD_GET_CLAP_TIMES: 
+                Serial.println("received cmd get clap times");
+                pushDataToSendQueue(hostAddress, MSG_SEND_CLAP_TIMES, -1);
                 break;
             }
             break;
@@ -136,10 +143,6 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
          addError("Distance: "+String(distanceMessage.distance)+"\n");
          handleLed->setDistance(distanceMessage.distance);
         }
-        break;
-        case MSG_SEND_CLAP_TIMES:
-            memcpy(&sendClapTimes, incomingData, sizeof(sendClapTimes));
-            receiveClapTimes(mac);
         break;
         case MSG_ANIMATION:
             addError("Animation Message Incoming\n");

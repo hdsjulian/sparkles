@@ -179,7 +179,7 @@ void setup() {
     audioPin = 35; 
   }
   pinMode(audioPin, INPUT); 
-  peakDetection.begin(30, 3, 0);   
+  peakDetection.begin(48, 9, 0.6);   
   lastClap = millis(); 
   timerCounter = 0;
   WiFi.macAddress(myAddress);
@@ -241,7 +241,7 @@ void loop() {
     }
   }
   if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
-    double data = (double)analogRead(audioPin)/512-1;
+    double data = (double)analogRead(audioPin)/2048-1;
     peakDetection.add(data); 
     int peak = peakDetection.getPeak(); 
     double filtered = peakDetection.getFilt(); 
@@ -250,7 +250,7 @@ void loop() {
       messageHandler.addClap(micros());
       lastClap = millis();
       messageHandler.ClapTime = micros();
-      //handleLed.flash(125, 0, 55, 200, 1, 50);
+      handleLed.flash(125, 0, 55, 200, 1, 50);
       if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
         modeHandler.switchMode(MODE_NEUTRAL);
       }
@@ -283,7 +283,7 @@ void loop() {
     size_t freeHeap = ESP.getFreeHeap();
     Serial.print(freeHeap);
     //messageHandler.checkFile("/clientAddress");
-    
+    /*
     Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));
     Serial.println("Day is "+String(sysTime[3])+"."+String(sysTime[4])+"."+String(sysTime[5]));
     //Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
@@ -291,7 +291,7 @@ void loop() {
     //Serial.println("Next animation in "+String(int(messageHandler.nextAnimationPing-millis())));
     Serial.println("sleep in "+String(messageHandler.calculateGoodNight(true)));
     Serial.println("Wakeup in "+String(messageHandler.calculateGoodNight(false)));
-    
+    */
 
 
     //messageHandler.printAddress(myAddress);
@@ -310,6 +310,6 @@ void loop() {
   if (modeHandler.getMode() == MODE_RESET_TIMER or modeHandler.getMode() == MODE_GET_CALIBRATION_DATA) {
      messageHandler.nextRetry();
   }
-  messageHandler.goodNight();
+  //messageHandler.goodNight();
   }
 }
