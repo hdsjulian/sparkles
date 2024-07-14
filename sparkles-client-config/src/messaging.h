@@ -109,11 +109,13 @@ class messaging {
         timeout_retry timeoutRetry;
         int timersUpdated =0;
         int goToSleepTime = 0;
+        bool sentToSleep = false;
         int forcedDebugCounter = 0;
         unsigned long lastTry = 0;
         unsigned long nextAnimationPing;
         bool endAnimation = false;
         int maxPos;
+        int announceCounter = 0;
         //esp8266
         //uint8_t webserverAddress[6] = {0xe8, 0xdb, 0x84, 0x99, 0x5e, 0x44};
         //        uint8_t clapDeviceAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
@@ -194,9 +196,9 @@ class messaging {
         void goodNight();
         void setGoodNight(int hours, int minutes, int seconds);
         void setWakeup(int hours, int minutes, int seconds);
-        void setClock(int hours, int minutes, int seconds);
+        void setClock(int year, int month, int day, int hours, int minutes, int seconds);
         int* getSystemTime();
-        double calculateTimeDifference(int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2);
+        double calculateTimeDifference(int year1, int month1, int day1, int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2);
         void setSetTimeMessage(int hours, int minutes, int seconds);
         void setBattery();
         float getBattery();
@@ -228,6 +230,14 @@ class messaging {
         void deleteClap(int clapId);
         void resetCalibration();
         bool arePointsEqual(clap_device_location &point1, clap_device_location &point2);
+        bool arePointsEqual(float point1[3], clap_device_location &point2);
+        void estimatePoints(int id, float* x0);
+        void testTrilateration();
+        void calculate_distances(const float point[3]);
+        float scaling_factor(float value);
+        void weighted_distances_to_points(int numClaps, const float x[3], const calculation_struct pointsDistances, float result[NUM_CLAPS]);
+        void groupPoints(int indices[NUM_CLAPS][CLAPS_PER_POINT]);
+        int checkAndAverage(float x0[3], float x1[3], float x2[3]);
 
 };
 

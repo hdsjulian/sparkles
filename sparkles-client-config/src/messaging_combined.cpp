@@ -311,6 +311,7 @@ void messaging::receiveTimer(int messageArriveTime) {
   //wenn die letzte message maximal 300 mikrosekunden abweicht und der letzte delay auch nicht mehr als 1500ms her war, dann muss die msg korrekt sein
   int difference = messageArriveTime - lastTime;
   lastDelay = timerMessage.lastDelay;
+  announceCounter = 0;
   addError("Difference: "+String(difference)+"\n");
   addError("Message Arrive Time "+String(messageArriveTime)+"\n");
   addError("Last Time "+String(lastTime)+"\n");
@@ -438,8 +439,11 @@ int messaging::addPeer(uint8_t * address) {
     
 }
 void messaging::goToSleep(unsigned long sleepTime) {
+    Serial.println("time is "+String(millis()));
+    Serial.println("going to sleep for "+String(sleepTime)); 
     esp_sleep_enable_timer_wakeup(sleepTime);
     esp_light_sleep_start();
+    Serial.println("time is "+String(millis()));
     int randNum = random(1000, 5000);
     delay(randNum);
     pushDataToSendQueue(hostAddress, MSG_WAKEUP, -1);

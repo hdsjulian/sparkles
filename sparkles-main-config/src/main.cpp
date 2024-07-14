@@ -185,11 +185,15 @@ void setup() {
   WiFi.macAddress(myAddress);
   pinMode(SWITCH_PIN, INPUT_PULLDOWN); 
 
-  randomSeed(analogRead(33));
-  
+  //randomSeed(analogRead(33));
+  myWebserver.PdParamsChanged = true;
 }
-
+double data;
 void loop() {
+  if (false) {
+    messageHandler.testTrilateration();
+  }
+  else {
   if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER) {
     if (isTimerSet == false ){
       Serial.println("attaching interrupt");
@@ -216,9 +220,27 @@ void loop() {
     delay(5000);
     ESP.restart();
   }
- 
-
-  if (modeHandler.getMode() == MODE_CALIBRATE or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
+   if (false) {
+    if (myWebserver.PdParamsChanged == true) {
+      Serial.println("params changed");
+      myWebserver.PdParamsChanged = false;
+      peakDetection.begin(myWebserver.lag, myWebserver.threshold, myWebserver.influence);
+      peakDetection.printParams();
+    }
+     data = (double)analogRead(audioPin)/2048-1;
+    peakDetection.add(data); 
+    int peak = peakDetection.getPeak(); 
+    double filtered = peakDetection.getFilt(); 
+    //Serial.println(sensorValue);
+    if (peak == -1 and millis() > lastClap+1000) {
+      Serial.println("Happened "+String(peakDetection.ago)+" microseconds ago");
+      Serial.println("avg at clap "+String(peakDetection.avgatclap));
+      Serial.println("data: "+String(data));
+      lastClap = millis();
+      handleLed.flash(125, 0, 55, 150, 1, 50);
+    }
+  }
+  if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
     double data = (double)analogRead(audioPin)/512-1;
     peakDetection.add(data); 
     int peak = peakDetection.getPeak(); 
@@ -261,14 +283,15 @@ void loop() {
     size_t freeHeap = ESP.getFreeHeap();
     Serial.print(freeHeap);
     //messageHandler.checkFile("/clientAddress");
-    /*
+    
     Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));
-    Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
+    Serial.println("Day is "+String(sysTime[3])+"."+String(sysTime[4])+"."+String(sysTime[5]));
+    //Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
     Serial.println("Time is "+String(millis()));
-    Serial.println("Next animation in "+String(int(messageHandler.nextAnimationPing-millis())));
+    //Serial.println("Next animation in "+String(int(messageHandler.nextAnimationPing-millis())));
     Serial.println("sleep in "+String(messageHandler.calculateGoodNight(true)));
     Serial.println("Wakeup in "+String(messageHandler.calculateGoodNight(false)));
-    */
+    
 
 
     //messageHandler.printAddress(myAddress);
@@ -288,4 +311,5 @@ void loop() {
      messageHandler.nextRetry();
   }
   messageHandler.goodNight();
+  }
 }

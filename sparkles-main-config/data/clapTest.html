@@ -1,0 +1,152 @@
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP-NOW DASHBOARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="all.css" >
+  <link rel="icon" href="data:,">
+  <style>
+    html {font-family: Arial; display: inline-block; text-align: center;}
+    p {  font-size: 1.2rem;}
+    body {  margin: 0;}
+    .topnav { overflow: hidden; background-color: #2f4468; color: white; font-size: 1.7rem; }
+    .content { padding: 20px; }
+    .card { background-color: white; box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5); display: block; margin-bottom: 20px; flex: 1 0 100%; padding:5px;}
+    .card span {display:block; }
+    .cards { max-width: 700px; margin: 0 auto; display:flex; flex-flow: row wrap; gap:0.5em; flex-wrap: wrap; }
+    .card--50 {flex-basis: 40%}
+    .reading { font-size: 2.8rem; }
+    .packet { color: #bebebe; }
+    .devicenum { color: #fd7e14; }
+    .active { background-color: rgba(0, 139, 0, 0.2); }
+    .inactive { background-color: rgba(255, 0, 0, 0.2) }
+    .card.humidity { color: #1b78e2; }
+    .card.deviceList { color: #010702; }
+    .inputs { margin-top: 10px; }
+    .inputs input[type='text'] { margin: 5px 0; padding: 8px; width: calc(100% - 16px); box-sizing: border-box; }
+    .inputs button { display: block; margin: 10px 0; padding: 10px; width: 100%; background-color: #4CAF50; color: white; border: none; cursor: pointer; font-size: 1rem; }
+    .inputs button:hover { background-color: #45a049; }
+    .inputs .blue-button { background-color: #1b78e2; }
+  </style>
+</head>
+<body>
+  <div class="topnav">
+    <h3>ESP-NOW DASHBOARD</h3>
+  </div>
+
+    <div id="boardCardContainer">
+      <div class='inputs'>
+        <input type='text' id='lag' placeholder="X position" value="30">
+        <input type='text' id='threshold' placeholder="Y position" value="3">
+        <input type='text' id='influence' placeholder = "Z position" value="0">
+        <button id='setPdParams'>Set settings</button>
+
+    </div>
+  </div>
+<script>
+
+
+
+  var debug = 0;
+  function debuglog(obj) {
+    if (debug > 0) {
+    console.log(obj);
+    }
+  }
+  
+
+
+  if (debug == 0) {
+    if (!!window.EventSource) {
+    var sourceEvents = new EventSource('/events');
+
+    function submitConfirmClap() {
+        console.log("clicked");
+        var lag = document.getElementById("lag").value;
+        var threshold = document.getElementById("threshold").value;
+        var influence = document.getElementById("influence").value;
+        console.log(lag);
+        console.log(threshold);
+        console.log(influence);
+        var fetchUrl = '/submitPdParams?lag='+lag+'&threshold='+threshold+'&influence='+influence;
+        console.log(fetchUrl);
+        fetchMe(fetchUrl);
+    }
+    document.getElementById("setPdParams").addEventListener('click', submitConfirmClap);
+
+  }
+}
+
+else if (debug == 1) {
+  var boards = [];
+   boards[0] = {
+    index : 0,
+    address: "68:b6:b3:08:e0:60",
+    delay : 1001,
+    status: "MODE_WAIT_FOR_TIMER"
+  };
+  boards[1] = {
+    index : 1,
+    address: "78:b6:b3:08:e0:66",
+    delay : 0,
+    status: "MODE_WAIT_FOR_TIMER"
+  };
+
+  dingsdata={"clientAddresses":[{"address":[52,133,24,143,193,116],"id":0,"xLoc":0,"yLoc":0,"zLoc":0,"timerOffset":0,"delay":1,"clapTimes":{"messageType":6,"clapCounter":0,"timeStamp":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"distances":[1,2,3,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"active":"INACTIVE","batteryPercentage":0,"tries":0}],
+  "clapDevice":[{"address":[100,232,51,84,60,36],"id":0,"xLoc":0,"yLoc":0,"zLoc":0,"timerOffset":0,"delay":0,"clapTimes":{"messageType":6,"clapCounter":0,"timeStamp":[10,2.3,3.22,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"distances":[2,1.0,3.0,4.0,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"active":"INACTIVE","batteryPercentage":0,"tries":0}],
+  "hostDevice":[{"address":[52,133,24,143,193,116],"clapTimes":{"messageType":6,"clapCounter":0,"timeStamp":[10,2.3,3.2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}]};
+  dingsdata["hostDevice"].forEach(function(obj) {
+    console.log(obj);
+  hostCard(obj);
+  });
+  dingsdata["clapDevice"].forEach(function(obj) {
+    console.log(obj);
+  clapCard(obj);
+  });
+  dingsdata["clientAddresses"].forEach(function(obj) {
+    console.log(obj);
+  boardCards(obj);
+  });
+
+
+  updatedStatus = {
+    statusId : 1,
+    status : "WAIT_FOR_TIMER"
+  };
+  statusUpdate(updatedStatus);
+  
+}
+
+function fetchMe(fetchUrl, callback) {
+
+    fetch(fetchUrl)
+        .then(response => {
+            // Check if the response is successful
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            // Parse the response as JSON
+            console.log("response ok.");
+            return response.text()
+        })
+        .then(data => {
+            // Handle the received data
+            if (callback) {
+              console.log("callback "+fetchUrl);
+              console.log(data);
+              var obj = JSON.parse(data);
+              callback(obj);
+            }
+            console.log('Data received:', data);
+        })
+        .catch(error => {
+            // Handle errors
+            console.error('Fetch error:', error);
+        });
+};
+
+
+// Function to handle click on the t1 span element
+</script>
+
+</body>
+</html>

@@ -32,6 +32,7 @@
 
 //clapping
 #define NUM_CLAPS 20
+#define CLAPS_PER_POINT 3
 #define CLAP_THRESHOLD 1000000
 
 //messaging retries
@@ -218,12 +219,7 @@ struct message_send_clap_times {
   float zLoc = 0.0;
 };
 
-struct clap_device_location {
-  int id;
-  float xLoc;
-  float yLoc;
-  float zLoc;
-};
+
 
 struct message_send_single_clap {
   uint8_t messageType = MSG_SEND_SINGLE_CLAP;
@@ -250,6 +246,13 @@ enum activeStatus {
   DEAD,
   UNREACHABLE
 
+};
+
+struct clap_device_location {
+  int id;
+  float xLoc;
+  float yLoc;
+  float zLoc;
 };
 struct client_address {
   uint8_t address[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -340,6 +343,13 @@ struct message_status_update {
   int mode;
   
 } ;
+
+struct calculation_struct {
+  int numPoints = 0; 
+  float points[NUM_CLAPS][3];
+  float distances[NUM_CLAPS];
+};
+
 
 
 struct concentric_animation {

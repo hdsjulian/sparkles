@@ -5,6 +5,7 @@
 #include "messaging.h"
 
 void messaging::announceAddress() {
+    announceCounter++;
     haveSentAddress = true;
     if (gotTimer == true) {
         return;

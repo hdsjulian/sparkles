@@ -137,13 +137,13 @@ int count = 0;
 bool didIreset = true;
 
 void OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
+    msgReceiveTime = micros();
     if (incomingData[0] != MSG_ANNOUNCE) {
     messageHandler.addError("RECEIVED MESSAGE "+messageHandler.messageCodeToText(incomingData[0])+" from "+messageHandler.stringAddress(mac->src_addr)+"\n");
     if (incomingData[0] == MSG_COMMANDS) {
       messageHandler.addError("RECEIVED MESSAGE "+messageHandler.messageCodeToText(incomingData[1])+" from "+messageHandler.stringAddress(mac->src_addr)+"\n");
     }
     } 
-    msgReceiveTime = micros();
     messageHandler.pushDataToReceivedQueue(mac, incomingData, len, msgReceiveTime);
 }
 
@@ -218,7 +218,7 @@ void setup() {
 }
 
 void loop() {
-  if (modeHandler.getMode() == MODE_STARTUP and messageHandler.gotTimer == false and millis() > 5000+messageHandler.announceTime) {
+  if (modeHandler.getMode() == MODE_STARTUP and messageHandler.gotTimer == false and millis() > 3000*(messageHandler.announceCounter*messageHandler.announceCounter)+messageHandler.announceTime) {
     messageHandler.announceAddress();
   }
   

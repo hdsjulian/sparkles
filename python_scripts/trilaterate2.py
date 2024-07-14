@@ -30,7 +30,7 @@ print("Distances:", distances)
 scaling_factors = np.vectorize(scaling_factor)(distances)
 print("Multiplicator:", scaling_factors)
 distances = distances * scaling_factors
-print("Distances:", distances)
+print("scaled Distances:", distances)
 # Weights for each measurement (example values, replace with actual weights if known)
 weights = np.array([1, 1, 1, 1, 1, 1, 1, 1])  # Equal weights for simplicity
 

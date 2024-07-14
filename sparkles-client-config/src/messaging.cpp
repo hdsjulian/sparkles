@@ -307,24 +307,44 @@ void messaging::goodNight() {
     int* time;  
     time = getSystemTime();
     double difference;
-    if (time[0] >= sleepTime.hours and time[1] >= sleepTime.minutes and goToSleepTime == 0) {
-        Serial.println("should be time to say good night and waiting a minute");
-        difference = calculateTimeDifference(time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes, wakeupTime.seconds);
+    if (millis() > goToSleepTime && sentToSleep == false) {
+        Serial.println("should be time to say good night and waiting ten seconds");
+        difference = calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes, wakeupTime.seconds);
         commandMessage.messageType = CMD_GO_TO_SLEEP;
         commandMessage.param = (int)difference+10;
         pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, difference);
-        goToSleepTime = (millis()+10000);
+        goToSleepTime = goToSleepTime+10000;
+        Serial.println("time is "+String(millis()));
+        Serial.println("setting gotosleeptime to "+String(goToSleepTime));
+        sentToSleep = true;
     }
-    if (goToSleepTime != 0 and (millis() > goToSleepTime)) {
-        difference = calculateTimeDifference(time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes-1, 0);
+    if ((millis() > goToSleepTime) && goToSleepTime!=0 && sentToSleep == true) {
+        difference = calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes-1, 0);
+        Serial.println("time is "+String(millis()));
+        Serial.println("and gotosleeptime was set to "+String(goToSleepTime));
         Serial.println("sleeping for "+String(difference));
         esp_sleep_enable_timer_wakeup((unsigned long)(difference*1000000));
         esp_light_sleep_start();
-        goToSleepTime = 0;
+        webServer->setWifi();
+        time = getSystemTime();
+        Serial.println("woke up");
+        Serial.println("Time is: "+String(time[0])+":"+String(time[1])+":"+String(time[2]));
+        Serial.println("Day is "+String(time[3])+"."+String(time[4])+"."+String(time[5]));
+        goToSleepTime = (int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;
         globalModeHandler->switchMode(MODE_NEUTRAL);
+        sentToSleep = false;
+        //how to prevent sleeping again?
     }
-    else if ((goToSleepTime != 0) and (millis() % 1000 == 0)) {
+    else if ((millis() < goToSleepTime-10000 && (millis() % 1000 == 0)) && goToSleepTime!=0 && sentToSleep == true) {
         Serial.println("Time to Sleep "+String(goToSleepTime-millis()));
+        delay(1);
+    }
+    else if (millis() % 10000 == 0) {
+        Serial.println("called");
+        Serial.println("sleep time at "+String(goToSleepTime));
+        Serial.println("time now "+String(millis()));
+        Serial.println("diff "+String(goToSleepTime-millis()) );
+        delay(1);
     }
 
 }
@@ -334,35 +354,25 @@ double messaging::calculateGoodNight(bool sleepWakeup) {
     time = getSystemTime();
     double difference;
     if (sleepWakeup == true) {
-        difference = calculateTimeDifference(time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds);
+        difference = calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds);
     }
     else {
-    difference = calculateTimeDifference(time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes, wakeupTime.seconds);
+    difference = calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], wakeupTime.hours, wakeupTime.minutes, wakeupTime.seconds);
     }
     return difference;
 }
-void messaging::setGoodNight(int hours, int minutes, int seconds){
-    wakeupTime.hours = hours;
-    wakeupTime.minutes = minutes;
-    wakeupTime.seconds = seconds;
-}
-void messaging::setWakeup(int hours, int minutes, int seconds){
-    sleepTime.hours = hours;
-    sleepTime.minutes = minutes;
-    sleepTime.seconds = seconds;    
-}
 
 
 
-void messaging::setClock(int hours, int minutes, int seconds) {
+void messaging::setClock(int year, int month, int day, int hours, int minutes, int seconds) {
     struct tm timeinfo;
     memset(&timeinfo, 0, sizeof(timeinfo));
     timeinfo.tm_hour = hours;
     timeinfo.tm_min = minutes;
     timeinfo.tm_sec = seconds;
-    timeinfo.tm_year = 2024;
-    timeinfo.tm_mon = 6;
-    timeinfo.tm_mday = 21;
+    timeinfo.tm_year = year;
+    timeinfo.tm_mon = month;
+    timeinfo.tm_mday = day;
     struct timeval tv;
     tv.tv_sec = mktime(&timeinfo);
     tv.tv_usec = 0;
@@ -380,10 +390,15 @@ int* messaging::getSystemTime() {
     timeArray[0] = timeinfo.tm_hour;
     timeArray[1] = timeinfo.tm_min;
     timeArray[2] = timeinfo.tm_sec;
+    timeArray[3] = timeinfo.tm_mday;
+    timeArray[4] = timeinfo.tm_mon;
+    timeArray[5] = timeinfo.tm_year;
 
     return timeArray;
 }
-double messaging::calculateTimeDifference(int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2) {
+
+double messaging::calculateTimeDifference(int year1, int month1, int day1, int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2) {
+    Serial.println("Calculating time difference "+String(day1)+"."+String(month1)+"."+String(year1)+" - "+String(hours1)+":"+String(minutes1)+":"+String(seconds1)+" to  "+String(hours2)+":"+String(minutes2)+":"+String(seconds2));
     struct tm timeinfo1;
     struct tm timeinfo2;
     time_t time1;
@@ -393,35 +408,74 @@ double messaging::calculateTimeDifference(int hours1, int minutes1, int seconds1
     timeinfo1.tm_hour = hours1;
     timeinfo1.tm_min = minutes1;
     timeinfo1.tm_sec = seconds1;
-    timeinfo1.tm_year = 2024;
-    timeinfo1.tm_mon = 6;
-    timeinfo1.tm_mday = 21;
+    timeinfo1.tm_year = year1;
+    timeinfo1.tm_mon = month1;
+    timeinfo1.tm_mday = day1;
     time1 = mktime(&timeinfo1);
 
     // Set the second time
     timeinfo2.tm_hour = hours2;
     timeinfo2.tm_min = minutes2;
     timeinfo2.tm_sec = seconds2;
-    timeinfo2.tm_year = 2024;
-    timeinfo2.tm_mon = 6;
+    int day2;
+    int month2;
+    int year2;
     if (timeinfo2.tm_hour < timeinfo1.tm_hour) {
-        timeinfo2.tm_mday = 22;
+         day2 = day1+1;
     }
     else if (timeinfo2.tm_hour == timeinfo1.tm_hour and timeinfo2.tm_min < timeinfo1.tm_min) {
-        timeinfo2.tm_mday = 22;
+        day2 = day1+1;
     }
     else if (timeinfo2.tm_hour == timeinfo1.tm_hour and timeinfo2.tm_min == timeinfo1.tm_min and timeinfo2.tm_sec < timeinfo1.tm_sec) {
-        timeinfo2.tm_mday = 22;
+        day2 = day1+1;
     }
     else {
-        timeinfo2.tm_mday = 21;
+        day2 = day1;
     }
 
+    if (month1 == 1 or month1 == 3 or month1 == 5 or month1 == 7 or month1 == 8 or month1 == 10 or month1 == 12) {
+        if (day2 > 31) {
+            day2 = 1;
+            month2++;
+        }
+    }
+    else if (month1 == 4 or month1 == 6 or month1 == 9 or month1 == 11) {
+        if (day2 > 30) {
+            day2 = 1;
+            month2++;
+        }
+    }
+    else if (month1 == 2) {
+        if (day2 > 28) {
+            day2 = 1;
+            month2++;
+        }
+    }
+    else {
+        if (day2 > 31) {
+            day2 = 1;
+            month2++;
+        }
+        else {
+            month2 = month1;
+        }
+    }
+    if (month2 > 12) {
+        month2 = 1;
+        year2++;
+    }
+    else {
+        year2 = year1;
+    }
+    Serial.println("Day2: "+String(day2)+" Month2: "+String(month2)+" Year2: "+String(year2));
+    timeinfo2.tm_year = year2;
+    timeinfo2.tm_mon = month2;
+    timeinfo2.tm_mday = day2;
     time2 = mktime(&timeinfo2);
 
     // Calculate the difference
     double difference = difftime(time2, time1);
-
+    Serial.println("Difference is "+String(difference));
     return difference;
 }
 

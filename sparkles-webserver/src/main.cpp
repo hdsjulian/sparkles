@@ -63,8 +63,7 @@ void IRAM_ATTR handleButtonPress() {
   if (buttonPressed == false and (micros()-buttonPressTime)>2500000) {
     buttonPressTime = micros();
     buttonPressed = true;
-  }
-  
+  } 
 }
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {

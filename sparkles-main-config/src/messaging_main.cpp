@@ -45,6 +45,9 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
         addError("Address counter: "+String(addressCounter)+"\n");
     
     }
+    int * time;
+    time = getSystemTime();
+    goToSleepTime = (int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;
 }
 
 
@@ -166,45 +169,7 @@ void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *inco
 
 
 //this is the test version
-void messaging::calculateDistances(int id) {
-    Serial.println(6);
-    addError("Calculate distances with id "+String(id)+" called \n");
-    orderClaps(id);
-    addError("---- after orderclaps----\n");
 
-    addError(printClapTimes(clapDevice.clapTimes.timeStamp, NUM_CLAPS));
-    addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
-    if (id > -1) {
-        addError("id > -1 "+String(id)+"\n");
-        for (int i = 0; i<clientAddresses[id].clapTimes.clapCounter; i++) {
-            if (clientAddresses[id].clapTimes.timeStamp[i] == 0) {continue;}
-            else {
-                int timeDifference = clientAddresses[id].clapTimes.timeStamp[i]-clapDevice.clapTimes.timeStamp[i];
-                clientAddresses[id].distances[i] = 0.0343*(timeDifference);
-                Serial.println("distance found "+String(myDistances[i]));
-            }   
-        }
-    }
-    else {
-        addError("id not > -1 "+String(id)+" and clapcounter = "+String(myClapTimes.clapCounter)+"\n");
-        Serial.println("calculating distances");
-        //here somewhere is an error if the orderclaps doesn't do what it's told. especially if there's a zero somewhere. 
-        
-        for (int i = 0; i<myClapTimes.clapCounter; i++) {
-            addError("clap "+String(i)+" and clapcounter  = "+String(myClapTimes.clapCounter)+"\n");
-            if (myClapTimes.timeStamp[i] == 0) {continue;}
-            else {
-                int timeDifference = myClapTimes.timeStamp[i]-clapDevice.clapTimes.timeStamp[i];
-                myDistances[i] = 0.0343*(timeDifference);
-                addError("distance found "+String(myDistances[i])+"\n");
-        }   
-        
-    }
-    }
-    addError("---calculate distances---\n");
-    updateAddressesToWebserver();
-
-}
 
 
 void messaging::deleteClap(int clapId) {
@@ -213,82 +178,15 @@ void messaging::deleteClap(int clapId) {
     pushDataToSendQueue(clapDeviceAddress, MSG_COMMANDS, CMD_DELETE_CLAP, clapId);
 }
 
-void messaging::orderClaps(int id) {
-    message_send_clap_times newClapTimes;
-    memset(&newClapTimes, 0, sizeof(newClapTimes));
-    Serial.println("orderclaps  clapcounter = "+String(myClapTimes.clapCounter));
-   if (id == -1) {
-        for (int i = 0; i < clapDevice.clapTimes.clapCounter; i++) {
-            if (clapDevice.clapTimes.timeStamp[i] == 0) {addError(String(i)+" is zero\n"); return;}
-            for (int j = 0; j<myClapTimes.clapCounter; j++) {
-                if (myClapTimes.timeStamp[j] == 0) {addError(String(j)+" is zero\n");break;}
-                if (myClapTimes.timeStamp[j] <= clapDevice.clapTimes.timeStamp[i]+500000 and myClapTimes.timeStamp[j]>=clapDevice.clapTimes.timeStamp[i] -500000 ) {
-                    addError("fits"+String(myClapTimes.timeStamp[j])+"\n");
-                        newClapTimes.timeStamp[i] = myClapTimes.timeStamp[j];
-                        break;
-                }
-                else if (myClapTimes.timeStamp[j]<=clapDevice.clapTimes.timeStamp[i]+500000) {
-                    addError("smaller\n");
-                }
-                else if (myClapTimes.timeStamp[j]>=clapDevice.clapTimes.timeStamp[i] -500000 ) {
-                    addError("larger\n");
-                }
-                else {
-                    addError("neither" + String(myClapTimes.timeStamp[j])+" - "+String(clapDevice.clapTimes.timeStamp[i])+"\n");
-                }
-            }
-            newClapTimes.clapCounter++;
 
-        }
-        memcpy(&myClapTimes, &newClapTimes, sizeof(newClapTimes));
-        addError("FROM ORDERCLAPS\n");
-        addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
-    }
-    else {
-        for (int i = 0; i < clapDevice.clapTimes.clapCounter; i++) {
-            if (clapDevice.clapTimes.timeStamp[i] == 0) {return;}
-            for (int j = 0; j<clientAddresses[id].clapTimes.clapCounter; j++) {
-                if (clientAddresses[id].clapTimes.timeStamp[j] == 0) {break;}
-                    if (clientAddresses[id].clapTimes.timeStamp[j] < clapDevice.clapTimes.timeStamp[i]+500000 and clientAddresses[id].clapTimes.timeStamp[j]>clapDevice.clapTimes.timeStamp[i] -500000 ) {
-                        newClapTimes.timeStamp[i] = clientAddresses[id].clapTimes.timeStamp[j];
-                        break;
-                }
-            }
-            newClapTimes.clapCounter++;
-        }
-        memset(&clientAddresses[id].clapTimes, 0, sizeof(clientAddresses[id].clapTimes));
-        memcpy(&clientAddresses[id].clapTimes, &newClapTimes, sizeof(newClapTimes));
-    }
-}
 
-bool messaging::arePointsEqual(clap_device_location &point1, clap_device_location &point2) {
-    if (point1.xLoc == point2.xLoc and point1.yLoc == point2.yLoc and point1.zLoc == point2.zLoc) {
-        return true;
-    }
-    return false;
-}
 
-void messaging::unifyDistances(int id) {
-    // todoclapdevice claptimes
-    addError("CalculatingDistances\n");
-    for (int i = 0; i < clapDevice.clapTimes.clapCounter; i++) {
-        float averages = 0.0;
-        int counter = 0;
-       for (int j = i; j < clapDevice.clapTimes.clapCounter; j++) {
-        if (clientAddresses[id].distances[j] == 0) {
-            continue;
-        }
-        if (arePointsEqual(clapDeviceLocations[j], clapDeviceLocations[i])) {
-            averages += clientAddresses[id].distances[j];
-            clientAddresses[id].distances[j] = 0;
-            counter++;
-        }
-       }
-       if (averages != 0 and counter != 0) {
-              clientAddresses[id].distances[i] = averages/counter;
-       }
-    }
-}
+
+
+
+
+
+
 
 
 
@@ -507,6 +405,26 @@ void messaging::resetCalibration() {
     memset (&myDistances, 0, sizeof(myDistances));
     pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_RESET_CALIBRATION);
     globalModeHandler->switchMode(MODE_NEUTRAL);
+}
 
+void messaging::setWakeup(int hours, int minutes, int seconds){
+    wakeupTime.hours = hours;
+    wakeupTime.minutes = minutes;
+    wakeupTime.seconds = seconds;
+}
+void messaging::setGoodNight(int hours, int minutes, int seconds){
+    sleepTime.hours = hours;
+    sleepTime.minutes = minutes;
+    sleepTime.seconds = seconds;
+    int * time = getSystemTime();
+    goToSleepTime = millis()+(int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;
+    Serial.println("Setting good night");
+    Serial.println("Hours"+String(sleepTime.hours));
+    Serial.println("Minutes "+String(sleepTime.minutes));
+    Serial.println("System Hours "+String(time[0]));
+    Serial.println("System minutes "+String(time[1]));
+    Serial.println("now millis "+String(millis()));
+    Serial.println("gotosleeptime "+String(goToSleepTime));
+    Serial.println("diff "+String(goToSleepTime-millis()));
 
 }

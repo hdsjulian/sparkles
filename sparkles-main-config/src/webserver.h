@@ -29,9 +29,14 @@ class webserver {
         bool isSetup = false;
 
     public:
+    bool PdParamsChanged = false;
+    int lag = 48;
+    int threshold = 8;
+    double influence = 0.7;
     int counter = 0;
     webserver(FS* fs);
     void setup(messaging &Messaging, modeMachine &modeHandler);
+    void setWifi();
     void serveStaticFile(AsyncWebServerRequest *request);
     AsyncWebServer server;
     AsyncEventSource events;
@@ -60,6 +65,7 @@ class webserver {
     void statusUpdate(AsyncWebServerRequest *request);
     void statusUpdate();
     void setNeutral(AsyncWebServerRequest *request);
+    void submitPdParams(AsyncWebServerRequest *request);
     void updateMode(String modeText);
     void setFull();
 

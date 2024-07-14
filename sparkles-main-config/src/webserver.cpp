@@ -24,6 +24,10 @@ void webserver::setup(messaging &Messaging, modeMachine &modeHandler) {
 }
 
 
+void webserver::setWifi() {
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(ssid, password);  
+}
 
 
 
@@ -89,7 +93,9 @@ void webserver::configRoutes() {
     server.on("/updateCalibrationStatus", HTTP_GET, [this] (AsyncWebServerRequest *request){
     this->updateCalibrationStatus(request);
     });
-    
+    server.on("/submitPdParams", HTTP_GET, [this] (AsyncWebServerRequest *request){ 
+      this->submitPdParams(request);
+    });   
 
 }
 
@@ -268,10 +274,14 @@ void webserver::resetCalibration(AsyncWebServerRequest *request) {
 }
 void webserver::setTime(AsyncWebServerRequest *request) {
   messageHandler->addError("Called SetTime");
+  int year = request->getParam("year")->value().toInt();
+  int month = request->getParam("month")->value().toInt();
+  int day = request->getParam("day")->value().toInt();
   int hours = request->getParam("hours")->value().toInt();
   int minutes = request->getParam("minutes")->value().toInt();
   int seconds = request->getParam("seconds")->value().toInt();
-  messageHandler->setClock(hours, minutes, seconds);
+  // Assuming setClock can now handle year, month, and day in addition to hours, minutes, and seconds
+  messageHandler->setClock(year, month, day, hours, minutes, seconds);
   request->send(200, "text/html", "OK");
 }
 
@@ -292,8 +302,8 @@ void webserver::commandGoodNight(AsyncWebServerRequest *request) {
   int seconds = request->getParam("seconds")->value().toInt();
   Serial.println("going to sleep at "+String(hours)+":"+String(minutes)); 
   messageHandler->setGoodNight(hours, minutes, seconds);
-  //messageHandler->setGoodNightWakeUp(hours, minutes, seconds, true);
   //messageHandler->pushDataToSendQueue(MSG_SET_SLEEP_WAKEUP, -1);
+  request->send(200, "text/html", "OK");
 }
 void webserver::commandSetWakeup(AsyncWebServerRequest *request) {
   messageHandler->addError("Calling good Morning");
@@ -301,6 +311,7 @@ void webserver::commandSetWakeup(AsyncWebServerRequest *request) {
   int minutes = request->getParam("minutes")->value().toInt();
   int seconds = request->getParam("seconds")->value().toInt();
   messageHandler->setWakeup(hours, minutes, seconds);
+  request->send(200, "text/html", "OK");
 }
 void webserver::updateDeviceList(AsyncWebServerRequest *request) {
   if (request->hasParam("id")) {
@@ -343,4 +354,15 @@ void webserver::sendSyncAsyncAnimation(AsyncWebServerRequest *request) {
 void webserver::updateMode(String modeText) {
   Serial.println("switched to "+modeText);
     events.send(modeText.c_str(), "statusUpdate");
+}
+
+void webserver::submitPdParams(AsyncWebServerRequest *request) {
+  messageHandler->addError("Called SubmitPdParams");
+
+  lag = request->getParam("lag")->value().toInt();
+  threshold = request->getParam("threshold")->value().toInt();
+  influence = request->getParam("influence")->value().toFloat();
+  Serial.println("called SubmitParams lag"+String(lag)+" threshold "+String(threshold)+" influence "+String(influence));
+  PdParamsChanged = true;
+  request->send(200, "text/html", "OK");
 }

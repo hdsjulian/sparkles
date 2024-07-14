@@ -252,13 +252,16 @@
     document.getElementById("setClock").textContent = "Set System Time to: "+n;
   }  
   function sendTime() {
-    var d = new Date();
-    var hours = d.getHours();
-    var minutes = d.getMinutes();
-    var seconds = d.getSeconds();
-    var fetchUrl = '/setTime?hours='+hours+'&minutes='+minutes+'&seconds='+seconds;
-    fetchMe(fetchUrl);
-      }
+  var d = new Date();
+  var year = d.getFullYear();
+  var month = d.getMonth() + 1; // Adding 1 to make the month human-readable (1-12 instead of 0-11)
+  var day = d.getDate();
+  var hours = d.getHours();
+  var minutes = d.getMinutes();
+  var seconds = d.getSeconds();
+  var fetchUrl = '/setTime?year=' + year + '&month=' + month + '&day=' + day + '&hours=' + hours + '&minutes=' + minutes + '&seconds=' + seconds;
+  fetchMe(fetchUrl);
+}
   setInterval(setTime, 1000);
   document.getElementById("setClock").addEventListener('click', sendTime);
   function statusUpdate(obj) {
