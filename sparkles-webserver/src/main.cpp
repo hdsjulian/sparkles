@@ -11,7 +11,7 @@
 // put function declarations here:
 
 
-/*
+
 
 bool timerRecvd = false;
 bool msgRecvd = false;
@@ -93,21 +93,10 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
 int debugcounter = 0;
 int timeadd = 0;
 unsigned long debugtime = 0;
-*/
+
 void setup() {
     Serial.begin(115200);
- /*   #if DEVICE_USED == 2
-    if (DEVICE_USED == 2) {
-    ledcAttach(ledPinRed1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-  ledcAttach(ledPinGreen1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-  ledcAttach(ledPinBlue1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-  ledcAttach(ledPinRed2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-  ledcAttach(ledPinGreen2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-  ledcAttach(ledPinBlue2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-  ledsOff();
-}
-    #endif
-  int startTime = millis();
+   int startTime = millis();
 
   while (!Serial) {
     if ((int)millis() - startTime > 10000) {
@@ -116,7 +105,7 @@ void setup() {
     }
     count = 1000;
   }
-  /*WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA);
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
     return;
@@ -133,15 +122,11 @@ void setup() {
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);
     // put your setup code here, to run once:
-*/
+
 }
 
 
 void loop() {
-  Serial.println(".");
-  delay(1000);
-}
-/*
   int currentMode = stateMachine.getMode();
       messageHandler.handleErrors();
 
@@ -178,6 +163,8 @@ void loop() {
       {
         Serial.print("Webserver still alive ");
         Serial.println(count);
+        WiFi.macAddress(myAddress);
+
         messageHandler.printAddress(myAddress);
         Serial.print("Free Heap: ");
         size_t freeHeap = ESP.getFreeHeap();
@@ -192,4 +179,4 @@ void loop() {
       }
   }
   
-}*/
+}

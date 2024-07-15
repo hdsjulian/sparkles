@@ -1,3 +1,4 @@
+
 #include "Arduino.h"
 
 #include "esp_now.h"
@@ -33,6 +34,7 @@ void messaging::printAddress(const uint8_t * mac_addr){
 }
 
 String messaging::stringAddress(const uint8_t * mac_addr){
+    
     if (memcmp(mac_addr, hostAddress, 6) == 0) {
         return "HOST ADDRESS";
     }
@@ -40,10 +42,20 @@ String messaging::stringAddress(const uint8_t * mac_addr){
         return "CLAP DEVICE";
 
     }
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-    return(String(macStr));
+    String macStr;
+    macStr += String(mac_addr[0], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[1], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[2], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[3], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[4], HEX);
+    macStr += ":";
+    macStr += String(mac_addr[5], HEX);
+
+    return macStr;
 }
 
 
@@ -119,14 +131,17 @@ String messaging::messageCodeToText(int message) {
     case MSG_SEND_CLAP_TIMES:
         out = "MSG_SEND_CLAP_TIMES";
         break;
-    case MSG_ANIMATION:
-        out = "MSG_ANIMATION";
-        break;
     case MSG_SWITCH_MODE:
         out = "MSG_SWITCH_MODE";
         break;
     case MSG_DISTANCE:
         out = "MSG_DISTANCE";
+        break;
+    case MSG_SET_TIME:
+        out = "MSG_SET_TIME";
+        break;
+    case MSG_ANIMATION:
+        out = "MSG_ANIMATION";
         break;
     case MSG_NOCLAPFOUND:
         out = "MSG_NOCLAPFOUND";
@@ -146,17 +161,20 @@ String messaging::messageCodeToText(int message) {
     case MSG_WAKEUP:
         out = "MSG_WAKEUP";
         break;
-    case MSG_SET_TIME:
-        out = "MSG_SET_TIME";
-        break;
     case MSG_SET_POSITIONS:
         out = "MSG_SET_POSITIONS";
         break;
-    case MSG_BATTERY_STATUS:
-        out = "MSG_BATTERY_STATUS";
+    case MSG_STATUS:
+        out = "MSG_STATUS";
         break;
     case MSG_SET_SLEEP_WAKEUP:
         out = "MSG_SET_SLEEP_WAKEUP";
+        break;
+    case MSG_SEND_SINGLE_CLAP:
+        out = "MSG_SEND_SINGLE_CLAP";
+        break;
+    case MSG_TIMESYNC:
+        out = "MSG_TIMESYNC";
         break;
     case CMD_START:
         out = "CMD_START";
@@ -200,8 +218,15 @@ String messaging::messageCodeToText(int message) {
     case CMD_RESET_SYSTEM:
         out = "CMD_RESET_SYSTEM";
         break;
-    case CMD_GET_BATTERY_STATUS:
-        out = "CMD_GET_BATTERY_STATUS";
+    case CMD_GET_STATUS:
+        out = "CMD_GET_STATUS";
+        break;
+    case CMD_GET_CLAP_TIMES:
+        out = "CMD_GET_CLAP_TIMES";
+        break;
+
+    case CMD_MASTERCLAP_OCCURRED:
+        out = "CMD_MASTERCLAP_OCCURRED";
         break;
     default:
         out = "UNKNOWN_MESSAGE";
@@ -275,9 +300,11 @@ void messaging::handleSent() {
         message_sent = "";
     } 
 }
-void messaging::addError(String error) {
+void messaging::addError(String error, bool noNL) {
     error_message += error;
-
+    if (noNL == false) {
+        error_message += "\n";
+    }
 }
 void messaging::addSent(String sent) {
     message_sent += sent;
@@ -290,6 +317,7 @@ void messaging::receiveTimer(int messageArriveTime) {
   //wenn die letzte message maximal 300 mikrosekunden abweicht und der letzte delay auch nicht mehr als 1500ms her war, dann muss die msg korrekt sein
   int difference = messageArriveTime - lastTime;
   lastDelay = timerMessage.lastDelay;
+  announceCounter = 0;
   addError("Difference: "+String(difference)+"\n");
   addError("Message Arrive Time "+String(messageArriveTime)+"\n");
   addError("Last Time "+String(lastTime)+"\n");
@@ -325,10 +353,13 @@ void messaging::receiveTimer(int messageArriveTime) {
       //timeOffset = messageArriveTime-timerMessage.sendTime-delayAvg/2;
       gotTimerMessage.timerOffset = timeOffset;
       gotTimer = true;
+      #if DEVICE_MODE != WEBSERVER
       handleLed->setTimeOffset(timeOffset, offsetMultiplier);
+      handleLed->flash(125,0,0, 200, 3, 300);  
+      gotTimerMessage.batteryPercentage = getBattery();
+      #endif
       pushDataToSendQueue(hostAddress, MSG_GOT_TIMER, -1);
       gotTimer = true;
-      handleLed->flash(125,0,0, 200, 3, 300);
       globalModeHandler->switchMode(MODE_NEUTRAL);
       addError("switched mode to Neutral");
 
@@ -352,29 +383,29 @@ void messaging::receiveTimer(int messageArriveTime) {
 }
 
 
-void messaging::pushDataToReceivedQueue(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
     std::lock_guard<std::mutex> lock(receiveQueueMutex); // Lock the mutex
-    dataQueue.push({mac, incomingData, len, msgReceiveTime}); // Push the received data into the queue
+    dataQueue.push(ReceivedData{senderAddress, incomingData, len, msgReceiveTime}); // Push the received data into the queue
 }
-
+#if DEVICE_MODE != WEBSERVER
 void messaging::addClap(unsigned long timeStamp) {
     //todo refactor
-    #if DEVICE_MODE == WEBSERVER || DEVICE_MODE == CLIENT
-    
-    if (sendClapTimes.clapCounter < NUM_CLAPS) {
-        sendClapTimes.timeStamp[sendClapTimes.clapCounter] = timeStamp-timeOffset;
+       //todo send clap times / my clap times
+    if (myClapTimes.clapCounter < NUM_CLAPS) {
+        addError("clap occurred at "+String(timeStamp+timeOffset)+"\n");
+        myClapTimes.timeStamp[myClapTimes.clapCounter] = timeStamp+timeOffset;
     }
     else {
         addError("TOO MANY CLAPS");
     }
-    sendClapTimes.clapCounter++;
-    #else
-        if (clientAddresses[0].clapTimes.clapCounter < NUM_CLAPS) {
-        clientAddresses[0].clapTimes.timeStamp[clientAddresses[0].clapTimes.clapCounter] = timeStamp-timeOffset;
+    myClapTimes.clapCounter++;
+    if (DEVICE_MODE == MAIN) {
+        updateAddressesToWebserver();
     }
-    clientAddresses[0].clapTimes.clapCounter++;
-    #endif
+
 }
+#endif
+
 
 int messaging::getAddressId(const uint8_t * address) {
     for (int i = 0; i < NUM_DEVICES; i++) {
@@ -414,14 +445,18 @@ int messaging::addPeer(uint8_t * address) {
     
 }
 void messaging::goToSleep(unsigned long sleepTime) {
+    Serial.println("time is "+String(millis()));
+    Serial.println("going to sleep for "+String(sleepTime)); 
     esp_sleep_enable_timer_wakeup(sleepTime);
     esp_light_sleep_start();
+    Serial.println("time is "+String(millis()));
     int randNum = random(1000, 5000);
     delay(randNum);
     pushDataToSendQueue(hostAddress, MSG_WAKEUP, -1);
 }
-void messaging::setBattery() {
-    analogReadResolution(12);
+
+float messaging::getBattery() {
+        analogReadResolution(12);
     analogSetPinAttenuation(BATTERY_PIN, ADC_11db);  
     int adcValue = analogRead(BATTERY_PIN); // Read the ADC value
     float voltage = adcValue * (4.2 / 3220.0);
@@ -438,26 +473,21 @@ void messaging::setBattery() {
         percentage = 0.0;
     }
     percentage = round(percentage * 100) / 100;
-    batteryStatusMessage.batteryStatus = percentage;
-
+    return percentage;
 }
 
+void messaging::setBattery() {
+    float percentage = getBattery();
+    statusMessage.batteryPercentage = percentage;
 
-void messaging::addClap(unsigned long timeStamp) {
-    //todo refactor
-    #if DEVICE_MODE == WEBSERVER || DEVICE_MODE == CLIENT
-    
-    if (sendClapTimes.clapCounter < NUM_CLAPS) {
-        sendClapTimes.timeStamp[sendClapTimes.clapCounter] = timeStamp-timeOffset;
+}
+void messaging::setAnimation(message_animate* messageAnimate) {
+    memcpy(&animationMessage, messageAnimate, sizeof(animationMessage));
+}   
+
+void messaging::printTimerStuff() {
+    if (gotTimer == true) {
+        Serial.println("Got Timer, timer offset = "+String(timeOffset)+" and time right now "+String(micros()));
     }
-    else {
-        addError("TOO MANY CLAPS");
-    }
-    sendClapTimes.clapCounter++;
-    #else
-        if (clientAddresses[0].clapTimes.clapCounter < NUM_CLAPS) {
-        clientAddresses[0].clapTimes.timeStamp[clientAddresses[0].clapTimes.clapCounter] = timeStamp-timeOffset;
-    }
-    clientAddresses[0].clapTimes.clapCounter++;
-    #endif
+
 }

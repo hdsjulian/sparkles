@@ -1,4 +1,4 @@
-/*
+
 #define DEVICE_MODE 2
 #include <messaging.h>
 #include <helperFuncs.h>
@@ -172,4 +172,3 @@ void messaging::sendSingleClap(unsigned long buttonPressTime){
   esp_now_send(broadcastAddress, (uint8_t *) &commandMessage, sizeof(commandMessage));
 }
 
-*/
