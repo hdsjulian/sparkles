@@ -253,7 +253,7 @@ void messaging::timeoutRetryHandler() {
             break;
         case MODE_SENDING_TIMER:
                 globalModeHandler->switchMode(MODE_NEUTRAL);
-            break;
+            break; 
         
     }
 

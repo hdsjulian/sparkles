@@ -9,9 +9,12 @@ void messaging::calculateDistances(int id) {
     addError("Calculate distances with id "+String(id)+" called \n");
     orderClaps(id);
     addError("---- after orderclaps----\n");
-
+    addError("---for clap device----");
     addError(printClapTimes(clapDevice.clapTimes.timeStamp, NUM_CLAPS));
+    addError("---for host device----");
     addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
+    addError("---for client device "+String(id)+"----");
+    addError(printClapTimes(clientAddresses[id].clapTimes.timeStamp, NUM_CLAPS));
     if (id > -1) {
         addError("id > -1 "+String(id)+"\n");
         for (int i = 0; i<clientAddresses[id].clapTimes.clapCounter; i++) {
@@ -19,13 +22,13 @@ void messaging::calculateDistances(int id) {
             else {
                 int timeDifference = clientAddresses[id].clapTimes.timeStamp[i]-clapDevice.clapTimes.timeStamp[i];
                 clientAddresses[id].distances[i] = 0.0343*(timeDifference);
-                Serial.println("distance found "+String(myDistances[i]));
+                addError("distance for "+String(id)+" found "+String(clientAddresses[id].distances[i]));
             }   
         }
     }
     else {
         addError("id not > -1 "+String(id)+" and clapcounter = "+String(myClapTimes.clapCounter)+"\n");
-        Serial.println("calculating distances");
+        addError("calculating for host", false);
         //here somewhere is an error if the orderclaps doesn't do what it's told. especially if there's a zero somewhere. 
         
         for (int i = 0; i<myClapTimes.clapCounter; i++) {
@@ -34,12 +37,13 @@ void messaging::calculateDistances(int id) {
             else {
                 int timeDifference = myClapTimes.timeStamp[i]-clapDevice.clapTimes.timeStamp[i];
                 myDistances[i] = 0.0343*(timeDifference);
-                addError("distance found "+String(myDistances[i])+"\n");
+                addError("distance for host found "+String(myDistances[i])+"\n");
         }   
         
     }
     }
     addError("---calculate distances---\n");
+    addError("updating to webserver", false);
     updateAddressesToWebserver();
 
 }
@@ -48,7 +52,7 @@ void messaging::calculateDistances(int id) {
 void messaging::orderClaps(int id) {
     message_send_clap_times newClapTimes;
     memset(&newClapTimes, 0, sizeof(newClapTimes));
-    Serial.println("orderclaps  clapcounter = "+String(myClapTimes.clapCounter));
+    addError("orderclaps  clapcounter = "+String(myClapTimes.clapCounter), false);
    if (id == -1) {
         for (int i = 0; i < clapDevice.clapTimes.clapCounter; i++) {
             if (clapDevice.clapTimes.timeStamp[i] == 0) {addError(String(i)+" is zero\n"); return;}
@@ -77,6 +81,7 @@ void messaging::orderClaps(int id) {
         addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
     }
     else {
+        addError("Orderclaps called for "+String(id)+"\n");
         for (int i = 0; i < clapDevice.clapTimes.clapCounter; i++) {
             if (clapDevice.clapTimes.timeStamp[i] == 0) {return;}
             for (int j = 0; j<clientAddresses[id].clapTimes.clapCounter; j++) {

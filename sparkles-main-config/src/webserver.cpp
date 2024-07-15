@@ -107,7 +107,7 @@ void webserver::handleClientConnect(AsyncEventSourceClient *client) {
 
 void webserver::commandCalibrate(AsyncWebServerRequest *request) {
   messageHandler->addError("Called Calibrate");
-  if (stateMachine->getMode() != MODE_NEUTRAL or stateMachine->getMode() == MODE_CALIBRATE) {  
+  if (stateMachine->getMode() != MODE_NEUTRAL or stateMachine->getMode() == MODE_CALIBRATE or stateMachine->getMode()== MODE_CLAPPING) {  
     request->send(400);
     Serial.println("sending 400");
     return;

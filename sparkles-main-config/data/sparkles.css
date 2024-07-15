@@ -10,7 +10,6 @@ html {
     margin: 0;
   }
   .topnav {
-    overflow: hidden;
     background-color: #2f4468;
     color: white;
     font-size: 1.7rem;
@@ -21,7 +20,6 @@ html {
     padding: 14px 16px;
   }
   .hamburger {
-    display: none;
     cursor: pointer;
     padding: 14px 16px;
     position: absolute;

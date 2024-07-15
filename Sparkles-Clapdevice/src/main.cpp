@@ -1,27 +1,16 @@
-v#include <Arduino.h>
-#include <esp_now.h>
-#include <WiFi.h>
-//#include <myDefines.h>
-//#include <ESPAsyncTCP.h>
-#include <queue>
-#include <mutex>
-#include <cstdint>
-//#include <helperFuncs.h>
-//#include <messaging.h>
-//#include <stateMachine.h>
-// put function declarations here:
-int myFunction(int, int);
+#include <Arduino.h>
+//#include <esp_now.h>
+//#include <WiFi.h>
 
 void setup() {
+  Serial.begin(115200);
   // put your setup code here, to run once:
-  int result = myFunction(2, 3);
 }
 
 void loop() {
+  Serial.println("hallo");
+  delay(1000);
   // put your main code here, to run repeatedly:
 }
 
 // put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
-}

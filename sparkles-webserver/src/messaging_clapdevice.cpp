@@ -1,4 +1,4 @@
-
+/*
 #define DEVICE_MODE 2
 #include <messaging.h>
 #include <helperFuncs.h>
@@ -41,16 +41,23 @@ void messaging::pushDataToSendQueue(const uint8_t * address, int messageId, int 
 
 
 void messaging::processDataFromReceivedQueue() {
-    std::lock_guard<std::mutex> lock(receiveQueueMutex); // Lock the mutex
-    while (!dataQueue.empty()) {
-        ReceivedData receivedData = dataQueue.front(); // Get the front element
 
-        // Process the received data here...
-        dataQueue.pop(); // Remove the front element from the queue
-        
-        handleReceive(receivedData.mac, receivedData.incomingData, receivedData.len, receivedData.msgReceiveTime);
+    std::vector<ReceivedData> receivedDataList; // To store data temporarily
+    {
+        std::lock_guard<std::mutex> lock(receiveQueueMutex); // Lock the mutex
+        while (!dataQueue.empty()) {
+            ReceivedData receivedData = dataQueue.front(); // Get the front element
+            // Process the received data here...
+            dataQueue.pop(); // Remove the front element from the queue
+            receivedDataList.push_back(receivedData);
+        }
+    } // Mutex is unlocked here
+
+    // Call handleReceive outside the mutex scope
+    for (const auto& receivedData : receivedDataList) {
+        handleReceive(receivedData.senderAddress, receivedData.incomingData, receivedData.len, receivedData.msgReceiveTime);
     }
-}  
+}
 
 void messaging::processDataFromSendQueue() {
   debugVariable = 4;
@@ -99,7 +106,7 @@ String messaging::printClapTimes(unsigned long* array, int size) {
 }
 
 
-void messaging::handleReceive(const esp_now_recv_info * mac, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
   msgCounter++;
   String jsonString;
   JsonDocument receivedJson;
@@ -152,6 +159,7 @@ void messaging::addClap(unsigned long timeStamp) {
     sendSingleClap(timeStamp);
     globalModeHandler->switchMode(MODE_NEUTRAL);
     addError("send clap times is "+String(printClapTimes(sendClapTimes.timeStamp, NUM_CLAPS)), false);
+    Serial.println("whyyyy");
 
 }
 
@@ -160,6 +168,8 @@ void messaging::sendSingleClap(unsigned long buttonPressTime){
   Serial.println("NOw: "+String(micros()+timeOffset));
   sendSingleClapMessage.clapCounter = sendClapTimes.clapCounter;
   esp_now_send(hostAddress, (uint8_t *) &sendSingleClapMessage, sizeof(sendSingleClapMessage));
-
+  commandMessage.messageId = CMD_MASTERCLAP_OCCURRED;
+  esp_now_send(broadcastAddress, (uint8_t *) &commandMessage, sizeof(commandMessage));
 }
 
+*/

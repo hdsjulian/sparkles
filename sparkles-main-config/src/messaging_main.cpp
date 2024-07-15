@@ -59,7 +59,7 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
     //Serial.println(messageCodeToText(incomingData[0]));
     addError(" from ");
     if (senderAddress!=NULL) {
-        //addError(String(mac->src_addr[0])+":"+String(mac->src_addr[1])+":"+String(mac->src_addr[2])+":"+String(mac->src_addr[3])+":"+String(mac->src_addr[4])+":"+String(mac->src_addr[5]));
+        addError(stringAddress(senderAddress));
         addError("\n");
     }
     else {
@@ -99,7 +99,7 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
             handleGotTimer(incomingData, senderAddress);
             break; 
         case MSG_SEND_CLAP_TIMES:
-        Serial.println("1");
+            addError("calling receive clap times");
             memcpy(&sendClapTimes, incomingData, sizeof(sendClapTimes));
             
             receiveClapTimes(senderAddress);
@@ -147,15 +147,17 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
         case MSG_SEND_SINGLE_CLAP:
             addError("Got a single clap message at "+String(micros())+"\n");
             memcpy(&sendSingleClapMessage, incomingData, sizeof(sendSingleClapMessage));
-            addError("Single clap timestamp "+String(sendSingleClapMessage.timeStamp)+"\n");
-            addError("Clap Counter: "+String(sendSingleClapMessage.clapCounter)+"\n");
-            addError("Difference "+String(micros() - sendSingleClapMessage.timeStamp)+"\n");
-            clapDevice.clapTimes.timeStamp[sendSingleClapMessage.clapCounter] = sendSingleClapMessage.timeStamp;
-            updateAddressesToWebserver();
-            jsonString = "{\"status\" : \"2\", \"clapId\" : "+String(sendSingleClapMessage.clapCounter)+", \"timeStamp\" : "+String(sendSingleClapMessage.timeStamp)+"}";
-            webServer->events.send(jsonString.c_str(), "clapCheck");
             globalModeHandler->switchMode(MODE_MASTERCLAP_OCCURRED);
-            pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_MASTERCLAP_OCCURRED);
+            break;
+        case MSG_TIMESYNC:
+            break;
+            memcpy(&timeSyncMessage, incomingData, sizeof(timeSyncMessage));
+            addError("My Micros: "+String(micros()), false);
+            addError("Client Micros: "+String(timeSyncMessage.myTime), false);
+            addError("Client Offset: "+String(timeSyncMessage.offset), false);
+            addError("Estimated: "+String(timeSyncMessage.myTime+timeSyncMessage.offset), false);
+            addError("difference: " +String((int)timeSyncMessage.myTime+(int)timeSyncMessage.offset+clientAddresses[getAddressId(senderAddress)].delay*2-(int)micros()), false);
+            addError("delay: "+String(clientAddresses[getAddressId(senderAddress)].delay), false);
             break;
         default: 
             addError("message not recognized: ");
@@ -182,7 +184,18 @@ void messaging::deleteClap(int clapId) {
 
 
 
+void messaging::handleSingleClap() {
+    String jsonString;
+    addError("Single clap timestamp "+String(sendSingleClapMessage.timeStamp)+"\n");
+    addError("Clap Counter: "+String(sendSingleClapMessage.clapCounter)+"\n");
+    addError("Difference "+String(micros() - sendSingleClapMessage.timeStamp)+"\n");
+    clapDevice.clapTimes.timeStamp[sendSingleClapMessage.clapCounter] = sendSingleClapMessage.timeStamp;
+    updateAddressesToWebserver();
+    jsonString = "{\"status\" : \"2\", \"clapId\" : "+String(sendSingleClapMessage.clapCounter)+", \"timeStamp\" : "+String(sendSingleClapMessage.timeStamp)+"}";
+    webServer->events.send(jsonString.c_str(), "clapCheck");
+    pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_MASTERCLAP_OCCURRED);
 
+}
 
 
 
@@ -193,19 +206,17 @@ void messaging::deleteClap(int clapId) {
 
 
 void messaging::receiveClapTimes(uint8_t *senderAddress) {
-    Serial.println(2);
     if (memcmp(senderAddress, clapDeviceAddress, 6) == 0) {
-        Serial.println(3);
+        addError("receive Clap times from clap device", false);
         memcpy(&clapDevice.clapTimes, &sendClapTimes, sizeof(clapDevice.clapTimes));
         if (addressCounter > 0) {
-            Serial.println(4);
             getClapTimes(0);
         }
         else {
             globalModeHandler->switchMode(MODE_NEUTRAL);    
         }
         
-        addError("from within receiveClapTimes");
+        addError("from within receiveClapTimes", false);
         addError(printClapTimes(clapDevice.clapTimes.timeStamp, NUM_CLAPS));
         addError(printClapTimes(myClapTimes.timeStamp, NUM_CLAPS));
         timeoutRetry.currentId = 0;
@@ -216,6 +227,7 @@ void messaging::receiveClapTimes(uint8_t *senderAddress) {
     }
     else {
         int id = getAddressId(senderAddress);
+        addError("receive Clap times from  device "+String(id), false);
         if (id != -1) {
             memcpy(&clientAddresses[id].clapTimes, &sendClapTimes, sizeof(clientAddresses[id].clapTimes));
             clientAddresses[id].active = ACTIVE;
@@ -321,7 +333,6 @@ String messaging::allClientAddressesToJson() {
   // Populate the JSON array with client addresses
   for (int i = 0; i < NUM_DEVICES; i++) {
     if (memcmp(clientAddresses[i].address, emptyAddress, 6) == 0) {
-        Serial.println("breaking for "+String(i));
         break;
     }
     JsonObject clientObj = addressesArray.add<JsonObject>();
@@ -343,6 +354,14 @@ void messaging::updateDevice(int id) {
 void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddress) {
     addError("Handling Got Timer\n");
     memcpy(&gotTimerMessage, incomingData, sizeof(gotTimerMessage));
+    addError("Arrive time"+ String(micros()), false);
+    addError("SendTime"+String(gotTimerMessage.sendTime), false);
+    addError("Offset "+String(gotTimerMessage.timerOffset), false);
+    addError("Delay "+String(gotTimerMessage.delayAvg), false);
+    unsigned long expect = gotTimerMessage.sendTime+gotTimerMessage.delayAvg+gotTimerMessage.timerOffset;
+    addError("expected "+String(expect));
+    addError("Difference "+String(micros()-expect));
+
     if (memcmp(timerReceiver, clapDeviceAddress, 6) != 0) {
         removePeer(timerReceiver);
         int addressId = getAddressId(macAddress);

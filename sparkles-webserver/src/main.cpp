@@ -2,14 +2,16 @@
 #include <esp_now.h>
 #include <WiFi.h>
 #include <myDefines.h>
-//#include <ESPAsyncTCP.h>
 #include <queue>
 #include <mutex>
 #include <cstdint>
-#include <helperFuncs.h>
+
 #include <messaging.h>
 #include <stateMachine.h>
 // put function declarations here:
+
+
+/*
 
 bool timerRecvd = false;
 bool msgRecvd = false;
@@ -83,16 +85,18 @@ void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int
   messageHandler.printAddress(mac->src_addr);
   messageHandler.messageCodeToText(incomingData[0]);
   }
-  messageHandler.pushDataToReceivedQueue(mac, incomingData, len, micros());
+  uint8_t senderAddress[6];
+  memcpy(senderAddress, mac->src_addr, 6);
+  messageHandler.pushDataToReceivedQueue(senderAddress, incomingData, len, micros());
 }
 
 int debugcounter = 0;
 int timeadd = 0;
 unsigned long debugtime = 0;
-
+*/
 void setup() {
     Serial.begin(115200);
-    #if DEVICE_USED == 2
+ /*   #if DEVICE_USED == 2
     if (DEVICE_USED == 2) {
     ledcAttach(ledPinRed1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
   ledcAttach(ledPinGreen1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
@@ -112,7 +116,7 @@ void setup() {
     }
     count = 1000;
   }
-  WiFi.mode(WIFI_STA);
+  /*WiFi.mode(WIFI_STA);
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
     return;
@@ -129,12 +133,15 @@ void setup() {
   esp_now_register_send_cb(OnDataSent);
   esp_now_register_recv_cb(OnDataRecv);
     // put your setup code here, to run once:
-
+*/
 }
 
 
 void loop() {
-
+  Serial.println(".");
+  delay(1000);
+}
+/*
   int currentMode = stateMachine.getMode();
       messageHandler.handleErrors();
 
@@ -151,6 +158,7 @@ void loop() {
     if (buttonPressed == true) {
       buttonPressed = false;
       messageHandler.addClap(buttonPressTime);
+      
       Serial.println("CLAP! BPT: "+String(buttonPressTime) );
       stateMachine.switchMode(MODE_NEUTRAL);
       //messageHandler.sendSingleClap(buttonPressTime);
@@ -184,4 +192,4 @@ void loop() {
       }
   }
   
-}
+}*/

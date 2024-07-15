@@ -139,6 +139,26 @@ int testingMode = 0;
 int count = 0;
 bool didIreset = true;
 
+
+void detectClaps(void *pvParameters) {
+    peakDetection.begin(48, 9, 0.6);   
+    while (1) {
+      double data = (double)analogRead(audioPin)/2048-1;
+      peakDetection.add(data); 
+      int peak = peakDetection.getPeak(); 
+      double filtered = peakDetection.getFilt(); 
+      if (peak == -1 and millis() > lastClap+1000) {
+        messageHandler.addClap(micros());
+        lastClap = millis();
+        if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+          modeHandler.switchMode(MODE_NEUTRAL);
+          lastClap = 0;
+          vTaskDelete(NULL);
+        }
+    }
+  }
+}
+
 void OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     msgReceiveTime = micros();
     if (incomingData[0] != MSG_ANNOUNCE) {
@@ -147,7 +167,10 @@ void OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int 
       messageHandler.addError("RECEIVED MESSAGE "+messageHandler.messageCodeToText(incomingData[1])+" from "+messageHandler.stringAddress(mac->src_addr)+"\n");
     }
     } 
-    messageHandler.pushDataToReceivedQueue(mac, incomingData, len, msgReceiveTime);
+  uint8_t senderAddress[6];
+  memcpy(senderAddress, mac->src_addr, 6);
+  messageHandler.pushDataToReceivedQueue(senderAddress, incomingData, len, msgReceiveTime);
+
 }
 
 
@@ -212,11 +235,11 @@ void setup() {
   Serial.println(peerNum.total_num);
    Serial.println("huch");
   pinMode(audioPin, INPUT); 
-  peakDetection.begin(48, 9, 0.6);   
   delay(1000);
   timerDings = micros();
   lastFlash = 0;
   WiFi.macAddress(myAddress);
+    PeakDetection peakDetection; 
 
 }
 
@@ -234,33 +257,10 @@ void loop() {
   handleLed.run();
   if (modeHandler.getMode() == MODE_CALIBRATE && lastClap == 0) 
   {
-    lastClap == millis();
+    lastClap = millis();
+    xTaskCreate(detectClaps, "detectClaps", 10000, NULL, 6, NULL);
   }
-  if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
-    double data = (double)analogRead(audioPin)/2048-1;
-    peakDetection.add(data); 
-    int peak = peakDetection.getPeak(); 
-    double filtered = peakDetection.getFilt(); 
-    //Serial.println(sensorValue);
-    if (peak == -1 and millis() > lastClap+1000) {
-      messageHandler.addClap(micros());
-      lastClap = millis();
-      messageHandler.ClapTime = micros();
-      handleLed.flash(125, 0, 55, 200, 1, 50);
-      if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
-        modeHandler.switchMode(MODE_NEUTRAL);
-      }
-    }
-    if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
-      if (clapStop == 0) {
-        clapStop = millis();
-      }
-      if (millis() > clapStop+500) {
-        modeHandler.switchMode(MODE_NEUTRAL);
-        clapStop = 0;
-      }
-    }
-  }
+
   else if (millis()>(lastTick+5000)) 
   {
         //handleLed.flash(0, 255, 0, 200, 1, 50);
@@ -271,7 +271,7 @@ void loop() {
     lastTick = millis();
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
-
+    //messageHandler.sendTimeSync();
   }
 
   }

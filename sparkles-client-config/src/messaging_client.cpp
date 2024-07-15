@@ -31,9 +31,8 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
 
 
 
-void messaging::handleReceive(uint8_t senderAddress[6], const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
-    if (memcmp(senderAddress, hostAddress, 6) !=0 and incomingData[0] != MSG_ANNOUNCE) {
-        forceDebug();
+void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+    if (memcmp(senderAddress, hostAddress, 6) !=0 and memcmp(senderAddress, clapDeviceAddress, 6) !=0 ) {
         addError("received command from untrusted source\n");
         return;
     }
@@ -213,4 +212,10 @@ void messaging::handleReceive(uint8_t senderAddress[6], const uint8_t *incomingD
 
             break;
     }
+}
+
+void messaging::sendTimeSync() {
+    timeSyncMessage.offset = timeOffset;
+    timeSyncMessage.myTime = micros();
+    pushDataToSendQueue(hostAddress, MSG_TIMESYNC, -1);
 }

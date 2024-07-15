@@ -83,6 +83,10 @@ String modeMachine::modeToText(int mode) {
     case MODE_GET_CALIBRATION_DATA:
         out += "MODE_GET_CALIBRATION_DATA";
         break;        
+    case MODE_CLAPPING:
+        out += "MODE_CLAPPING";
+    break;        
+
     default: 
         out += "Mode unknown ";
         out += String(mode); // Convert 'mode' integer to String and concatenate

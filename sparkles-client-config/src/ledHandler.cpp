@@ -80,9 +80,6 @@ void ledHandler::ledsOff() {
 
 }
 void ledHandler::flash(int r, int g, int b, int duration, int reps, int pause) {
-  if (DEVICE == D1) {
-    return;
-  }
   for (int i = 0; i < reps; i++ ){
     ledcFade(ledPinRed1, 0, r, duration);
     ledcFade(ledPinGreen1, 0, g, duration);

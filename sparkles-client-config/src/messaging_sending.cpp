@@ -162,6 +162,9 @@ void messaging::processDataFromSendQueue() {
             case MSG_STATUS:
                 esp_now_send(sendData.address, (uint8_t*) &statusMessage, sizeof(statusMessage));
                 break;
+            case MSG_TIMESYNC:
+                esp_now_send(sendData.address, (uint8_t*) &timeSyncMessage, sizeof(timeSyncMessage));
+                break;
             default: 
                 addError("Message to send: unknown\n");
                 break;

@@ -68,6 +68,9 @@ uint32_t lastClapTime;
 //receive addresses
 //client_address clientAddresses[NUM_DEVICES];
 
+
+
+
 void IRAM_ATTR onTimer()
 {   
  msgSendTime = micros();
@@ -101,8 +104,8 @@ void IRAM_ATTR onTimer()
 
 
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-    if (incomingData[0] == MSG_TIME_THING) {
-        messageHandler.addError("time thing arrived at "+String(micros()));
+    if (incomingData[0] == MSG_TIMESYNC) {
+        messageHandler.addError("arriveTime: "+String(micros()), false);
     }
   uint8_t senderAddress[6];
   memcpy(senderAddress, mac->src_addr, 6);
@@ -182,12 +185,11 @@ void setup() {
     audioPin = 35; 
   }
   pinMode(audioPin, INPUT); 
-  peakDetection.begin(48, 9, 0.6);   
   lastTick = millis(); 
   timerCounter = 0;
   WiFi.macAddress(myAddress);
   pinMode(SWITCH_PIN, INPUT_PULLDOWN); 
-
+  peakDetection.begin(48, 9, 0.6);   
   //randomSeed(analogRead(33));
   myWebserver.PdParamsChanged = true;
 }
@@ -230,6 +232,7 @@ void loop() {
       peakDetection.begin(myWebserver.lag, myWebserver.threshold, myWebserver.influence);
       peakDetection.printParams();
     }
+
      data = (double)analogRead(audioPin)/2048-1;
     peakDetection.add(data); 
     int peak = peakDetection.getPeak(); 
@@ -243,44 +246,45 @@ void loop() {
       handleLed.flash(125, 0, 55, 150, 1, 50);
     }
   }
-  if (modeHandler.getMode() == MODE_CALIBRATE && lastClap == 0) {
-    lastClap = millis();
+  if (modeHandler.getMode() == MODE_CALIBRATE) {
+  modeHandler.switchMode(MODE_CLAPPING);
   }
-  if (modeHandler.getMode() == MODE_CALIBRATE || modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED ) {
-    double data = (double)analogRead(audioPin)/2048-1;
+  if (modeHandler.getMode() == MODE_CLAPPING or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+     double data = (double)analogRead(audioPin)/2048-1;
     peakDetection.add(data); 
     int peak = peakDetection.getPeak(); 
     double filtered = peakDetection.getFilt(); 
     //Serial.println(sensorValue);
     if (peak == -1 and millis() > lastClap+1000) {
       messageHandler.addClap(micros());
+      Serial.println("Happened "+String(peakDetection.ago)+" microseconds ago");
+      Serial.println("avg at clap "+String(peakDetection.avgatclap));
+      Serial.println("data: "+String(data));
+      Serial.println("Mode "+String(modeHandler.getMode()));
       lastClap = millis();
-      messageHandler.ClapTime = micros();
-      handleLed.flash(125, 0, 55, 200, 1, 50);
+      handleLed.flash(125, 0, 55, 150, 1, 50);
       if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
         modeHandler.switchMode(MODE_NEUTRAL);
         lastClap = 0;
+        messageHandler.handleSingleClap();
       }
     }
-    if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
-      if (clapStop == 0) {
-        clapStop = millis();
-      }
-      if (millis() > clapStop+500) {
-        modeHandler.switchMode(MODE_NEUTRAL);
-        clapStop = 0;
-        lastClap = 0;
-      }
-    }
+  } 
+  else if (lastTick+5000 < millis()  ) {
+  messageHandler.handleErrors();
+  lastTick = millis();
+  modeHandler.printCurrentMode();
+  cycleCounter++;
+  Serial.print("-----\nMain still Alive ");
+  Serial.println(cycleCounter);
   }
- else if (lastTick+5000 < millis()) {
-    messageHandler.handleErrors();
-    modeHandler.printCurrentMode();
-    lastTick = millis();
-    cycleCounter++;
-    Serial.print(DEVICE_MODE);
-    Serial.print("-----\nMain still Alive ");
-    Serial.println(cycleCounter);
+  else if (false){
+   
+    
+    
+    
+    
+    
     Serial.println("My Address: "+messageHandler.stringAddress(myAddress));
     Serial.println("---All addresses---- "+String(messageHandler.addressCounter));
     messageHandler.printAllAddresses();
