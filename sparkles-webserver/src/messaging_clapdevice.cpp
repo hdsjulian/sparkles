@@ -159,7 +159,6 @@ void messaging::addClap(unsigned long timeStamp) {
     sendSingleClap(timeStamp);
     globalModeHandler->switchMode(MODE_NEUTRAL);
     addError("send clap times is "+String(printClapTimes(sendClapTimes.timeStamp, NUM_CLAPS)), false);
-    Serial.println("whyyyy");
 
 }
 

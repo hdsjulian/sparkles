@@ -34,7 +34,8 @@ class ledHandler {
         int yPos = 0;
         int zPos = 0;
         int offsetMultiplier;
-
+        int maxX = 0;
+        int maxY = 0;        
         bool once = false;
 
     public:

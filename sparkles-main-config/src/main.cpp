@@ -51,9 +51,7 @@ bool isTimerSet = false;
 unsigned long msgSendTime;
 uint32_t msgArriveTime;
 uint32_t msgReceiveTime;
-int timerCounter = 0;
 int lastDelay = 0;
-int oldTimerCounter = 0;
 int delayAvg = 0;
 
 
@@ -64,7 +62,7 @@ int lastTick = 0;
 int clapStop = 0;
 uint32_t lastClapTime;
 
-
+uint32_t lastBroadcastTimer = 0;
 //receive addresses
 //client_address clientAddresses[NUM_DEVICES];
 
@@ -74,31 +72,48 @@ uint32_t lastClapTime;
 void IRAM_ATTR onTimer()
 {   
  msgSendTime = micros();
- if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER) {
+ if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER and modeHandler.getMode() != MODE_BROADCAST_TIMER && modeHandler.getMode() != MODE_PRE_CALIBRATION_BROADCAST) {
   return;
  }
   //Serial.println(msgSendTime/1000);
-    timerCounter++;
+  messageHandler.incrementTimerCounter();
     //wait for timer vs wait for calibrate
-    if (timerCounter == 100) {
+    if (messageHandler.getTimerCounter() == 100) {
       //messageHandler.timeoutRetryHandler();
       //what to do here?
       messageHandler.setNoSuccess();
-      timerCounter = 0;
+      messageHandler.setTimerCounter(0);
     }    
+    if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_BROADCAST_TIMER) {
+      modeHandler.switchMode(MODE_NEUTRAL);
+      messageHandler.setTimerCounter(0);
+    }
+    if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_PRE_CALIBRATION_BROADCAST) {
+      modeHandler.switchMode(MODE_CALIBRATION_WAITING);
+      messageHandler.setTimerCounter(0);
+    }
+
+
+    if (modeHandler.getMode() == MODE_RESET_TIMER) {
+        messageHandler.timerMessage.reset = true;
+    }
+      messageHandler.timerMessage.sendTime = msgSendTime;
+      messageHandler.timerMessage.counter = messageHandler.getTimerCounter();
+      messageHandler.timerMessage.lastDelay = lastDelay;
     if (modeHandler.getMode() == MODE_SENDING_TIMER or modeHandler.getMode() == MODE_RESET_TIMER) {
       messageHandler.timerMessage.messageType = MSG_TIMER_CALIBRATION; 
-      messageHandler.timerMessage.sendTime = msgSendTime;
-      messageHandler.timerMessage.counter = timerCounter;
-      messageHandler.timerMessage.lastDelay = lastDelay;
-      //messageHandler.addError("Sending Timer+ "+String(timerCounter)+"\n");
-      if (modeHandler.getMode() == MODE_RESET_TIMER) {
-        messageHandler.timerMessage.reset = true;
-      }
-      //messageHandler.addError(messageHandler.stringAddress(messageHandler.timerReceiver)+"\n");
-      esp_err_t result = esp_now_send(messageHandler.timerReceiver, (uint8_t *) &messageHandler.timerMessage, sizeof(messageHandler.timerMessage));
-      
+     esp_err_t result = esp_now_send(messageHandler.timerReceiver, (uint8_t *) &messageHandler.timerMessage, sizeof(messageHandler.timerMessage));
+
     }
+    if (modeHandler.getMode() == MODE_BROADCAST_TIMER) {
+      messageHandler.timerMessage.messageType = MSG_BROADCAST_TIMER;
+      esp_err_t result = esp_now_send(messageHandler.broadcastAddress, (uint8_t *) &messageHandler.timerMessage, sizeof(messageHandler.timerMessage));
+
+    }
+      //messageHandler.addError("Sending Timer+ "+String(timerCounter)+"\n");
+
+      //messageHandler.addError(messageHandler.stringAddress(messageHandler.timerReceiver)+"\n");
+    
 
 }
 
@@ -122,10 +137,14 @@ void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
     if (sendStatus == ESP_NOW_SEND_SUCCESS) {
       msgArriveTime = micros();
       lastDelay = msgArriveTime-msgSendTime;
+      messageHandler.addError("Sent to  "+messageHandler.stringAddress(mac_addr)+"\n");
+      messageHandler.addError("ID "+String(messageHandler.getTimeoutRetryId())+"\n");
       messageHandler.addError("SUCCESS "+String(lastDelay)+"\n");
+      
     }
-    else if (timerCounter % 5 == 0) {
+    else if (messageHandler.getTimerCounter() % 5 == 0) {
       messageHandler.addError("No SUCCESS");
+      messageHandler.addError("tried to send to "+messageHandler.stringAddress(mac_addr)+"\n");
      //messageHandler.setNoSuccess();
     }
   }
@@ -186,7 +205,6 @@ void setup() {
   }
   pinMode(audioPin, INPUT); 
   lastTick = millis(); 
-  timerCounter = 0;
   WiFi.macAddress(myAddress);
   pinMode(SWITCH_PIN, INPUT_PULLDOWN); 
   peakDetection.begin(48, 9, 0.6);   
@@ -199,7 +217,7 @@ void loop() {
     messageHandler.testTrilateration();
   }
   else {
-  if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER) {
+  if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER || modeHandler.getMode() == MODE_BROADCAST_TIMER) {
     if (isTimerSet == false ){
       Serial.println("attaching interrupt");
       timerAttachInterrupt(timer, &onTimer); 
@@ -270,7 +288,7 @@ void loop() {
       }
     }
   } 
-  else if (lastTick+5000 < millis()  ) {
+  else if (lastTick+5000 < millis() ) {
   messageHandler.handleErrors();
   lastTick = millis();
   modeHandler.printCurrentMode();
@@ -313,15 +331,37 @@ void loop() {
     Serial.println("All clap Times received");
     //messageHandler.clapsReceived = 0;
   }
+  if (modeHandler.getMode() == MODE_WOKEUP) {
+    esp_now_register_recv_cb(OnDataRecv);  
+    esp_now_register_send_cb(OnDataSent);
+    modeHandler.switchMode(MODE_NEUTRAL);
+    Serial.println("sending timesync");
+    messageHandler.sendTimeSync(0);
+  }
   if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER and modeHandler.getMode() != MODE_PING_RESET) {
     messageHandler.handleTimerUpdates();
   }
   if (messageHandler.nextAnimationPing > 0) {
     messageHandler.nextAnimation();
   }
-  if (modeHandler.getMode() == MODE_RESET_TIMER or modeHandler.getMode() == MODE_GET_CALIBRATION_DATA) {
+  if (modeHandler.getMode() == MODE_RESET_TIMER || modeHandler.getMode() == MODE_GET_CALIBRATION_DATA) {
      messageHandler.nextRetry();
   }
-  //messageHandler.goodNight();
+  messageHandler.goodNight();
+  if ((modeHandler.getMode() == MODE_NEUTRAL && millis()> lastBroadcastTimer+ BROADCAST_TIMER_FREQ*1000) || modeHandler.getMode() == MODE_START_PRE_CALIBRATION_BROADCAST) {
+    Serial.println("Broadcasting Timer");
+    Serial.println("Millis "+String(millis()));
+    Serial.println("BroadcastTimer Frequency "+String(BROADCAST_TIMER_FREQ));
+    Serial.println("Last Broadcast Timer "+String(lastBroadcastTimer));
+    Serial.println("millis() - BROADCAST_TIMER_FREQ*1000"+String(millis() - BROADCAST_TIMER_FREQ*1000));
+    messageHandler.broadcastTimer();
+    lastBroadcastTimer = millis();
   }
+  if (modeHandler.getMode() == MODE_CALIBRATION_WAITING) {
+
+    messageHandler.startCalibrationMode();
+  }
+
+  }
+
 }

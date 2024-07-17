@@ -37,6 +37,8 @@
 
 //messaging retries
 #define NUM_RETRIES 3
+#define MAX_BROADCAST_TIMERS 10
+#define BROADCAST_TIMER_FREQ 1800
 
 #define V1 1
 #define V2 2
@@ -100,8 +102,13 @@ const int ledChannelBlue2 = 5;
 #define MODE_ANIMATE 7
 #define MODE_NEUTRAL 8
 #define MODE_CLAPPING 9
-
-
+#define MODE_RECEIVE_BROADCAST 10
+#define MODE_BROADCAST_TIMER 11
+#define MODE_RESET_LIMBO 12
+#define MODE_PRE_CALIBRATION_BROADCAST 13
+#define MODE_CALIBRATION_WAITING 14
+#define MODE_START_PRE_CALIBRATION_BROADCAST 15
+#define MODE_WOKEUP 16
 #define MODE_NO_SEND 90
 #define MODE_RESPOND_ANNOUNCE 91
 #define MODE_RESPOND_TIMER 92
@@ -117,6 +124,7 @@ const int ledChannelBlue2 = 5;
 
 
 
+
 #define MSG_ADDRESS 0
 #define MSG_ANNOUNCE 1
 #define MSG_TIMER_CALIBRATION 2
@@ -127,6 +135,7 @@ const int ledChannelBlue2 = 5;
 #define MSG_DISTANCE 9
 #define MSG_SET_TIME 10
 #define MSG_ANIMATION 11
+#define MSG_BROADCAST_TIMER 12
 #define MSG_NOCLAPFOUND -1
 #define MSG_COMMANDS 101
 #define MSG_ADDRESS_LIST 102
@@ -139,6 +148,7 @@ const int ledChannelBlue2 = 5;
 #define MSG_SEND_SINGLE_CLAP 110
 #define MSG_TIMESYNC 111
 #define MSG_CONFIRM_CLAP 112
+#define MSG_BEGIN_BROADCAST 113
 
 #define CMD_START 200
 #define CMD_MSG_SEND_ADDRESS_LIST 201
@@ -159,7 +169,8 @@ const int ledChannelBlue2 = 5;
 #define CMD_DELETE_CLAP 216
 #define CMD_RESET_CALIBRATION 217 
 #define CMD_MASTERCLAP_OCCURRED 218
-
+#define CMD_START_BROADCAST 219
+#define NOPE 1312
 #define CMD_END 220
 
 
@@ -239,6 +250,7 @@ struct message_timesync {
   unsigned long myTime;
   unsigned long offset;
 };
+
 
 
 // 7 bytes

@@ -32,10 +32,11 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
 
 
 void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+    /*
     if (memcmp(senderAddress, hostAddress, 6) !=0 and memcmp(senderAddress, clapDeviceAddress, 6) !=0 ) {
         addError("received command from untrusted source\n");
         return;
-    }
+    }*/
     addError("Handling Received ");
     addError(messageCodeToText(incomingData[0]));
     addError(" from ");
@@ -63,6 +64,7 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                     globalModeHandler->switchMode(MODE_WAIT_FOR_TIMER);
                 break;
                 case CMD_GO_TO_SLEEP:
+                        Serial.println("received go to sleep");
                          goToSleep(commandMessage.param*1000000);
                 break;
                 case CMD_RESET:
@@ -80,8 +82,11 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                 case CMD_END_CALIBRATION_MODE: 
                     globalModeHandler->switchMode(MODE_NEUTRAL);
                 break;
-                case CMD_MASTERCLAP_OCCURRED: 
-                    globalModeHandler->switchMode(MODE_MASTERCLAP_OCCURRED);
+                case CMD_MASTERCLAP_OCCURRED:
+                    addError("Received MASTERCLAP OCCURRED");
+                    if (globalModeHandler->getMode() == MODE_CLAPPING) {
+                        globalModeHandler->switchMode(MODE_MASTERCLAP_OCCURRED);
+                    }
                 break;
                 case CMD_RESET_CALIBRATION: 
                     globalModeHandler->switchMode(MODE_NEUTRAL);
@@ -91,6 +96,10 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                 Serial.println("received cmd get clap times");
                 pushDataToSendQueue(hostAddress, MSG_SEND_CLAP_TIMES, -1);
                 break;
+                case CMD_START_BROADCAST:
+                    addError("Received Begin Broadcast\n");
+                    globalModeHandler->switchMode(MODE_RECEIVE_BROADCAST);
+                break;   
             }
             break;
         case MSG_SWITCH_MODE: 
@@ -105,6 +114,14 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
             addError("Switching mode to "+String(switchModeMessage.mode)+"\n");
             globalModeHandler->switchMode(switchModeMessage.mode);
         break;
+
+        case MSG_BROADCAST_TIMER: 
+            addError("Received Broadcast Timer\n");
+            if (globalModeHandler->getMode() == MODE_RECEIVE_BROADCAST) {
+                memcpy(&timerMessage, incomingData, sizeof(timerMessage));
+                receiveBroadcastTimer(msgReceiveTime);
+            }
+            break;
         case MSG_TIMER_CALIBRATION:  
         { 
             addError("received timer calibration message\n");
@@ -214,8 +231,3 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
     }
 }
 
-void messaging::sendTimeSync() {
-    timeSyncMessage.offset = timeOffset;
-    timeSyncMessage.myTime = micros();
-    pushDataToSendQueue(hostAddress, MSG_TIMESYNC, -1);
-}

@@ -72,7 +72,7 @@ void messaging::calculateDistances() {
         }
     }
 }
-/*
+
 void messaging::calculateDistances() {
     //go through all client devices
     for (int i = 1;i < NUM_DEVICES;i++) {
@@ -172,7 +172,9 @@ void messaging::deleteFile(const char* filename) {
         return;
     }
     Serial.println("delete file");
-    memset(clientAddresses, 0, sizeof(clientAddresses));
+    for (size_t i = 0; i < std::size(clientAddresses); ++i) {
+    clientAddresses[i] = client_address{}; // Value-initialization
+    }    
     writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
 }
 
@@ -260,24 +262,7 @@ void messaging::timeoutRetryHandler() {
 }
 
 
-void messaging::handleTimerUpdates() {
 
- if (timersUpdated == addressCounter)  {  
-    return;
- }
-
- if (timeoutRetry.currentId < addressCounter) {
-    for (int i = timeoutRetry.currentId; i < addressCounter; i++) {
-        //darf natürlich nicht weiter gehen. entweder hier noch mit status check oder die ganze funktion nur alle sekunde aufrufen
-        if (clientAddresses[i].active == INACTIVE or clientAddresses[i].active == UNREACHABLE) {
-            addError("Updating timers for device "+String(i)+"\n");
-            updateTimers(i);
-            return;
-        }
-    }
- }
-
-}
 void messaging::setNoSuccess() {
     addError("setting no success\n");
     if (clientAddresses[timeoutRetry.currentId].tries == NUM_RETRIES) {
@@ -338,7 +323,44 @@ int* messaging::getSystemTime() {
 
     return timeArray;
 }
+double messaging::calculateTimeDifference(int year1, int month1, int day1, int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2) {
+    Serial.println("Calculating time difference "+String(day1)+"."+String(month1)+"."+String(year1)+" - "+String(hours1)+":"+String(minutes1)+":"+String(seconds1)+" to  "+String(hours2)+":"+String(minutes2)+":"+String(seconds2));
+    struct tm timeinfo1 = {0};
+    struct tm timeinfo2 = {0};
+    time_t time1;
+    time_t time2;
 
+    // Set the first time
+    timeinfo1.tm_hour = hours1;
+    timeinfo1.tm_min = minutes1;
+    timeinfo1.tm_sec = seconds1;
+    timeinfo1.tm_year = year1 - 1900; // Years since 1900
+    timeinfo1.tm_mon = month1 - 1; // Months since January (0-11)
+    timeinfo1.tm_mday = day1;
+    time1 = mktime(&timeinfo1);
+
+    // Assume time2 is the same day for initial calculation
+    timeinfo2.tm_hour = hours2;
+    timeinfo2.tm_min = minutes2;
+    timeinfo2.tm_sec = seconds2;
+    timeinfo2.tm_year = year1 - 1900;
+    timeinfo2.tm_mon = month1 - 1;
+    timeinfo2.tm_mday = day1;
+    time2 = mktime(&timeinfo2);
+
+    // Adjust time2 if it's before time1, assuming it's the next day
+    if (difftime(time2, time1) < 0) {
+        timeinfo2.tm_mday += 1; // Move to the next day
+        time2 = mktime(&timeinfo2); // Recalculate time2
+    }
+
+    // Calculate the difference
+    double difference = difftime(time2, time1);
+    Serial.println("Difference should be "+String(difference));
+    return difference;
+}
+
+/*
 double messaging::calculateTimeDifference(int year1, int month1, int day1, int hours1, int minutes1, int seconds1, int hours2, int minutes2, int seconds2) {
     Serial.println("Calculating time difference "+String(day1)+"."+String(month1)+"."+String(year1)+" - "+String(hours1)+":"+String(minutes1)+":"+String(seconds1)+" to  "+String(hours2)+":"+String(minutes2)+":"+String(seconds2));
     struct tm timeinfo1;
@@ -359,9 +381,9 @@ double messaging::calculateTimeDifference(int year1, int month1, int day1, int h
     timeinfo2.tm_hour = hours2;
     timeinfo2.tm_min = minutes2;
     timeinfo2.tm_sec = seconds2;
-    int day2;
-    int month2;
-    int year2;
+    int day2 = 0;
+    int month2 = 0;
+    int year2 = 0;
     if (timeinfo2.tm_hour < timeinfo1.tm_hour) {
          day2 = day1+1;
     }
@@ -374,7 +396,7 @@ double messaging::calculateTimeDifference(int year1, int month1, int day1, int h
     else {
         day2 = day1;
     }
-
+    month2 = month1;
     if (month1 == 1 or month1 == 3 or month1 == 5 or month1 == 7 or month1 == 8 or month1 == 10 or month1 == 12) {
         if (day2 > 31) {
             day2 = 1;
@@ -399,7 +421,6 @@ double messaging::calculateTimeDifference(int year1, int month1, int day1, int h
             month2++;
         }
         else {
-            month2 = month1;
         }
     }
     if (month2 > 12) {
@@ -420,7 +441,7 @@ double messaging::calculateTimeDifference(int year1, int month1, int day1, int h
     Serial.println("Difference is "+String(difference));
     return difference;
 }
-
+*/
 
 void messaging::forceDebug(int i) {
     return;

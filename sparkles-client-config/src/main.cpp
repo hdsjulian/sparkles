@@ -135,29 +135,11 @@ void receiveTimer(int messageArriveTime) {
 }
 */
 
-int testingMode = 0;
+int testingMode = 1;
 int count = 0;
 bool didIreset = true;
 
 
-void detectClaps(void *pvParameters) {
-    peakDetection.begin(48, 9, 0.6);   
-    while (1) {
-      double data = (double)analogRead(audioPin)/2048-1;
-      peakDetection.add(data); 
-      int peak = peakDetection.getPeak(); 
-      double filtered = peakDetection.getFilt(); 
-      if (peak == -1 and millis() > lastClap+1000) {
-        messageHandler.addClap(micros());
-        lastClap = millis();
-        if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
-          modeHandler.switchMode(MODE_NEUTRAL);
-          lastClap = 0;
-          vTaskDelete(NULL);
-        }
-    }
-  }
-}
 
 void OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     msgReceiveTime = micros();
@@ -196,8 +178,14 @@ void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
   }
   else {
     modeHandler.printCurrentMode();
+    
   }
-
+  if ((sendStatus == ESP_NOW_SEND_SUCCESS)) {
+    Serial.println("Success");
+  }
+  else {
+    Serial.println("no success");
+  }
   //remove peer if conditions are met
 }
 
@@ -209,7 +197,7 @@ void setup() {
   // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
   //WiFi.macAddress(addressMessage.address);
-
+ int startTime = millis();
   // Init ESP-NOW
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");
@@ -240,26 +228,58 @@ void setup() {
   lastFlash = 0;
   WiFi.macAddress(myAddress);
     PeakDetection peakDetection; 
-
+ peakDetection.begin(48, 9, 0.6); 
 }
 
 void loop() {
   if (modeHandler.getMode() == MODE_STARTUP and messageHandler.gotTimer == false and millis() > 3000*(messageHandler.announceCounter*messageHandler.announceCounter)+messageHandler.announceTime) {
     messageHandler.announceAddress();
+    lastTick = millis();
+  }
+  if (modeHandler.getMode() == MODE_WOKEUP) {
+    esp_now_register_recv_cb(OnDataRecv);  
+    esp_now_register_send_cb(OnDataSent);
+    modeHandler.switchMode(MODE_NEUTRAL);
   }
   
-  if (testingMode == 0) {
-
   messageHandler.processDataFromSendQueue();
   messageHandler.processDataFromReceivedQueue();
   messageHandler.handleErrors();
   messageHandler.handleSent();
+  if (testingMode == 0) {
+
   handleLed.run();
-  if (modeHandler.getMode() == MODE_CALIBRATE && lastClap == 0) 
-  {
-    lastClap = millis();
-    xTaskCreate(detectClaps, "detectClaps", 10000, NULL, 6, NULL);
-  }
+    if (modeHandler.getMode() == MODE_CALIBRATE) {
+    modeHandler.switchMode(MODE_CLAPPING);
+    Serial.println("Switching mode to clapping");
+    }
+  if (modeHandler.getMode() == MODE_CLAPPING or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+    Serial.println("Started mode clapping");
+     double data = (double)analogRead(audioPin)/2048-1;
+     Serial.println("Data "+String(data));
+    peakDetection.add(data); 
+    int peak = peakDetection.getPeak(); 
+    double filtered = peakDetection.getFilt(); 
+    //Serial.println(sensorValue);
+    if (lastClap == 0) {
+      lastClap = millis();
+    }
+    if (peak == -1 and millis() > lastClap+1000) {
+      unsigned long clapTime = micros();
+      Serial.println("is this the problem?");
+      messageHandler.addClap(clapTime);
+      //Serial.println("Happened "+String(peakDetection.ago)+" microseconds ago");
+      //Serial.println("avg at clap "+String(peakDetection.avgatclap));
+      Serial.println("data: "+String(data));
+      Serial.println("Mode "+String(modeHandler.getMode()));
+      lastClap = millis();
+      handleLed.flash(125, 0, 55, 150, 1, 50);
+      if (modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
+        modeHandler.switchMode(MODE_NEUTRAL);
+        lastClap = 0;
+      }
+    }
+  } 
 
   else if (millis()>(lastTick+5000)) 
   {
@@ -271,33 +291,25 @@ void loop() {
     lastTick = millis();
     Serial.println(messageHandler.getMessageLog());
     Serial.println("-----");
-    //messageHandler.sendTimeSync();
+    //
   }
 
   }
-  else if (millis()>(lastTick+10000)) 
+  else if (millis()>(lastTick+10000) && clapSent == false) 
   {
-  if (didIreset == true) {
-    Serial.println("I RESETTED. WTF");
-    didIreset = false;
+        lastTick = millis();
+    for (int i = 0 ; i <10; i++) {
+      messageHandler.addClap(micros()+i*10000);
+    }
+    messageHandler.pushDataToSendQueue(messageHandler.hostAddress, MSG_SEND_CLAP_TIMES, -1);
+    clapSent = true;
+
   }
-    //handleLed.flash(255, 0, 0, 200, 1, 50);
-    //modeHandler.printLog();
-    lastTick = millis();
-    cycleCounter++;
-    Serial.println("-----\nClient Still Alive");
-    Serial.println(cycleCounter);
-    //Serial.println(messageHandler.getMessageLog());
+  else if (millis() %1000 == 0) {
+    Serial.println("waiting");
+    Serial.println("Client still alive");
     modeHandler.printCurrentMode();
-    messageHandler.printAddress(myAddress);
-    handleLed.printStatus();
-
-  }
-  else {
-    handleLed.ledOn(255, 0, 0, 10000, true);
-  handleLed.ledOn(0, 255, 0, 10000, true);
-    handleLed.ledOn(0, 0, 255, 10000, true);
-
+    delay(1);
   }
   if (modeHandler.getMode() == MODE_ANIMATE) {
     messageHandler.nextAnimation();

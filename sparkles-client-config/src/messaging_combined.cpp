@@ -176,6 +176,9 @@ String messaging::messageCodeToText(int message) {
     case MSG_TIMESYNC:
         out = "MSG_TIMESYNC";
         break;
+    case MSG_BROADCAST_TIMER:
+        out = "MSG_BROADCAST_TIMER";
+        break;
     case CMD_START:
         out = "CMD_START";
         break;
@@ -312,7 +315,34 @@ void messaging::addSent(String sent) {
 }
 
 
-void messaging::receiveTimer(int messageArriveTime) {
+void messaging::receiveBroadcastTimer(unsigned long messageReceiveTime) {
+    int difference = messageReceiveTime - lastTime;
+    if (abs(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS) < 1000) {
+       if (timerMessage.sendTime > messageReceiveTime) {
+        Serial.println("multiplier positive");
+        timeOffset = timerMessage.sendTime-messageReceiveTime-delayAvg/2;
+        offsetMultiplier = 1;
+        globalModeHandler->switchMode(MODE_NEUTRAL);
+        timerCounter = 0;
+      }
+      else if (timerMessage.sendTime < messageReceiveTime) {
+        Serial.println("multiplier negative");
+        timeOffset = messageReceiveTime-timerMessage.sendTime-delayAvg/2;
+        offsetMultiplier = -1;
+        globalModeHandler->switchMode(MODE_NEUTRAL);
+        timerCounter = 0;
+      }
+    }
+    else {
+        Serial.println("received broadcast timer but "+String(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS)+" is too far off");
+    }
+    if (timerCounter > MAX_BROADCAST_TIMERS) {
+        timerCounter = 0;
+        globalModeHandler->switchMode(MODE_NEUTRAL);
+    }
+}
+
+void messaging::receiveTimer(unsigned long messageArriveTime) {
   //add condition that if nothing happened after 5 seconds, situation goes back to start
   //wenn die letzte message maximal 300 mikrosekunden abweicht und der letzte delay auch nicht mehr als 1500ms her war, dann muss die msg korrekt sein
   int difference = messageArriveTime - lastTime;
@@ -389,6 +419,7 @@ void messaging::pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t *i
 }
 #if DEVICE_MODE != WEBSERVER
 void messaging::addClap(unsigned long timeStamp) {
+    Serial.println("Addclap "+String(timeStamp));
     //todo refactor
        //todo send clap times / my clap times
     if (myClapTimes.clapCounter < NUM_CLAPS) {
@@ -438,21 +469,42 @@ int messaging::addPeer(uint8_t * address) {
         return -1;
     }
     else {
-        //addError("added peer\n");
+        addError("added peer\n");
         //Serial.println("Added Peer");
         return 1;
     }
     
 }
+
+void messaging::init() {
+    WiFi.mode(WIFI_STA);
+
+    Serial.println("should initialize");
+  //WiFi.macAddress(addressMessage.address);
+
+  // Init ESP-NOW
+  if (esp_now_init() != 0) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  else {
+    Serial.println("initialized");
+  }
+  Serial.println("WIfi mode "+String(WiFi.getMode()));
+  
+}
 void messaging::goToSleep(unsigned long sleepTime) {
     Serial.println("time is "+String(millis()));
     Serial.println("going to sleep for "+String(sleepTime)); 
+    delay(100);
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+    esp_now_deinit();
     esp_sleep_enable_timer_wakeup(sleepTime);
     esp_light_sleep_start();
     Serial.println("time is "+String(millis()));
-    int randNum = random(1000, 5000);
-    delay(randNum);
-    pushDataToSendQueue(hostAddress, MSG_WAKEUP, -1);
+    init();
+    globalModeHandler->switchMode(MODE_WOKEUP);
 }
 
 float messaging::getBattery() {

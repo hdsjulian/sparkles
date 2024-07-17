@@ -26,7 +26,6 @@ class webserver;
 
 class messaging {
     private:  
-        client_address clientAddresses[NUM_DEVICES];
         client_address clapDevice;
         float myDistances[NUM_CLAPS];
         modeMachine* globalModeHandler;
@@ -51,6 +50,7 @@ class messaging {
         int timerArray[TIMER_ARRAY_COUNT];
         int arrayCounter =0;
         int delayAvg = 0;
+        int tick = 0;
         unsigned long oldMsgReceiveTime; 
         esp_now_peer_info_t* peerInfo;
         bool haveSentAddress = false;
@@ -68,6 +68,8 @@ class messaging {
       std::mutex receiveQueueMutex;
       int msgCounter = 0;
     public: 
+        client_address clientAddresses[NUM_DEVICES];
+
         int addressCounter = 0;
         int msgSendTime;
         int announceTime = 0;
@@ -132,6 +134,7 @@ class messaging {
           void setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp_now_peer_info_t &globalPeerInfo);
 
         #endif
+        void init();
         void blink();
         void removePeer(uint8_t address[6]);
         void printAddress(const uint8_t * mac_addr);
@@ -155,7 +158,7 @@ class messaging {
         void setTimeOffset();
         unsigned long getArriveTime();
         void printMessage(int message);
-        void receiveTimer(int messageArriveTime);
+        void receiveTimer(unsigned long messageArriveTime);
         void prepareAnnounceMessage();
         void prepareTimerMessage();
         void printBroadcastAddress();
@@ -242,7 +245,12 @@ class messaging {
         void groupPoints(int indices[NUM_CLAPS][CLAPS_PER_POINT]);
         int checkAndAverage(float x0[3], float x1[3], float x2[3]);
         void handleSingleClap();
-        void sendTimeSync();
+        void sendTimeSync(int id = -1);
+        void receiveBroadcastTimer(unsigned long messageArriveTime);
+        void broadcastTimer();
+        void setAddressesInactive();
+        int getTimeoutRetryId();
+        
 };
 
 

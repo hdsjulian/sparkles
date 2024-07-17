@@ -113,14 +113,12 @@ void webserver::commandCalibrate(AsyncWebServerRequest *request) {
     return;
   }
     if (stateMachine->getMode() == MODE_NEUTRAL or stateMachine->getMode() == MODE_MASTERCLAP_OCCURRED) {
-      messageHandler->sendCommand(CMD_START_CALIBRATION_MODE);
       String jsonString;
       jsonString = "{\"status\" : \""+String(CALIBRATION_IN_PROGRESS)+"\"}";
       calibrationStatus == CALIBRATION_IN_PROGRESS;
       request->send(200, "text/html", jsonString.c_str()); 
-      stateMachine->switchMode(MODE_CALIBRATE);
+      stateMachine->switchMode(MODE_PRE_CALIBRATION_BROADCAST);
       messageHandler->addError("starting calibration mode\n");
-      messageHandler->startCalibrationMode();
     }
 }
 
@@ -196,6 +194,14 @@ void webserver::serveStaticFile(AsyncWebServerRequest *request) {
       // Open the file for reading
       File file = LittleFS.open(path, "r");
       if (file) {
+      String contentType = "text/plain"; // Default Content-Type
+      if (path.endsWith(".html") || path.endsWith(".htm")) {
+        contentType = "text/html";
+      } else if (path.endsWith(".css")) {
+        contentType = "text/css";
+      } else if (path.endsWith(".js")) {
+        contentType = "application/javascript";
+      } 
         // Read the contents of the file into a String
         String fileContent;
         while (file.available()) {
@@ -206,7 +212,8 @@ void webserver::serveStaticFile(AsyncWebServerRequest *request) {
         file.close();
 
         // Send the file content as response
-        request->send(200, "text/html", fileContent);
+        
+        request->send(200, contentType, fileContent);
         return;
       }
   }

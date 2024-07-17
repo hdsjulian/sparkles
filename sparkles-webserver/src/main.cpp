@@ -98,13 +98,7 @@ void setup() {
     Serial.begin(115200);
    int startTime = millis();
 
-  while (!Serial) {
-    if ((int)millis() - startTime > 10000) {
-      count = 5000;
-      break;
-    }
-    count = 1000;
-  }
+
   WiFi.mode(WIFI_STA);
   if (esp_now_init() != 0) {
     Serial.println("Error initializing ESP-NOW");

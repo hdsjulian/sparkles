@@ -127,8 +127,11 @@ void messaging::processDataFromSendQueue() {
                 esp_now_send(sendData.address, (uint8_t*) &switchModeMessage, sizeof(switchModeMessage));
                 break;
             case MSG_SEND_CLAP_TIMES:
-                memcpy(&sendClapTimes, &myClapTimes, sizeof(sendClapTimes));
-                esp_now_send(sendData.address, (uint8_t*) &sendClapTimes, sizeof(sendClapTimes));
+                addError("Sending Clap Times\n");
+                for (int i = 0; i < NUM_CLAPS; i++ ) {
+                    addError("Clap Time: "+String(sendClapTimes.timeStamp[i])+"\n");
+                }
+                esp_now_send(sendData.address, (uint8_t*) &myClapTimes, sizeof(myClapTimes));
                 break;
             case MSG_ANIMATION:
                 esp_now_send(sendData.address, (uint8_t*) &animationMessage, sizeof(animationMessage));
@@ -147,14 +150,32 @@ void messaging::processDataFromSendQueue() {
                     commandMessage.messageId = sendData.param1;
                 }
                 commandMessage.param = sendData.param2;
+                Serial.println("sending command "+messageCodeToText(commandMessage.messageId));
+                Serial.println("sending message type "+messageCodeToText(commandMessage.messageType));
+
                 esp_now_send(sendData.address, (uint8_t*) &commandMessage, sizeof(commandMessage));
                 commandMessage.param = 0;
-                if (commandMessage.messageId == CMD_RESET) {
-                    memset(clientAddresses, 0, sizeof(clientAddresses));
+                switch(commandMessage.messageId) {
+                    case CMD_RESET:
+                    for (size_t i = 0; i < std::size(clientAddresses); ++i) {
+                        clientAddresses[i] = client_address{}; // Value-initialization
+                    }
                     addError("Resetting Addresses\n");
                     writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
                     ESP.restart();
+                    break;
+                    case CMD_START_BROADCAST:
+                    if (globalModeHandler->getMode() == MODE_START_PRE_CALIBRATION_BROADCAST) {
+                        globalModeHandler->switchMode(MODE_PRE_CALIBRATION_BROADCAST);
+                    }
+                    else {
+                        globalModeHandler->switchMode(MODE_BROADCAST_TIMER);
+                    }
+                    break;
+                    default:
+                    break;
                 }
+
                 break;
             case MSG_SET_POSITIONS:
                 esp_now_send(sendData.address, (uint8_t*) &setPositionsMessage, sizeof(setPositionsMessage));
@@ -186,6 +207,7 @@ void messaging::updateTimers(int addressId) {
     addPeer(timerReceiver);
     timerMessage.reset = true;
     timerMessage.addressId = addressId;
+    timerMessage.counter = 0;
     clientAddresses[addressId].active = SETTING_TIMER;
 }
 
@@ -224,6 +246,18 @@ void messaging::nextRetry() {
         timeoutRetryHandler();
     }
     
+}
+
+void messaging::sendTimeSync(int id) {
+    timeSyncMessage.offset = timeOffset;
+    timeSyncMessage.myTime = micros();
+    if (id == -1) {
+        pushDataToSendQueue(hostAddress, MSG_TIMESYNC, -1);
+    }
+    else {
+        pushDataToSendQueue(clientAddresses[id].address, MSG_TIMESYNC, -1);
+
+    }
 }
 
 

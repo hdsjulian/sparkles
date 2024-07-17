@@ -45,9 +45,6 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
         addError("Address counter: "+String(addressCounter)+"\n");
     
     }
-    int * time;
-    time = getSystemTime();
-    goToSleepTime = (int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;
 }
 
 
@@ -254,8 +251,8 @@ void messaging::receiveClapTimes(uint8_t *senderAddress) {
     }
 }
 void messaging::startCalibrationMode() {
+    globalModeHandler->switchMode(MODE_CALIBRATE);
     pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_START_CALIBRATION_MODE);
-   
 }
 
 String messaging::printClapTimes(unsigned long* array, int size) {
@@ -378,6 +375,8 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
     }
     addError("sending client addresses to JSON");
     updateAddressesToWebserver();
+    timerCounter = 0;
+    lastDelay = 0;
     if (globalModeHandler->getMode() == MODE_RESET_TIMER) {
         if (timersUpdated < addressCounter) {
             timersUpdated++;
@@ -389,8 +388,6 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
     Serial.println("got timer");
     globalModeHandler->switchMode(MODE_NEUTRAL);
     timersUpdated = addressCounter;
-    timerCounter = 0;
-    lastDelay = 0;
     addError("Writing Struct to file\n");
     writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
 }
@@ -437,7 +434,9 @@ void messaging::setGoodNight(int hours, int minutes, int seconds){
     sleepTime.minutes = minutes;
     sleepTime.seconds = seconds;
     int * time = getSystemTime();
-    goToSleepTime = millis()+(int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;
+    goToSleepTime = (int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds);
+    goToSleepTime *=1000;
+    goToSleepTime += millis();
     Serial.println("Setting good night");
     Serial.println("Hours"+String(sleepTime.hours));
     Serial.println("Minutes "+String(sleepTime.minutes));
@@ -447,4 +446,39 @@ void messaging::setGoodNight(int hours, int minutes, int seconds){
     Serial.println("gotosleeptime "+String(goToSleepTime));
     Serial.println("diff "+String(goToSleepTime-millis()));
 
+}
+
+void messaging::broadcastTimer() {
+    commandMessage.messageType = CMD_START_BROADCAST;
+    pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_START_BROADCAST);
+}
+
+void messaging::handleTimerUpdates() {
+if (millis() > tick+10000) {
+    addError("Handling Timer Updates\n");
+    addError("timeout retry current id "+String(timeoutRetry.currentId), false);
+    addError("address counter "+String(addressCounter), false);
+    addError("timers updated "+String(timersUpdated), false);
+    tick = millis();
+}
+ if (timersUpdated == addressCounter)  {  
+    return;
+ }
+
+ if (timeoutRetry.currentId < addressCounter) {
+    for (int i = timeoutRetry.currentId; i < addressCounter; i++) {
+        //darf natürlich nicht weiter gehen. entweder hier noch mit status check oder die ganze funktion nur alle sekunde aufrufen
+        if (clientAddresses[i].active == INACTIVE or clientAddresses[i].active == UNREACHABLE) {
+            addError("Updating timers for device "+String(i)+"\n");
+            timeoutRetry.currentId = i;
+            updateTimers(i);
+            return;
+        }
+    }
+ }
+
+}
+
+int messaging::getTimeoutRetryId() {
+    return timeoutRetry.currentId;
 }
