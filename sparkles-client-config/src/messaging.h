@@ -118,9 +118,9 @@ class messaging {
         int forcedDebugCounter = 0;
         unsigned long lastTry = 0;
         unsigned long nextAnimationPing;
-        bool endAnimation = false;
         int maxPos;
         int announceCounter = 0;
+        bool finishAnimation = false;
         //esp8266
         //uint8_t webserverAddress[6] = {0xe8, 0xdb, 0x84, 0x99, 0x5e, 0x44};
         //        uint8_t clapDeviceAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
@@ -250,6 +250,8 @@ class messaging {
         void broadcastTimer();
         void setAddressesInactive();
         int getTimeoutRetryId();
+        void startAnimation();
+        void endAnimation();
         
 };
 

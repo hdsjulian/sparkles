@@ -451,13 +451,16 @@ void messaging::forceDebug(int i) {
 }
 
 void messaging::nextAnimation() {
-    return;
     if (millis() < nextAnimationPing) {
+        if (millis() % 1000 == 0) {
+            delay(1);
+            Serial.println("Next animation in "+String((nextAnimationPing-millis())/1000)+" seconds");
+        }
         return;
     }
     if (millis() > nextAnimationPing) {
-        if (endAnimation == true) {
-            Serial.println("End animation is true");
+        if (finishAnimation == true) {
+            Serial.println("We want to end the animations or want to ");
             globalModeHandler->switchMode(MODE_NEUTRAL);
         }
         else {

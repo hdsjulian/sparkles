@@ -85,7 +85,8 @@ void IRAM_ATTR onTimer()
       messageHandler.setTimerCounter(0);
     }    
     if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_BROADCAST_TIMER) {
-      modeHandler.switchMode(MODE_NEUTRAL);
+       modeHandler.revertToPreviousMode();
+
       messageHandler.setTimerCounter(0);
     }
     if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_PRE_CALIBRATION_BROADCAST) {
@@ -292,6 +293,9 @@ void loop() {
   messageHandler.handleErrors();
   lastTick = millis();
   modeHandler.printCurrentMode();
+  Serial.print("Prev mode: ");
+  modeHandler.printMode(modeHandler.getPreviousMode());
+  
   cycleCounter++;
   Serial.print("-----\nMain still Alive ");
   Serial.println(cycleCounter);
@@ -334,9 +338,8 @@ void loop() {
   if (modeHandler.getMode() == MODE_WOKEUP) {
     esp_now_register_recv_cb(OnDataRecv);  
     esp_now_register_send_cb(OnDataSent);
+    modeHandler.setPreviousMode();
     modeHandler.switchMode(MODE_NEUTRAL);
-    Serial.println("sending timesync");
-    messageHandler.sendTimeSync(0);
   }
   if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER and modeHandler.getMode() != MODE_PING_RESET) {
     messageHandler.handleTimerUpdates();
@@ -360,6 +363,15 @@ void loop() {
   if (modeHandler.getMode() == MODE_CALIBRATION_WAITING) {
 
     messageHandler.startCalibrationMode();
+  }
+  if (modeHandler.getMode() == MODE_STARTUP_ANIMATION) {
+    messageHandler.startAnimation();
+  }
+  if (modeHandler.getMode() == MODE_END_ANIMATION)  {
+    messageHandler.endAnimation();
+  }
+  if (modeHandler.getMode() == MODE_ANIMATE) {
+    messageHandler.nextAnimation();
   }
 
   }

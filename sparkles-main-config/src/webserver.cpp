@@ -162,14 +162,14 @@ void webserver::commandAnimate(AsyncWebServerRequest *request) {
     jsonString = "{\"status\" : \"true\"}";
     events.send(jsonString.c_str(), "animateStatus", millis()); 
     //messageHandler->pushDataToSendQueue(CMD_START_ANIMATION, -1);
-    stateMachine->switchMode(MODE_ANIMATE);
+    stateMachine->switchMode(MODE_STARTUP_ANIMATION);
   }
   else if (stateMachine->getMode() == MODE_ANIMATE) {
     request->send(204);
         jsonString = "{\"status\" : \"false\"}";
     events.send(jsonString.c_str(), "animateStatus", millis()); 
     //messageHandler->pushDataToSendQueue(CMD_STOP_ANIMATION, -1);
-    stateMachine->switchMode(MODE_NEUTRAL);
+    stateMachine->switchMode(MODE_END_ANIMATION);
   }
   }
 

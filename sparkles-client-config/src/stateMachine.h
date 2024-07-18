@@ -11,6 +11,7 @@ class webserver;
     class modeMachine {
         private: 
             int currentMode = MODE_INIT;
+            int previousMode = MODE_INIT;
             String modeLog = "";
             #if DEVICE_MODE == MAIN
             webserver* webServer = nullptr;
@@ -27,5 +28,8 @@ class webserver;
             void printMode(int mode);
             String modeToText(int mode);
             void printCurrentMode();
+            int getPreviousMode();
+            void revertToPreviousMode();
+            void setPreviousMode();
     };
 #endif

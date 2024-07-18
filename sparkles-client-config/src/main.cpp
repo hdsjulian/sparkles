@@ -135,7 +135,7 @@ void receiveTimer(int messageArriveTime) {
 }
 */
 
-int testingMode = 1;
+int testingMode = 0;
 int count = 0;
 bool didIreset = true;
 
@@ -248,7 +248,6 @@ void loop() {
   messageHandler.handleSent();
   if (testingMode == 0) {
 
-  handleLed.run();
     if (modeHandler.getMode() == MODE_CALIBRATE) {
     modeHandler.switchMode(MODE_CLAPPING);
     Serial.println("Switching mode to clapping");
@@ -313,6 +312,7 @@ void loop() {
   }
   if (modeHandler.getMode() == MODE_ANIMATE) {
     messageHandler.nextAnimation();
+      handleLed.run();
   }
 
 

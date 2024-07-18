@@ -197,7 +197,7 @@
         <div class="card deviceList">
           <p>
               <span class="reading">
-                  <span id="animate" class="devicenum">Animate</span>
+                  <span id="cmd_animate" class="devicenum">Animate</span>
               </span>
           </p>
         </div>
@@ -262,7 +262,7 @@
     }
   });
 
-  document.getElementById('animate').addEventListener('click', function() {
+  document.getElementById('cmd_animate').addEventListener('click', function() {
     var fetchUrl = '/commandAnimate';
     fetchMe(fetchUrl);
 
@@ -272,11 +272,6 @@
     window.location.href = "addressList.html";
   });
 
-  document.getElementById('animate').addEventListener('click', function() {
-    var fetchUrl = '/commandNeutral';
-    fetchMe(fetchUrl);
-
-  });
 
   document.getElementById('submit_goodnight').addEventListener('click', function() {
     var hours = document.getElementById('hours_goodnight').value;
@@ -302,8 +297,21 @@
     document.getElementById('submit_animation_2').addEventListener('click', function() {
         handleAnimation('2');
     });
-
-
+    sourceEvents.addEventListener('animateStatus', function(e) {
+      console.log("animatestatus");
+      console.log(e);
+      var obj = JSON.parse(e.data);
+      console.log(obj.status)
+      animateUpdate(obj);
+    });
+    function animateUpdate(obj) {
+    if (obj.status == "true") {
+      document.getElementById('cmd_animate').textContent = "END ANIMATION";
+    }
+    else {
+      document.getElementById('cmd_animate').textContent = "ANIMATE";
+    }
+  }
     function handleAnimation(id) {
       const input1 = document.getElementById(`speed_${String(id)}`).value;
   const input2 = document.getElementById(`pause_${String(id)}`).value;

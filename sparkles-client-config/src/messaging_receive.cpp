@@ -7,6 +7,7 @@
 
 void messaging::setTimerReceiver(const uint8_t * incomingData) {
     memcpy(&addressMessage,incomingData,sizeof(addressMessage));
+    globalModeHandler->setPreviousMode();
     globalModeHandler->switchMode( MODE_SENDING_TIMER);
     addError("setting timer receiver to "+stringAddress(addressMessage.address));
     if (memcmp(&addressMessage.address, clapDeviceAddress, 6) == 0) {

@@ -199,19 +199,6 @@ void messaging::processDataFromSendQueue() {
 }   
 
 
-
-void messaging::updateTimers(int addressId) {
-    globalModeHandler->switchMode(MODE_RESET_TIMER);
-    addError("Updating timers for address "+String(addressId)+"\n");
-    memcpy(&timerReceiver, clientAddresses[addressId].address, 6);
-    addPeer(timerReceiver);
-    timerMessage.reset = true;
-    timerMessage.addressId = addressId;
-    timerMessage.counter = 0;
-    clientAddresses[addressId].active = SETTING_TIMER;
-}
-
-
 void messaging::sendCommand(int commandId) {
     addError("Sending command "+messageCodeToText(commandId)+"\n");
     pushDataToSendQueue(broadcastAddress, commandId, -1);

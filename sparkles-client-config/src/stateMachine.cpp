@@ -20,6 +20,17 @@ void modeMachine::switchMode(int mode) {
         webServer->updateMode(modeText);
     #endif
 }
+
+void modeMachine::revertToPreviousMode() {
+    switchMode(previousMode);
+}
+void modeMachine::setPreviousMode() {
+    Serial.println("setting previous mode to "+modeToText(currentMode));
+    previousMode = currentMode;
+}
+int modeMachine::getPreviousMode() {
+    return previousMode;
+}
 void modeMachine::logMode(int mode) {
     modeLog += "modeSwitch ";
     modeLog += modeToText(mode);

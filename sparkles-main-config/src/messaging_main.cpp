@@ -102,34 +102,7 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
             receiveClapTimes(senderAddress);
         break;
 
-        /*
-        case MSG_ANIMATION:
-            addError("Animation Message Incoming\n");
-            if (DEVICE_MODE == MAIN and memcmp(mac->src_addr, clapDeviceAddress, 6) == 0) {
-                memcpy(&animationMessage, incomingData, sizeof(animationMessage));
-                animationMessage.startTime = micros()+3000000;
-                animationMessage.animationreps = 1;
-                animationMessage.num_devices = addressCounter -1;
-                Serial.println("Starting animation with num devices "+String(animationMessage.num_devices));
-                pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
-                nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-                Serial.println("Animation ends at "+String(millis()));
-                globalModeHandler->switchMode(MODE_ANIMATE);
-                //endAnimation = true;
-            }  
-            else {
-                if (globalModeHandler->getMode() == MODE_ANIMATE or globalModeHandler->getMode() == MODE_NEUTRAL) {
-                addError("Blinking\n");
-                globalModeHandler->switchMode(MODE_ANIMATE);
-                memcpy(&animationMessage, incomingData, sizeof(animationMessage));
-                handleLed->setupAnimation(&animationMessage);
-                nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-                Serial.println("setting endanimation to true");
-                //endAnimation = true;
-                }
-            }
-        break;
-        */
+
         case MSG_STATUS: {
             memcpy(&statusMessage, incomingData, sizeof(statusMessage));
             addError("Battery Status: "+String(statusMessage.batteryPercentage)+"\n");
@@ -380,12 +353,23 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
     if (globalModeHandler->getMode() == MODE_RESET_TIMER) {
         if (timersUpdated < addressCounter) {
             timersUpdated++;
-            globalModeHandler->switchMode(MODE_NEUTRAL);
+            if (timersUpdated == addressCounter) {
+                timeoutRetry.currentId = addressCounter;
+                addError("reverting to previous mode \n");
+                globalModeHandler->revertToPreviousMode();
+            }
+            else {
+                addError("timersupdated "+String(timersUpdated), false);
+                addError("address counter "+String(addressCounter), false);
+            }
+
+            addError("Timers Updated increase to "+String(timersUpdated));
             handleTimerUpdates();
             return;
         }
     }
     Serial.println("got timer");
+    globalModeHandler->revertToPreviousMode();
     globalModeHandler->switchMode(MODE_NEUTRAL);
     timersUpdated = addressCounter;
     addError("Writing Struct to file\n");
@@ -479,6 +463,45 @@ if (millis() > tick+10000) {
 
 }
 
+void messaging::updateTimers(int addressId) {
+    if (globalModeHandler->getPreviousMode() != MODE_RESET_TIMER) {
+        addError("setting preivious mode to "+globalModeHandler->modeToText(globalModeHandler->getMode()));
+        globalModeHandler->setPreviousMode();
+    }
+    globalModeHandler->switchMode(MODE_RESET_TIMER);
+    addError("Updating timers for address "+String(addressId)+"\n");
+    addError("timeout retry currentide "+String(timeoutRetry.currentId), false);
+    addError("address counter "+String(addressCounter), false);
+    addError("timers updated "+String(timersUpdated), false);
+    memcpy(&timerReceiver, clientAddresses[addressId].address, 6);
+    addPeer(timerReceiver);
+    timerMessage.reset = true;
+    timerMessage.addressId = addressId;
+    timerMessage.counter = 0;
+    clientAddresses[addressId].active = SETTING_TIMER;
+}
+
+
 int messaging::getTimeoutRetryId() {
     return timeoutRetry.currentId;
+}
+
+void messaging::startAnimation() {
+    animationMessage.animationType = SYNC_ASYNC_BLINK;
+    handleLed->getNextAnimation(&animationMessage);
+    animationMessage.startTime = micros()+1000000;
+    animationMessage.animationreps = 1;
+    animationMessage.num_devices = addressCounter;
+    Serial.println("Starting animation with num devices "+String(animationMessage.num_devices));
+    pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
+    nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
+    Serial.println("Now: "+String(millis()));
+    Serial.println("Animation ends at "+String(nextAnimationPing));
+    globalModeHandler->switchMode(MODE_ANIMATE);
+}
+ 
+
+void messaging::endAnimation() {
+    pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_END_ANIMATION);
+    globalModeHandler->switchMode(MODE_NEUTRAL);
 }

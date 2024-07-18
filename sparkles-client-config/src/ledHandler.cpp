@@ -216,6 +216,34 @@ void ledHandler::setupSyncAsyncBlink() {
   }*/
 
 }
+/*
+void ledHandler::setupRowBlink() {
+  repeatCounter = 0;
+  localAnimationStart = 0;
+  animationNextStep = 0;
+  currentAnimation = animationMessage.animationType;
+  unsigned long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
+  //calculate start of first round
+  //was will ich hier
+  float distance = 0;
+  //calculate distance as a function of spread time (in centimeters per second) and the distance from the axis
+  distance = (xPos/animationMessage.spread_time)*1000;
+  localAnimationStart = localAnimationStartMicros/1000+distance*speed;
+  globalAnimationStart = localAnimationStart;
+  if (micros() > localAnimationStartMicros) {
+    Serial.println("not today");
+    return;
+  }
+  animationNextStep = localAnimationStart;
+  globalAnimationTimeframe = animationMessage.speed+animationMessage.pause;
+
+  //first round of cycle is just this. speed+pause
+  localAnimationTimeframe = globalAnimationTimeframe;
+  /* calculate length of the entire animation. not needed for now.
+  for (int i = 0; i < animationMessage.reps/2;i++) {
+    cycleTotalRuntime += 2*((animationMessage.spread_time/(animationMessage.reps/2))*animationMessage.num_devices*i+animationMessage.speed+animationMessage.pause);
+  }
+}*/
 
 void ledHandler::run() {
 
@@ -250,6 +278,13 @@ unsigned long ledHandler::calculate(message_animate *animationMessage) {
 
 unsigned long ledHandler::calculateSyncAsyncBlink(message_animate *animationMessage) {
   unsigned long base_time = (animationMessage->pause+animationMessage->speed)*(animationMessage->reps+1)*(animationMessage->animationreps+1);
+  Serial.println("base time "+String(base_time));
+  Serial.println("animation reps "+String(animationMessage->animationreps));
+  Serial.println("reps "+String(animationMessage->reps));
+  Serial.println("Speed "+String(animationMessage->speed));
+  Serial.println("Pause "+String(animationMessage->pause));
+  Serial.println("spread time "+String(animationMessage->spread_time));
+  Serial.println("num devices "+String(animationMessage->num_devices));
   for (int i = 0; i<animationMessage->animationreps;i++) {
     for (int j = 0; j < animationMessage->reps;j++) {
       if (j <= animationMessage->reps/2) {
@@ -275,7 +310,6 @@ void ledHandler::syncAsyncBlink() {
  
   //wait until next step. if all repeats done: done. 
   if (millis() < animationNextStep) {
-   
     return;
   }
  
@@ -333,6 +367,24 @@ void ledHandler::syncAsyncBlink() {
 }
 
 
+
+void ledHandler::rowBlink() {
+
+  if (millis() < animationNextStep) {
+    return;
+  }
+  if (millis() > animationNextStep and millis() < localAnimationStart+animationMessage.speed) {
+    int elapsedTime = millis()-localAnimationStart;
+    redfloat  = calculateFlash(animationMessage.rgb1[0], elapsedTime);
+    greenfloat = calculateFlash(animationMessage.rgb1[1], elapsedTime);
+    bluefloat = calculateFlash(animationMessage.rgb1[2], elapsedTime);  
+    writeLeds();
+    animationNextStep = millis()+animationMessage.speed/256;
+
+  
+}
+}
+/*
 void ledHandler::rowBlink() {
 
  
@@ -374,9 +426,7 @@ void ledHandler::rowBlink() {
     //globalAnimationStart = globalAnimationStart+globalAnimationTimeframe;
 
   }
-
-  
-  //if all repetitions have happened
+ //if all repetitions have happened
   if (repeatCounter == animationMessage.reps) {
     if (animationRepeatCounter == animationMessage.animationreps) {
       //either turn off
@@ -394,6 +444,7 @@ void ledHandler::rowBlink() {
 
 
 }
+ */
 
 float ledHandler::calculateFlash(int targetVal, unsigned long timeElapsed){
   if (timeElapsed < 0) {
@@ -578,11 +629,18 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
       return;
   }
 }
+
+
   void ledHandler::createSyncAsyncBlink(message_animate *animationMessage) {
     
-    int red = random(125,256);
-    int blue = random(125,256);
-    int green = random(125,256);
+    int red = random(0,256);
+    int blue = random(0,256);
+    int green = random(0,256);
+    while (red <100 and blue < 100 and green <100) {
+      red = red+1 > 255? red : red+1;
+      blue = blue+1 > 255? blue : blue+1;
+      green = green+1 > 255? green : green+1;
+    }
     animationMessage->rgb1[0] =red;
     animationMessage->rgb1[1] =  green;
     animationMessage->rgb1[2] = blue;
@@ -590,7 +648,7 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
     animationMessage->pause = random(100, 1000);
     animationMessage->spread_time = random(100, 300);
     animationMessage->reps = random(10, 50);
-    animationMessage->animationreps = 2000;
+    animationMessage->animationreps = random(5, 20);
   }
 
     void ledHandler::createRowBlink(message_animate *animationMessage) {

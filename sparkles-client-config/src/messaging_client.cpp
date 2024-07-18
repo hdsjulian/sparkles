@@ -100,6 +100,10 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                     addError("Received Begin Broadcast\n");
                     globalModeHandler->switchMode(MODE_RECEIVE_BROADCAST);
                 break;   
+                case CMD_END_ANIMATION:
+                    addError("Ending animation \n");
+                    globalModeHandler->switchMode(MODE_NEUTRAL);
+                    handleLed->ledsOff();
             }
             break;
         case MSG_SWITCH_MODE: 
@@ -161,29 +165,13 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
         }
         break;
         case MSG_ANIMATION:
-            addError("Animation Message Incoming\n");
-            if (DEVICE_MODE == MAIN and memcmp(senderAddress, clapDeviceAddress, 6) == 0) {
-                memcpy(&animationMessage, incomingData, sizeof(animationMessage));
-                animationMessage.startTime = micros()+3000000;
-                animationMessage.animationreps = 1;
-                animationMessage.num_devices = addressCounter -1;
-                Serial.println("Starting animation with num devices "+String(animationMessage.num_devices));
-                pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
-                nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-                Serial.println("Animation ends at "+String(millis()));
-                globalModeHandler->switchMode(MODE_ANIMATE);
-                //endAnimation = true;
-            }  
-            else {
-                if (globalModeHandler->getMode() == MODE_ANIMATE or globalModeHandler->getMode() == MODE_NEUTRAL) {
-                addError("Blinking\n");
-                globalModeHandler->switchMode(MODE_ANIMATE);
-                memcpy(&animationMessage, incomingData, sizeof(animationMessage));
-                handleLed->setupAnimation(&animationMessage);
-                nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-                Serial.println("setting endanimation to true");
-                //endAnimation = true;
-                }
+            if (globalModeHandler->getMode() == MODE_ANIMATE or globalModeHandler->getMode() == MODE_NEUTRAL) {
+            addError("Blinking\n");
+            globalModeHandler->switchMode(MODE_ANIMATE);
+            memcpy(&animationMessage, incomingData, sizeof(animationMessage));
+            handleLed->setupAnimation(&animationMessage);
+            nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
+            Serial.println("Next animation should start in "+String(nextAnimationPing-millis())+"ms");
             }
         break;
         case MSG_SET_POSITIONS: 
