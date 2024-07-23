@@ -68,6 +68,7 @@ class webserver {
     void submitPdParams(AsyncWebServerRequest *request);
     void updateMode(String modeText);
     void setFull();
+    void resetSystem(AsyncWebServerRequest *request);
 
 };
 #endif

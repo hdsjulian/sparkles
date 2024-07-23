@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <PeakDetection.h> 
 #include <ledHandler.h>
 #include <stateMachine.h>
@@ -22,7 +23,7 @@
         uint8_t myAddress[6];
 
 int mode;
-#define NUM_DEVICES 20
+//#define NUM_DEVICES 180
 hw_timer_t * timer = NULL;
 PeakDetection peakDetection; 
 ledHandler handleLed;
@@ -62,7 +63,6 @@ int lastTick = 0;
 int clapStop = 0;
 uint32_t lastClapTime;
 
-uint32_t lastBroadcastTimer = 0;
 //receive addresses
 //client_address clientAddresses[NUM_DEVICES];
 
@@ -84,15 +84,7 @@ void IRAM_ATTR onTimer()
       messageHandler.setNoSuccess();
       messageHandler.setTimerCounter(0);
     }    
-    if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_BROADCAST_TIMER) {
-       modeHandler.revertToPreviousMode();
 
-      messageHandler.setTimerCounter(0);
-    }
-    if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_PRE_CALIBRATION_BROADCAST) {
-      modeHandler.switchMode(MODE_CALIBRATION_WAITING);
-      messageHandler.setTimerCounter(0);
-    }
 
 
     if (modeHandler.getMode() == MODE_RESET_TIMER) {
@@ -151,7 +143,7 @@ void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
   }
   else{
      if (sendStatus == ESP_NOW_SEND_SUCCESS) {
-       messageHandler.addError("Sent to  "+messageHandler.stringAddress(mac_addr)+"\n");
+       messageHandler.addError("Se nt to  "+messageHandler.stringAddress(mac_addr)+"\n");
      }
      else {
        messageHandler.addError("Not sent to "+messageHandler.stringAddress(mac_addr)+"\n");
@@ -208,7 +200,7 @@ void setup() {
   lastTick = millis(); 
   WiFi.macAddress(myAddress);
   pinMode(SWITCH_PIN, INPUT_PULLDOWN); 
-  peakDetection.begin(48, 9, 0.6);   
+  peakDetection.begin(48, 10, 0.5);   
   //randomSeed(analogRead(33));
   myWebserver.PdParamsChanged = true;
 }
@@ -218,7 +210,7 @@ void loop() {
     messageHandler.testTrilateration();
   }
   else {
-  if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER || modeHandler.getMode() == MODE_BROADCAST_TIMER) {
+  if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER || modeHandler.getMode() == MODE_BROADCAST_TIMER || modeHandler.getMode() == MODE_PRE_CALIBRATION_BROADCAST) {
     if (isTimerSet == false ){
       Serial.println("attaching interrupt");
       timerAttachInterrupt(timer, &onTimer); 
@@ -244,7 +236,8 @@ void loop() {
     delay(5000);
     ESP.restart();
   }
-   if (false) {
+  // testing peakdetection params
+  if (false) {
     if (myWebserver.PdParamsChanged == true) {
       Serial.println("params changed");
       myWebserver.PdParamsChanged = false;
@@ -265,8 +258,9 @@ void loop() {
       handleLed.flash(125, 0, 55, 150, 1, 50);
     }
   }
+
   if (modeHandler.getMode() == MODE_CALIBRATE) {
-  modeHandler.switchMode(MODE_CLAPPING);
+    modeHandler.switchMode(MODE_CLAPPING);
   }
   if (modeHandler.getMode() == MODE_CLAPPING or modeHandler.getMode() == MODE_MASTERCLAP_OCCURRED) {
      double data = (double)analogRead(audioPin)/2048-1;
@@ -290,58 +284,41 @@ void loop() {
     }
   } 
   else if (lastTick+5000 < millis() ) {
-  messageHandler.handleErrors();
-  lastTick = millis();
-  modeHandler.printCurrentMode();
-  Serial.print("Prev mode: ");
-  modeHandler.printMode(modeHandler.getPreviousMode());
-  
-  cycleCounter++;
-  Serial.print("-----\nMain still Alive ");
-  Serial.println(cycleCounter);
+    messageHandler.handleErrors();
+    lastTick = millis();
+    modeHandler.printCurrentMode();
+    Serial.print("Prev mode: ");
+    modeHandler.printMode(modeHandler.getPreviousMode());
+
+    cycleCounter++;
+    Serial.print("-----\nMain still Alive ");
+    Serial.println(cycleCounter);
+    messageHandler.printAddress(myAddress);
+    //messageHandler.printPeers();
+    Serial.println("timerCounter "+String(messageHandler.getTimerCounter()));
   }
-  else if (false){
-   
-    
-    
-    
-    
-    
-    Serial.println("My Address: "+messageHandler.stringAddress(myAddress));
-    Serial.println("---All addresses---- "+String(messageHandler.addressCounter));
-    messageHandler.printAllAddresses();
-    Serial.println("-----------");
-    Serial.println(messageHandler.getMessageLog());
-    Serial.println("-----");
-    int* sysTime = messageHandler.getSystemTime();
-    size_t freeHeap = ESP.getFreeHeap();
-    Serial.print(freeHeap);
-    //messageHandler.checkFile("/clientAddress");
-    /*
-    Serial.println("Time is: "+String(sysTime[0])+":"+String(sysTime[1])+":"+String(sysTime[2]));
-    Serial.println("Day is "+String(sysTime[3])+"."+String(sysTime[4])+"."+String(sysTime[5]));
-    //Serial.println("Next animation at "+String(int(messageHandler.nextAnimationPing)));
-    Serial.println("Time is "+String(millis()));
-    //Serial.println("Next animation in "+String(int(messageHandler.nextAnimationPing-millis())));
-    Serial.println("sleep in "+String(messageHandler.calculateGoodNight(true)));
-    Serial.println("Wakeup in "+String(messageHandler.calculateGoodNight(false)));
-    */
 
-
-    //messageHandler.printAddress(myAddress);
-
-  }
   if (messageHandler.clapsReceived == messageHandler.addressCounter && messageHandler.clapsReceived != 0) {
     Serial.println("All clap Times received");
     //messageHandler.clapsReceived = 0;
   }
   if (modeHandler.getMode() == MODE_WOKEUP) {
+    Serial.println("registering cb functions");
     esp_now_register_recv_cb(OnDataRecv);  
     esp_now_register_send_cb(OnDataSent);
     modeHandler.setPreviousMode();
     modeHandler.switchMode(MODE_NEUTRAL);
+    messageHandler.nextAnimationPing = 0;
+      memcpy(&peerInfo.peer_addr, messageHandler.broadcastAddress, 6);
+    peerInfo.channel = 0;  
+    peerInfo.encrypt = false;
+      // Add peer        
+    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+      Serial.println("Failed to add peer broadcastaddress 2");
+      return;
+    }
   }
-  if (modeHandler.getMode() != MODE_SENDING_TIMER and modeHandler.getMode() != MODE_RESET_TIMER and modeHandler.getMode() != MODE_PING_RESET) {
+  if (modeHandler.getMode() != MODE_SENDING_TIMER && modeHandler.getMode() != MODE_RESET_TIMER && modeHandler.getMode() != MODE_PING_RESET) {
     messageHandler.handleTimerUpdates();
   }
   if (messageHandler.nextAnimationPing > 0) {
@@ -351,17 +328,18 @@ void loop() {
      messageHandler.nextRetry();
   }
   messageHandler.goodNight();
-  if ((modeHandler.getMode() == MODE_NEUTRAL && millis()> lastBroadcastTimer+ BROADCAST_TIMER_FREQ*1000) || modeHandler.getMode() == MODE_START_PRE_CALIBRATION_BROADCAST) {
+  if ((modeHandler.getMode() == MODE_NEUTRAL && millis()> messageHandler.getLastBroadcastTimer()+ BROADCAST_TIMER_FREQ*1000) || modeHandler.getMode() == MODE_START_PRE_CALIBRATION_BROADCAST) {
+    Serial.println("modecheck 4");
     Serial.println("Broadcasting Timer");
     Serial.println("Millis "+String(millis()));
     Serial.println("BroadcastTimer Frequency "+String(BROADCAST_TIMER_FREQ));
-    Serial.println("Last Broadcast Timer "+String(lastBroadcastTimer));
+    Serial.println("Last Broadcast Timer "+String(messageHandler.getLastBroadcastTimer()));
     Serial.println("millis() - BROADCAST_TIMER_FREQ*1000"+String(millis() - BROADCAST_TIMER_FREQ*1000));
+    modeHandler.setPreviousMode(true);
     messageHandler.broadcastTimer();
-    lastBroadcastTimer = millis();
+    messageHandler.setLastBroadcastTimer();
   }
   if (modeHandler.getMode() == MODE_CALIBRATION_WAITING) {
-
     messageHandler.startCalibrationMode();
   }
   if (modeHandler.getMode() == MODE_STARTUP_ANIMATION) {
@@ -373,7 +351,21 @@ void loop() {
   if (modeHandler.getMode() == MODE_ANIMATE) {
     messageHandler.nextAnimation();
   }
-
+  if (modeHandler.getMode() == MODE_WOKEUP && messageHandler.allTimersUpdated()) {
+  Serial.println ("Woke up and all timers updated");
+    messageHandler.startAnimation();
+  }
+  if (modeHandler.getMode() == MODE_INIT) {
+    modeHandler.switchMode(MODE_NEUTRAL);
+  }
+  if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_BROADCAST_TIMER) {
+       modeHandler.revertToPreviousMode();
+      messageHandler.setTimerCounter(0);
+  }
+  if (messageHandler.getTimerCounter() == MAX_BROADCAST_TIMERS && modeHandler.getMode() == MODE_PRE_CALIBRATION_BROADCAST) {
+      modeHandler.switchMode(MODE_CALIBRATION_WAITING);
+      messageHandler.setTimerCounter(0);
   }
 
+} 
 }

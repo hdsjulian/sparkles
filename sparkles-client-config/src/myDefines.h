@@ -176,7 +176,7 @@ const int ledChannelBlue2 = 5;
 #define CMD_END 220
 #define CMD_END_ANIMATION 220
 
-#define NUM_DEVICES 20
+#define NUM_DEVICES 180
 #ifndef CALIBRATION_FREQUENCY
 #define CALIBRATION_FREQUENCY 1000
 #endif
@@ -316,6 +316,7 @@ struct client_address {
   activeStatus active = INACTIVE;
   float batteryPercentage;
   int tries;
+  float distanceFromCenter;
 } ;
 
 
@@ -342,6 +343,7 @@ enum animationEnum {
     CANDLE,
     SYNC_ASYNC_BLINK,
     SYNC_BLINK,
+    SLOW_STARTUP,
     LED_ON,
     CONCENTRIC
 };

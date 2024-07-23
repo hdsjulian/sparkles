@@ -252,6 +252,7 @@ void messaging::clientAddressToJsonObject(JsonObject& jsonObj, client_address& c
   jsonObj["zLoc"] = client.zLoc;
   jsonObj["timerOffset"] = client.timerOffset;
   jsonObj["delay"] = client.delay;
+  jsonObj["distanceFromCenter"] = client.distanceFromCenter;
 
   JsonObject clapTimes = jsonObj["clapTimes"].to<JsonObject>();
   clapTimes["messageType"] = client.clapTimes.messageType;
@@ -355,8 +356,9 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
             timersUpdated++;
             if (timersUpdated == addressCounter) {
                 timeoutRetry.currentId = addressCounter;
-                addError("reverting to previous mode \n");
+                addError("reverting to previous mode "+String(globalModeHandler->getPreviousMode()));
                 globalModeHandler->revertToPreviousMode();
+
             }
             else {
                 addError("timersupdated "+String(timersUpdated), false);
@@ -433,8 +435,9 @@ void messaging::setGoodNight(int hours, int minutes, int seconds){
 }
 
 void messaging::broadcastTimer() {
-    commandMessage.messageType = CMD_START_BROADCAST;
-    pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_START_BROADCAST);
+    globalModeHandler->switchMode(MODE_BROADCAST_TIMER);
+    setTimerCounter(0);
+
 }
 
 void messaging::handleTimerUpdates() {
@@ -464,7 +467,7 @@ if (millis() > tick+10000) {
 }
 
 void messaging::updateTimers(int addressId) {
-    if (globalModeHandler->getPreviousMode() != MODE_RESET_TIMER) {
+    if (globalModeHandler->getMode() != MODE_RESET_TIMER) {
         addError("setting preivious mode to "+globalModeHandler->modeToText(globalModeHandler->getMode()));
         globalModeHandler->setPreviousMode();
     }
@@ -487,6 +490,7 @@ int messaging::getTimeoutRetryId() {
 }
 
 void messaging::startAnimation() {
+    Serial.println("start animation called");
     animationMessage.animationType = SYNC_ASYNC_BLINK;
     handleLed->getNextAnimation(&animationMessage);
     animationMessage.startTime = micros()+1000000;
@@ -503,5 +507,71 @@ void messaging::startAnimation() {
 
 void messaging::endAnimation() {
     pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_END_ANIMATION);
+    nextAnimationPing = 0;
     globalModeHandler->switchMode(MODE_NEUTRAL);
+}
+bool messaging::allTimersUpdated() {
+    if (timersUpdated == addressCounter) {
+        return true;
+    }  
+    else {
+        return false;
+    }
+}
+
+float messaging::largestDistance() {
+    float maxDistance = 0.0;
+    for (int i = 0; i < addressCounter; i++ ) {
+        if (clientAddresses[i].distanceFromCenter > maxDistance) {
+            maxDistance = clientAddresses[i].distanceFromCenter;
+        }
+    }
+    return maxDistance;
+}
+
+void messaging::resetSystem() {
+    pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_RESET_SYSTEM);
+}
+unsigned long messaging::getLastBroadcastTimer() {
+    return lastBroadcastTimer;
+}
+void messaging::setLastBroadcastTimer() {
+    lastBroadcastTimer = millis();
+}
+
+void messaging::printPeers() {
+
+      esp_now_peer_num_t peerNum;
+  if (esp_now_get_peer_num(&peerNum) == ESP_OK) {
+    Serial.print("Number of registered peers: ");
+    Serial.println(peerNum.total_num);
+
+    esp_now_peer_info_t peerInfo;
+    esp_err_t result;
+
+    esp_now_peer_info_t fetchedPeerInfo;
+
+    // Start from the head of the peer list
+    bool from_head = true;
+
+    // Fetch peer information
+    while (esp_now_fetch_peer(from_head, &fetchedPeerInfo) == ESP_OK) {
+        Serial.println("Peer information fetched successfully.");
+        Serial.print("Peer MAC Address: ");
+        for (int i = 0; i < 6; i++) {
+            Serial.print(fetchedPeerInfo.peer_addr[i], HEX);
+            if (i < 5) Serial.print(":");
+        }
+        Serial.println();
+        Serial.print("Channel: ");
+        Serial.println(fetchedPeerInfo.channel);
+        Serial.print("Encrypt: ");
+        Serial.println(fetchedPeerInfo.encrypt ? "true" : "false");
+        
+        // Set from_head to false to fetch the next peer
+        from_head = false;
+    }
+  } else {
+    Serial.println("Failed to get number of peers");
+  }
 }

@@ -6,6 +6,9 @@
 #include "driver/rtc_io.h"
 #include "soc/rtc.h"
 void messaging::goodNight() {
+    if (globalModeHandler->getMode() == MODE_WOKEUP) {
+        return;
+    }
     if (goToSleepTime == 0) {
         return;
     }   
@@ -38,13 +41,22 @@ void messaging::goodNight() {
         if (esp_now_init() != 0) {
             Serial.println("Error initializing ESP-NOW");
         }
-     
+        esp_now_peer_info_t peerInfo;
+        memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+        peerInfo.channel = 0;  
+        peerInfo.encrypt = false;
+        // Add peer        
+        if (esp_now_add_peer(&peerInfo) != ESP_OK){
+        Serial.println("Failed to add peer broadcast");
+        return;
+        }
         time = getSystemTime();
         commandMessage.messageType == NOPE;
         int delayTime = 11*1000;
         Serial.println("delaying for "+String(delayTime));
         delay(delayTime);
         goToSleepTime = (int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;
+        Serial.println("new go to sleep time is "+String(goToSleepTime)+" which is in "+String(millis()-goToSleepTime)+" ms");
         globalModeHandler->switchMode(MODE_WOKEUP);
         sentToSleep = false;
         timersUpdated = 0;

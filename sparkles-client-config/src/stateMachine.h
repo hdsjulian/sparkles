@@ -1,5 +1,6 @@
 #include "Arduino.h"
 #include "myDefines.h"
+#include "Preferences.h"
 #if DEVICE_MODE == MAIN
 #include "webserver.h"
 class webserver;
@@ -30,6 +31,7 @@ class webserver;
             void printCurrentMode();
             int getPreviousMode();
             void revertToPreviousMode();
-            void setPreviousMode();
+            void setPreviousMode(bool override = false);
+            void preserveMode();
     };
 #endif

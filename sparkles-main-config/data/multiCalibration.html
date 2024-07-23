@@ -42,14 +42,14 @@
         </p>
       </div>
           
-      <div class="card card--50">
+      <div class="card card--50" id="calibrationCards1">
         <p>
             <span class="reading">
                 <span id="calibrate_left" class="devicenum"></span>
             </span>
         </p>
       </div>
-      <div class="card card--50">
+      <div class="card card--50" id="calibrationCards2">
         <p>
             <span class="reading">
                 <span id="calibrate_right" class="devicenum">CALIBRATE</span>
@@ -102,6 +102,7 @@
     <span id='del${obj.id}'></span>
     <span id='dist${obj.id}'></span>
     <span id ='battery${obj.id}'></span>
+    <span id = 'distCenter${obj.id}><span>'
   `;
     var cardsContainer = document.getElementById("boardCardContainer");
     cardsContainer.appendChild(newCard);
@@ -111,6 +112,7 @@
     //hier fehlt noch irgendwie die klarheit wo eigentlich der eventlistener hin muss. 
   }
     document.getElementById("battery" + obj.id).textContent = "Battery: "+obj.batteryPercentage;
+    document.getElementById("distCenter"+ obj.id).textContent = "DfC: "+obj.distanceFromCenter;
 
     document.getElementById("addr" + obj.id).textContent = "Address: "+decimalArrayToMacAddress(obj.address);
     if (obj.delay == 0) {
@@ -239,9 +241,9 @@ function clapCard(obj) {
       textContent = `<span id='clapid'>Clap ID:${obj.clapId}</span>
                     <span id='clapTimeStamp'>Timestamp: ${obj.timeStamp}</span>
                       <div class='inputs'>
-                      <input type='text' id='CDxpos' placeholder="X position" value="1">
-                      <input type='text' id='CDypos' placeholder="Y position" value="1">
-                      <input type='text' id='CDzpos' placeholder = "Z position" value="1">
+                      <input type='text' id='CDxpos' placeholder="X position" value="-1">
+                      <input type='text' id='CDypos' placeholder="Y position" value="-1">
+                      <input type='text' id='CDzpos' placeholder = "Z position" value="-1">
                       <input type='hidden' id='clapId' value='${obj.clapId}'>
                       <button id='submitClap'>Confirm Clap</button>
                     
@@ -316,6 +318,7 @@ function clapCard(obj) {
         document.getElementById('calibrate_left').addEventListener('click', handleResetCalibration);
         eventListenerStatus = 5;
       }
+  
   };
 
 

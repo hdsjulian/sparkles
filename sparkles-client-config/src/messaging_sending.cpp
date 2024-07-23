@@ -156,7 +156,7 @@ void messaging::processDataFromSendQueue() {
                 esp_now_send(sendData.address, (uint8_t*) &commandMessage, sizeof(commandMessage));
                 commandMessage.param = 0;
                 switch(commandMessage.messageId) {
-                    case CMD_RESET:
+                    case CMD_RESET_SYSTEM:
                     for (size_t i = 0; i < std::size(clientAddresses); ++i) {
                         clientAddresses[i] = client_address{}; // Value-initialization
                     }
@@ -164,14 +164,7 @@ void messaging::processDataFromSendQueue() {
                     writeStructsToFile(clientAddresses, NUM_DEVICES, "/clientAddress");
                     ESP.restart();
                     break;
-                    case CMD_START_BROADCAST:
-                    if (globalModeHandler->getMode() == MODE_START_PRE_CALIBRATION_BROADCAST) {
-                        globalModeHandler->switchMode(MODE_PRE_CALIBRATION_BROADCAST);
-                    }
-                    else {
-                        globalModeHandler->switchMode(MODE_BROADCAST_TIMER);
-                    }
-                    break;
+
                     default:
                     break;
                 }

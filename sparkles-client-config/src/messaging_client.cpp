@@ -96,14 +96,12 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                 Serial.println("received cmd get clap times");
                 pushDataToSendQueue(hostAddress, MSG_SEND_CLAP_TIMES, -1);
                 break;
-                case CMD_START_BROADCAST:
-                    addError("Received Begin Broadcast\n");
-                    globalModeHandler->switchMode(MODE_RECEIVE_BROADCAST);
-                break;   
+
                 case CMD_END_ANIMATION:
                     addError("Ending animation \n");
                     globalModeHandler->switchMode(MODE_NEUTRAL);
-                    handleLed->ledsOff();
+                    nextAnimationPing = 0;
+                    handleLed->turnOff();
             }
             break;
         case MSG_SWITCH_MODE: 
@@ -121,10 +119,8 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
 
         case MSG_BROADCAST_TIMER: 
             addError("Received Broadcast Timer\n");
-            if (globalModeHandler->getMode() == MODE_RECEIVE_BROADCAST) {
-                memcpy(&timerMessage, incomingData, sizeof(timerMessage));
-                receiveBroadcastTimer(msgReceiveTime);
-            }
+            memcpy(&timerMessage, incomingData, sizeof(timerMessage));
+            receiveBroadcastTimer(msgReceiveTime);
             break;
         case MSG_TIMER_CALIBRATION:  
         { 

@@ -102,8 +102,13 @@ class messaging {
         bool receivedAnnounce = false;
         uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         uint8_t emptyAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        //black host address
-        uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc1, 0x74 };
+        //sticker host address
+        //uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc1, 0x74 };
+        // host 3.16
+        //uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x95, 0xea, 0x54 };
+        //host 3.1
+        uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc0, 0x80 };
+
         //blue host address
         //uint8_t hostAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xe9, 0xae}; 
         uint8_t clientAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xbd, 0x8a};
@@ -121,6 +126,7 @@ class messaging {
         int maxPos;
         int announceCounter = 0;
         bool finishAnimation = false;
+        unsigned long lastBroadcastTimer = 0;
         //esp8266
         //uint8_t webserverAddress[6] = {0xe8, 0xdb, 0x84, 0x99, 0x5e, 0x44};
         //        uint8_t clapDeviceAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
@@ -252,7 +258,13 @@ class messaging {
         int getTimeoutRetryId();
         void startAnimation();
         void endAnimation();
-        
+        bool allTimersUpdated();
+        float largestDistance();
+        void setDistanceFromCenter();
+        void resetSystem();
+        unsigned long getLastBroadcastTimer();
+        void setLastBroadcastTimer();
+        void printPeers();
 };
 
 

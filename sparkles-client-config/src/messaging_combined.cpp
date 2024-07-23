@@ -231,6 +231,9 @@ String messaging::messageCodeToText(int message) {
     case CMD_MASTERCLAP_OCCURRED:
         out = "CMD_MASTERCLAP_OCCURRED";
         break;
+    case CMD_END_ANIMATION:
+        out = "CMD_END_ANIMATION";
+        break;
     default:
         out = "UNKNOWN_MESSAGE";
         break;
@@ -316,17 +319,18 @@ void messaging::addSent(String sent) {
 
 
 void messaging::receiveBroadcastTimer(unsigned long messageReceiveTime) {
+    addError("receive broadcast timer", false);
     int difference = messageReceiveTime - lastTime;
     if (abs(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS) < 1000) {
        if (timerMessage.sendTime > messageReceiveTime) {
-        Serial.println("multiplier positive");
+        addError("multiplier positive", false);
         timeOffset = timerMessage.sendTime-messageReceiveTime-delayAvg/2;
         offsetMultiplier = 1;
         globalModeHandler->switchMode(MODE_NEUTRAL);
         timerCounter = 0;
       }
       else if (timerMessage.sendTime < messageReceiveTime) {
-        Serial.println("multiplier negative");
+        addError("multiplier negative", false);
         timeOffset = messageReceiveTime-timerMessage.sendTime-delayAvg/2;
         offsetMultiplier = -1;
         globalModeHandler->switchMode(MODE_NEUTRAL);
@@ -334,7 +338,7 @@ void messaging::receiveBroadcastTimer(unsigned long messageReceiveTime) {
       }
     }
     else {
-        Serial.println("received broadcast timer but "+String(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS)+" is too far off");
+        addError("received broadcast timer but "+String(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS)+" is too far off"), false;
     }
     if (timerCounter > MAX_BROADCAST_TIMERS) {
         timerCounter = 0;
@@ -491,12 +495,24 @@ void messaging::init() {
     Serial.println("initialized");
   }
   Serial.println("WIfi mode "+String(WiFi.getMode()));
+  esp_now_peer_info_t peerInfo;
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+    // Add peer        
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
   
 }
 void messaging::goToSleep(unsigned long sleepTime) {
     Serial.println("time is "+String(millis()));
     Serial.println("going to sleep for "+String(sleepTime)); 
     delay(100);
+   #if DEVICE_MODE != WEBSERVER
+    handleLed->ledsOff();
+    #endif
     WiFi.disconnect();
     WiFi.mode(WIFI_OFF);
     esp_now_deinit();

@@ -11,9 +11,10 @@ void modeMachine::setup(webserver &myWebserver) {
 }
 #endif
 void modeMachine::switchMode(int mode) {
-    //Serial.print("Switched Mode to ");
-    //printMode(mode);
+    ESP_LOGI("MODE", "Switched Mode to ");
+    printMode(mode);
     currentMode = mode;
+
     logMode(mode);
      #if DEVICE_MODE == MAIN
         String modeText = "{\"status\" : \""+modeToText(mode)+"\"}";
@@ -22,11 +23,18 @@ void modeMachine::switchMode(int mode) {
 }
 
 void modeMachine::revertToPreviousMode() {
+    //Serial.println("reverting "+String(previousMode));
+    ESP_LOGI("MODE", "revert");
     switchMode(previousMode);
 }
-void modeMachine::setPreviousMode() {
-    Serial.println("setting previous mode to "+modeToText(currentMode));
+void modeMachine::setPreviousMode(bool override) {
+    if (getMode() != MODE_NEUTRAL && getMode() != MODE_INIT && override != true) {
+    ESP_LOGI("mode", "setting previous mode %d", currentMode);
     previousMode = currentMode;
+    }
+    else {
+        Serial.println("called setPrev but mode is neutral");
+    }
 }
 int modeMachine::getPreviousMode() {
     return previousMode;
@@ -97,7 +105,15 @@ String modeMachine::modeToText(int mode) {
     case MODE_CLAPPING:
         out += "MODE_CLAPPING";
     break;        
-
+    case MODE_WOKEUP: 
+        out += "MODE_WOKEUP";
+    break;
+    case MODE_BROADCAST_TIMER: 
+        out += "MODE_BROADCAST_TIMER";
+    break;
+    case MODE_PRE_CALIBRATION_BROADCAST:
+        out += "MODE_PRE_CALIBRATION_BROADCAST";
+        break;
     default: 
         out += "Mode unknown ";
         out += String(mode); // Convert 'mode' integer to String and concatenate

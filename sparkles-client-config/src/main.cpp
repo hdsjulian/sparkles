@@ -227,8 +227,7 @@ void setup() {
   timerDings = micros();
   lastFlash = 0;
   WiFi.macAddress(myAddress);
-    PeakDetection peakDetection; 
- peakDetection.begin(48, 9, 0.6); 
+ peakDetection.begin(48, 10, 0.5); 
 }
 
 void loop() {
@@ -310,8 +309,8 @@ void loop() {
     modeHandler.printCurrentMode();
     delay(1);
   }
-  if (modeHandler.getMode() == MODE_ANIMATE) {
-    messageHandler.nextAnimation();
+  if (modeHandler.getMode() == MODE_ANIMATE ) {
+    //messageHandler.nextAnimation();
       handleLed.run();
   }
 

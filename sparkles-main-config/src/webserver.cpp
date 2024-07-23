@@ -90,6 +90,9 @@ void webserver::configRoutes() {
     server.on("/resetCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
     this->resetCalibration(request);
     });
+    server.on("/resetSystem", HTTP_GET, [this] (AsyncWebServerRequest *request){
+    this->resetSystem(request);
+    });
     server.on("/updateCalibrationStatus", HTTP_GET, [this] (AsyncWebServerRequest *request){
     this->updateCalibrationStatus(request);
     });
@@ -115,9 +118,15 @@ void webserver::commandCalibrate(AsyncWebServerRequest *request) {
     if (stateMachine->getMode() == MODE_NEUTRAL or stateMachine->getMode() == MODE_MASTERCLAP_OCCURRED) {
       String jsonString;
       jsonString = "{\"status\" : \""+String(CALIBRATION_IN_PROGRESS)+"\"}";
-      calibrationStatus == CALIBRATION_IN_PROGRESS;
       request->send(200, "text/html", jsonString.c_str()); 
-      stateMachine->switchMode(MODE_PRE_CALIBRATION_BROADCAST);
+      if (calibrationStatus == CALIBRATION_IN_BETWEEN) {
+        messageHandler->startCalibrationMode();
+        
+      }
+      else {
+        stateMachine->switchMode(MODE_PRE_CALIBRATION_BROADCAST);
+      }
+      calibrationStatus == CALIBRATION_IN_PROGRESS;
       messageHandler->addError("starting calibration mode\n");
     }
 }
@@ -157,17 +166,17 @@ void webserver::commandAnimate(AsyncWebServerRequest *request) {
     request->send(400);
     return;
   }
-  else if (stateMachine->getMode() == MODE_NEUTRAL) {
+  else if (stateMachine->getMode() == MODE_NEUTRAL || stateMachine->getMode() == MODE_INIT) {
     request->send(204);
     jsonString = "{\"status\" : \"true\"}";
-    events.send(jsonString.c_str(), "animateStatus", millis()); 
+    request ->send(200, "text/html", jsonString.c_str());
     //messageHandler->pushDataToSendQueue(CMD_START_ANIMATION, -1);
     stateMachine->switchMode(MODE_STARTUP_ANIMATION);
   }
   else if (stateMachine->getMode() == MODE_ANIMATE) {
     request->send(204);
         jsonString = "{\"status\" : \"false\"}";
-    events.send(jsonString.c_str(), "animateStatus", millis()); 
+    request ->send(200, "text/html", jsonString.c_str());
     //messageHandler->pushDataToSendQueue(CMD_STOP_ANIMATION, -1);
     stateMachine->switchMode(MODE_END_ANIMATION);
   }
@@ -363,6 +372,12 @@ void webserver::updateMode(String modeText) {
     events.send(modeText.c_str(), "statusUpdate");
 }
 
+
+void webserver::resetSystem(AsyncWebServerRequest *request) {
+  Serial.println("resetting system");
+  messageHandler->resetSystem();
+  
+}
 void webserver::submitPdParams(AsyncWebServerRequest *request) {
   messageHandler->addError("Called SubmitPdParams");
 

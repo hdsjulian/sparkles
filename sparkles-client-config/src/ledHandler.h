@@ -6,7 +6,7 @@
 //#include <../../sparkles-main-config/src/messaging.h>
 #include <queue>
 
-
+#define FRACTION 5
 
 class ledHandler {
     private: 
@@ -37,6 +37,7 @@ class ledHandler {
         int maxX = 0;
         int maxY = 0;        
         bool once = false;
+        int fraction = 0;
 
     public:
     ledHandler();
@@ -52,30 +53,38 @@ class ledHandler {
     void blink();
     void candle(int duration, int reps, int pause, unsigned long startTime, unsigned long timeOffset);
     void syncAsyncBlink();
+    void slowStartup();
     void rowBlink();
+    void syncEnd();
     void setupSyncAsyncBlink();
     void setupRowBlink();
+    void setupSlowStartup();
+    void setupSyncEnd();
     void setTimeOffset(unsigned long setOffset, int offsetMultiplier);
 
     void ledOn(int r, int g, int b, int duration, int frontback);
     void concentric();
     void setDistance(float dist);
     void writeLeds();
-    float calculateFlash(int targetVal, unsigned long timeElapsed);
+    float calculateFlash(int targetVal, unsigned long timeElapsed, int speedfactor = 1);
     void setPosition(int position);
     void setLocation(int xpos, int ypos, int zpos);
     void printStatus();
-    void setupSyncBlink();
-    void runSyncBlink();
+    
     unsigned long calculate(message_animate *animationMessage);
     unsigned long calculateSyncAsyncBlink(message_animate *animationMessage);
+    unsigned long calculateSlowStartup(message_animate *animationMessage);
     unsigned long calculateRowBlink(message_animate *animationMessage);
+    unsigned long calculateSyncEnd(message_animate *animationMessage);
     void getNextAnimation(message_animate *animationMessage);
     void createSyncAsyncBlink(message_animate *animationMessage);
+    void createSlowStartup(message_animate* animationmessage);
     void createRowBlink(message_animate *animationMessage);
+    void createSyncEnd(message_animate *animationMessage);
     void printAnimationMessage(const message_animate &animationMessage);
     void startFlashTask();
     void flashTask(void *parameters);
+    void turnOff();
 };
 
 #endif

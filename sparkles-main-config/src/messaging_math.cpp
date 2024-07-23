@@ -25,6 +25,20 @@ void messaging::calculateDistances(int id) {
                 addError("distance for "+String(id)+" found "+String(clientAddresses[id].distances[i]));
             }   
         }
+        int distcount = 0;
+        float distAvg = 0;
+        for (int i = 0; i < clientAddresses[id].clapTimes.clapCounter; i++) {
+            if (clientAddresses[id].distances[i] != 0) {
+                distAvg += clientAddresses[id].distances[i];
+                distcount++;
+            }
+        }
+        if (distcount > 0) {
+            clientAddresses[id].distanceFromCenter = distAvg/distcount;
+        }
+        distanceMessage.distance = clientAddresses[id].distanceFromCenter;
+        pushDataToSendQueue(clientAddresses[id].address, MSG_DISTANCE, -1);
+        
     }
     else {
         addError("id not > -1 "+String(id)+" and clapcounter = "+String(myClapTimes.clapCounter)+"\n");
@@ -400,4 +414,31 @@ float messaging::scaling_factor(float value) {
 
     // Generate a random scaling factor within the inaccuracy range
     return 1.0 + ((float)random(-1000, 1000) / 1000.0) * inaccuracy;
+}
+
+
+void messaging::setDistanceFromCenter() {
+    int validClaps = 0;
+    float averageDistance;
+    for (int i = 0; i < addressCounter; i++ ) {
+        if (clapDeviceLocations[i].xLoc == -1 && clapDeviceLocations[i].yLoc == -1 && clapDeviceLocations[i].zLoc == -1) {
+            for (int j = 0; j < NUM_CLAPS; j++) {
+                if (clientAddresses[i].distances[j] != 0) {
+                    validClaps++;
+                    averageDistance += clientAddresses[i].distances[j];
+                }
+            }
+            float lowerThreshold = averageDistance * 0.8;
+            float upperThreshold = averageDistance * 1.2;
+            validClaps = 0;
+            averageDistance = 0;
+            for (int j = 0; j<NUM_CLAPS; j++) {
+                if (clientAddresses[i].distances[j] != 0 && clientAddresses[i].distances[j] >= lowerThreshold && clientAddresses[i].distances[j] <= upperThreshold) {
+                    validClaps++;
+                    averageDistance += clientAddresses[i].distances[j];
+                }
+            }
+            clientAddresses[i].distanceFromCenter = averageDistance/validClaps;
+        }
+    }
 }

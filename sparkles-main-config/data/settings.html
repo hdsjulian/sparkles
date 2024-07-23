@@ -264,7 +264,7 @@
 
   document.getElementById('cmd_animate').addEventListener('click', function() {
     var fetchUrl = '/commandAnimate';
-    fetchMe(fetchUrl);
+    fetchMe(fetchUrl, animateUpdate);
 
   });
 
@@ -297,21 +297,16 @@
     document.getElementById('submit_animation_2').addEventListener('click', function() {
         handleAnimation('2');
     });
-    sourceEvents.addEventListener('animateStatus', function(e) {
-      console.log("animatestatus");
-      console.log(e);
-      var obj = JSON.parse(e.data);
-      console.log(obj.status)
-      animateUpdate(obj);
-    });
     function animateUpdate(obj) {
-    if (obj.status == "true") {
-      document.getElementById('cmd_animate').textContent = "END ANIMATION";
-    }
-    else {
-      document.getElementById('cmd_animate').textContent = "ANIMATE";
-    }
-  }
+      if (obj) {
+      if (obj.status == "true") {
+        document.getElementById('cmd_animate').textContent = "END ANIMATION";
+      }
+      else {
+        document.getElementById('cmd_animate').textContent = "ANIMATE";
+      } 
+    } 
+  };
     function handleAnimation(id) {
       const input1 = document.getElementById(`speed_${String(id)}`).value;
   const input2 = document.getElementById(`pause_${String(id)}`).value;
@@ -338,25 +333,32 @@
 
 
 
-function fetchMe(fetchUrl) {
+function fetchMe(fetchUrl, callback) {
 
-    fetch(fetchUrl)
-        .then(response => {
-            // Check if the response is successful
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            // Parse the response as JSON
-            console.log("response ok");
-        })
-        .then(data => {
-            // Handle the received data
-            console.log('Data received:', data);
-        })
-        .catch(error => {
-            // Handle errors
-            console.error('Fetch error:', error);
-        });
+  fetch(fetchUrl)
+      .then(response => {
+          // Check if the response is successful
+          if (!response.ok) {
+              throw new Error('Network response was not ok');
+          }
+          // Parse the response as JSON
+          console.log("response ok.");
+          return response.text()
+      })
+      .then(data => {
+          // Handle the received data
+          if (callback) {
+            console.log("callback "+fetchUrl);
+            console.log(data);
+            var obj = JSON.parse(data);
+            callback(obj);
+          }
+          console.log('Data received:', data);
+      })
+      .catch(error => {
+          // Handle errors
+          console.error('Fetch error:', error);
+      });
 }
 
 </script>
