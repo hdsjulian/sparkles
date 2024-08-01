@@ -6,7 +6,7 @@
 //#include <../../sparkles-main-config/src/messaging.h>
 #include <queue>
 
-#define FRACTION 5
+#define FRACTION 3
 
 class ledHandler {
     private: 

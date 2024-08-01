@@ -52,7 +52,7 @@ void messaging::goodNight() {
         }
         time = getSystemTime();
         commandMessage.messageType == NOPE;
-        int delayTime = 11*1000;
+        int delayTime = 600*1000;
         Serial.println("delaying for "+String(delayTime));
         delay(delayTime);
         goToSleepTime = (int)calculateTimeDifference(time[5], time[4], time[3], time[0], time[1], time[2], sleepTime.hours, sleepTime.minutes, sleepTime.seconds)*1000;

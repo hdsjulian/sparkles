@@ -450,43 +450,6 @@ void messaging::forceDebug(int i) {
     //delay();
 }
 
-void messaging::nextAnimation() {
-    if (nextAnimationPing == 0) {
-        Serial.println("next animation ping 0");
-        delay(1000);
-        return;
-    }
-    if (millis() < nextAnimationPing) {
-        if (millis() % 1000 == 0) {
-            delay(1);
-            Serial.println("Next animation in "+String((nextAnimationPing-millis())/1000)+" seconds, nextanimationping = "+String(nextAnimationPing));
-        }
-        return;
-    }
-    if (millis() > nextAnimationPing) {
-        if (millis() > lastBroadcastTimer+BROADCAST_TIMER_FREQ*1000) {
-            Serial.println("calling broadcast timer");
-            broadcastTimer();
-
-        }
-        else {
-            Serial.println("lastBroadcasttimer is "+String(lastBroadcastTimer)+" and timerfreq "+String(BROADCAST_TIMER_FREQ*1000)+" so difference "+String(millis()-lastBroadcastTimer+BROADCAST_TIMER_FREQ*1000));
-        }
-        if (finishAnimation == true) {
-            Serial.println("We want to end the animations or want to ");
-            globalModeHandler->switchMode(MODE_NEUTRAL);
-        }
-        else {
-            handleLed->getNextAnimation(&animationMessage);
-            handleLed->printStatus();
-            animationMessage.startTime = micros()+1000000;
-            nextAnimationPing = millis()+handleLed->calculate(&animationMessage);
-            Serial.println("Next animation ping "+String(nextAnimationPing));
-            Serial.println("now = "+String(millis()));
-            pushDataToSendQueue(broadcastAddress, MSG_ANIMATION, -1);
-        }
-    }
-}
 
 void messaging::switchMode(int mode) {
     switchModeMessage.mode = mode;

@@ -64,8 +64,8 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                     globalModeHandler->switchMode(MODE_WAIT_FOR_TIMER);
                 break;
                 case CMD_GO_TO_SLEEP:
-                        Serial.println("received go to sleep");
-                         goToSleep(commandMessage.param*1000000);
+                        Serial.println("received go to sleep with "+String(commandMessage.param));
+                         goToSleep((unsigned long)commandMessage.param);
                 break;
                 case CMD_RESET:
                     ESP.restart();

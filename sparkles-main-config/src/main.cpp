@@ -44,7 +44,7 @@ int cycleCounter = 0;
 bool isSetup = false;
 bool isTimerSet = false;
 
-
+unsigned long wokeUpTime = 0;
 
 //-----------
 //Timer config variables
@@ -78,11 +78,13 @@ void IRAM_ATTR onTimer()
   //Serial.println(msgSendTime/1000);
   messageHandler.incrementTimerCounter();
     //wait for timer vs wait for calibrate
-    if (messageHandler.getTimerCounter() == 100) {
+    if (messageHandler.getTimerCounter() == 50) {
       //messageHandler.timeoutRetryHandler();
       //what to do here?
+      if (modeHandler.getMode() != MODE_BROADCAST_TIMER) {
       messageHandler.setNoSuccess();
       messageHandler.setTimerCounter(0);
+      }
     }    
 
 
@@ -317,6 +319,7 @@ void loop() {
       Serial.println("Failed to add peer broadcastaddress 2");
       return;
     }
+    wokeUpTime = millis();
   }
   if (modeHandler.getMode() != MODE_SENDING_TIMER && modeHandler.getMode() != MODE_RESET_TIMER && modeHandler.getMode() != MODE_PING_RESET) {
     messageHandler.handleTimerUpdates();
@@ -351,7 +354,7 @@ void loop() {
   if (modeHandler.getMode() == MODE_ANIMATE) {
     messageHandler.nextAnimation();
   }
-  if (modeHandler.getMode() == MODE_WOKEUP && messageHandler.allTimersUpdated()) {
+  if (modeHandler.getMode() == MODE_WOKEUP && (messageHandler.allTimersUpdated() || millis() > wokeUpTime+600000))  {
   Serial.println ("Woke up and all timers updated");
     messageHandler.startAnimation();
   }

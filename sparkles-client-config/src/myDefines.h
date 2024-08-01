@@ -344,6 +344,7 @@ enum animationEnum {
     SYNC_ASYNC_BLINK,
     SYNC_BLINK,
     SLOW_STARTUP,
+    SYNC_END,
     LED_ON,
     CONCENTRIC
 };

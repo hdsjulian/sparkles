@@ -509,6 +509,7 @@ void messaging::init() {
 void messaging::goToSleep(unsigned long sleepTime) {
     Serial.println("time is "+String(millis()));
     Serial.println("going to sleep for "+String(sleepTime)); 
+    sleepTime = sleepTime*1000000;
     delay(100);
    #if DEVICE_MODE != WEBSERVER
     handleLed->ledsOff();

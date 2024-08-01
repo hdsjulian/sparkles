@@ -184,6 +184,16 @@ void ledHandler::setupAnimation(message_animate *animationSetupMessage) {
     setupSyncAsyncBlink();
     return;
   }
+  else if (animationMessage.animationType == SLOW_STARTUP) {
+    Serial.println("setting up slow startup");
+    setupSlowStartup();
+    return;
+  }
+  else if (animationMessage.animationType == SYNC_END) {
+    Serial.println("setting up sync end");
+    setupSyncEnd();
+    return;
+  }
   else {
     return;
   }
@@ -217,13 +227,35 @@ void ledHandler::setupSlowStartup() {
 
 }
 
+void ledHandler::setupSyncEnd() {
+  repeatCounter = 0;
+  localAnimationStart = 0;
+  animationNextStep = 0;
+  currentAnimation = animationMessage.animationType;
+  unsigned long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
+  //calculate start of first round
+  //was will ich hier
+  localAnimationStart = localAnimationStartMicros/1000;
+  globalAnimationStart = localAnimationStart;
+  if (micros() > localAnimationStartMicros) {
+    Serial.println("not today");
+    return;
+  }
+  animationNextStep = localAnimationStart;
+  globalAnimationTimeframe = animationMessage.speed+animationMessage.pause;
+
+  localAnimationTimeframe = globalAnimationTimeframe;
+
+}
+
+
 void ledHandler::setupSyncAsyncBlink() {
   repeatCounter = 0;
   localAnimationStart = 0;
   animationNextStep = 0;
   currentAnimation = animationMessage.animationType;
   unsigned long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
-  fraction = animationMessage.num_devices/FRACTION;
+  fraction = animationMessage.num_devices/FRACTION == 0 ? 1 : animationMessage.num_devices/FRACTION;
   //calculate start of first round
   //was will ich hier
   localAnimationStart = localAnimationStartMicros/1000;
@@ -302,7 +334,10 @@ unsigned long ledHandler::calculate(message_animate *animationMessage) {
     case SLOW_STARTUP:
       Serial.println("slow startup");
       return calculateSlowStartup(animationMessage);
-    default: 
+    case SYNC_END: 
+      Serial.println("sync end");
+      return calculateSyncEnd(animationMessage);
+    default:  
     return 0;
 
   }
@@ -323,10 +358,10 @@ unsigned long ledHandler::calculateSyncAsyncBlink(message_animate *animationMess
       if (j <= animationMessage->reps/2) {
         if (i == 0) {
         }
-        base_time += (animationMessage->spread_time/(animationMessage->reps/2))*animationMessage->num_devices*j;
+        base_time += (animationMessage->spread_time/(animationMessage->reps/2))*fraction*j;
       }
       else {
-        base_time += (animationMessage->spread_time/(animationMessage->reps/2))*animationMessage->num_devices*(animationMessage->reps-j);
+        base_time += (animationMessage->spread_time/(animationMessage->reps/2))*fraction*(animationMessage->reps-j);
         if (i == 0) {
         }
 
@@ -353,6 +388,11 @@ unsigned long ledHandler::calculateSlowStartup(message_animate *animationMessage
     }
   Serial.println("base time "+String(base_time));
   Serial.println("millis "+String(millis()));
+  return base_time;
+}
+
+unsigned long ledHandler::calculateSyncEnd(message_animate *animationMessage) {
+  unsigned long base_time = animationMessage->speed;
   return base_time;
 }
 
@@ -384,11 +424,11 @@ void ledHandler::syncAsyncBlink() {
     //and figure out the start of next cycle
     if (repeatCounter <= animationMessage.reps/2) {
       localAnimationStart = globalAnimationStart +(animationMessage.spread_time/(animationMessage.reps/2))*(position%fraction)*repeatCounter; 
-      globalAnimationTimeframe = animationMessage.speed+animationMessage.pause+(animationMessage.spread_time/(animationMessage.reps/2))*animationMessage.num_devices*repeatCounter;
+      globalAnimationTimeframe = animationMessage.speed+animationMessage.pause+(animationMessage.spread_time/(animationMessage.reps/2))*fraction*repeatCounter;
     }
     else {
       localAnimationStart = globalAnimationStart + (animationMessage.spread_time/(animationMessage.reps/2))*(position%fraction)*(animationMessage.reps-repeatCounter);
-      globalAnimationTimeframe = animationMessage.speed+animationMessage.pause+(animationMessage.spread_time/(animationMessage.reps/2))*animationMessage.num_devices*(animationMessage.reps-repeatCounter);
+      globalAnimationTimeframe = animationMessage.speed+animationMessage.pause+(animationMessage.spread_time/(animationMessage.reps/2))*fraction*(animationMessage.reps-repeatCounter);
     }
 
     //globalAnimationStart = globalAnimationStart+globalAnimationTimeframe;
@@ -792,6 +832,10 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
       return;
     case SLOW_STARTUP:
     createSlowStartup(animationMessage);
+    return;
+    case SYNC_END:
+    createSyncEnd(animationMessage);
+    return;
     default:
       return;
   }
@@ -809,9 +853,9 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
     animationMessage->rgb1[0] =red;
     animationMessage->rgb1[1] =  green;
     animationMessage->rgb1[2] = blue;
-    animationMessage->speed = random(300, 1000);
-    animationMessage->pause = random(200, 1000);
-    animationMessage->spread_time = random(300, 1000);
+    animationMessage->speed = random(500, 2000);
+    animationMessage->pause = random(0, 200);
+    animationMessage->spread_time = random(1000, 5000);
     animationMessage->reps = random(5, 10);
     animationMessage->animationreps = random(5, 20);
   }
@@ -852,6 +896,21 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
   }
 
     void ledHandler::createRowBlink(message_animate *animationMessage) {
+    
+    int red = random(125,256);
+    int blue = random(125,256);
+    int green = random(125,256);
+    animationMessage->rgb1[0] =red;
+    animationMessage->rgb1[1] =  green;
+    animationMessage->rgb1[2] = blue;
+    animationMessage->speed = random(100, 400);
+    animationMessage->pause = random(100, 1000);
+    animationMessage->spread_time = random(1, 5);
+    animationMessage->reps = random(10, 50);
+    animationMessage->animationreps = random(5, 20);
+  }
+
+    void ledHandler::createSyncEnd(message_animate *animationMessage) {
     
     int red = random(125,256);
     int blue = random(125,256);

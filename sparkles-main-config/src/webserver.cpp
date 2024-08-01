@@ -166,25 +166,29 @@ void webserver::commandAnimate(AsyncWebServerRequest *request) {
     request->send(400);
     return;
   }
-  else if (stateMachine->getMode() == MODE_NEUTRAL || stateMachine->getMode() == MODE_INIT) {
+  else if (stateMachine->getMode() == MODE_NEUTRAL || stateMachine->getMode() == MODE_INIT || stateMachine->getMode() == MODE_RESET_TIMER) {
     request->send(204);
     jsonString = "{\"status\" : \"true\"}";
-    request ->send(200, "text/html", jsonString.c_str());
+    messageHandler->addError(String(jsonString.c_str()));
+    request->send(200, "text/html", "{\"status\" : \"true\"}");
     //messageHandler->pushDataToSendQueue(CMD_START_ANIMATION, -1);
     stateMachine->switchMode(MODE_STARTUP_ANIMATION);
   }
   else if (stateMachine->getMode() == MODE_ANIMATE) {
     request->send(204);
         jsonString = "{\"status\" : \"false\"}";
-    request ->send(200, "text/html", jsonString.c_str());
+        messageHandler->addError(String(jsonString.c_str()));
+    request->send(200, "text/html", "{\"status\" : \"false\"}");
     //messageHandler->pushDataToSendQueue(CMD_STOP_ANIMATION, -1);
     stateMachine->switchMode(MODE_END_ANIMATION);
   }
+
   }
 
 void webserver::setNeutral(AsyncWebServerRequest *request) {
     stateMachine->switchMode(MODE_NEUTRAL);
     messageHandler->switchMode(MODE_NEUTRAL);
+    request->send(200, "text.html", "OK");
 }
 
 

@@ -264,12 +264,17 @@
 
   document.getElementById('cmd_animate').addEventListener('click', function() {
     var fetchUrl = '/commandAnimate';
+    console.log("cmd_animate called");
     fetchMe(fetchUrl, animateUpdate);
 
   });
 
   document.getElementById("addressList").addEventListener('click', function() {
     window.location.href = "addressList.html";
+  });
+  document.getElementById("neutral").addEventListener('click', function() {
+    var fetchUrl = '/neutral';
+    fetchMe(fetchUrl);
   });
 
 
@@ -298,11 +303,15 @@
         handleAnimation('2');
     });
     function animateUpdate(obj) {
+    console.log ("Animate update called");
       if (obj) {
+        console.log(obj);
       if (obj.status == "true") {
+        console.log("true");
         document.getElementById('cmd_animate').textContent = "END ANIMATION";
       }
       else {
+        console.log("false");
         document.getElementById('cmd_animate').textContent = "ANIMATE";
       } 
     } 
