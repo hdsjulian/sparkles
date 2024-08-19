@@ -32,13 +32,29 @@
         </p>
       </div>
       <div class="card deviceList">
+        <h4><i class="fas fa-wifi"></i> NUM DEVICES</h4>
+        <p>
+          <span class="reading">
+            <span id="num_devices" class="devicenum">0</span>
+          </span>
+        </p>
+      </div>
+      <div class="card deviceList">
+        <h4><i class="fas fa-wifi"></i> TIME</h4>
+        <p>
         <p>
             <span class="reading">
                 <span id="setClock" class="devicenum">00:00:00</span>
             </span>
         </p>
       </div>
-
+      <div class="card deviceList">
+        <p>
+            <span class="reading">
+                <span id="triggerSync" class="devicenum">Time Sync</span>
+            </span>
+        </p>
+      </div>
 
       <div class="card card--50">
           <p>
@@ -46,24 +62,36 @@
                   <span id="cmd_animate1" class="devicenum">Colors</span>
                   <div class='inputs'>
                     <div class="input-group">
-                      <label for="red1">Red:</label>
-                      <input type='text' id='red1' value="125" placeholder='Red:255'>
+                      <label for="red1">Min Red:</label>
+                      <input type='text' id='minRed' value="" placeholder='Red:255'>
                   </div>
                   <div class="input-group">
-                      <label for="green1">Green:</label>
-                      <input type='text' id='green1' value="125" placeholder='Green:255'>
+                      <label for="green1">Min Green:</label>
+                      <input type='text' id='minGreen' value="" placeholder='Green:255'>
                   </div>
                   <div class="input-group">
-                      <label for="blue1">Blue:</label>
-                      <input type='text' id='blue1' value="125" placeholder='Blue:255'>
+                      <label for="blue1">Min Blue:</label>
+                      <input type='text' id='minBlue' value="" placeholder='Blue:255'>
                   </div>
                   <div class="input-group">
-                    <label for="exponent_1">Exponent:</label>
-                    <input type='text' id='exponent_1' value="5.0" >
+                    <label for="maxred">Max Red:</label>
+                    <input type='text' id='maxRed' value="5.0" >
                   </div>
                   <div class="input-group">
-                    <label for="anireps_1">AniReps:</label>
-                    <input type='text' id='anireps_1' value="10" placeholder='Repetitions: 20'>
+                    <label for="maxgreen">Max Green:</label>
+                    <input type='text' id='maxGreen' value="10" placeholder='Repetitions: 20'>
+                  </div>
+                  <div class="input-group">
+                    <label for="maxblue">Max Blue:</label>
+                    <input type='text' id='maxBlue' value="10" placeholder='Repetitions: 20'>
+                  </div>
+                  <div class="input-group">
+                    <label for="maxgreen">Min Anireps :</label>
+                    <input type='text' id='minAniReps' value="10" placeholder='Repetitions: 20'>
+                  </div>
+                  <div class="input-group">
+                    <label for="maxblue">Max Anireps:</label>
+                    <input type='text' id='maxAniReps' value="10" placeholder='Repetitions: 20'>
                   </div>
                   </div>
               </span>
@@ -72,24 +100,47 @@
         <div class="card card--50">
           <p>
               <span class="reading">
-                  <span id="cmd_animate2" class="devicenum">SyncAsync</span>
+                  <span id="cmd_animate2" class="devicenum">Candle</span>
                   <div class='inputs'>
+                    <!-- Speed -->
                     <div class="input-group">
-                      <label for="speed_1">Speed:</label>
-                      <input type='text' id='speed_1' value="1000" placeholder='Speed: 1000ms'>
-                  </div>
-                  <div class="input-group">
-                      <label for="pause_1">Pause:</label>
-                      <input type='text' id='pause_1' value="1000" placeholder='Pause: 1000ms'>
-                  </div>
-                  <div class="input-group">
-                      <label for="reps_1">Reps:</label>
-                      <input type='text' id='reps_1' value="20" placeholder='Repetitions: 20'>
-                  </div>
-                  <div class="input-group">
-                    <label for="spread_1">Spread:</label>
-                    <input type='text' id='spread_1' value="1000" placeholder='Repetitions: 20'>
-                  </div>
+                      <label for="minSpeed">Min Speed:</label>
+                      <input type='text' id='minSpeed' value="" placeholder='Speed: 1000ms'>
+                    </div>
+                    <div class="input-group">
+                      <label for="maxSpeed">Max Speed:</label>
+                      <input type='text' id='maxSpeed' value="" placeholder='Speed: 1000ms'>
+                    </div>
+
+                    <!-- Pause -->
+                    <div class="input-group">
+                      <label for="minPause">Min Pause:</label>
+                      <input type='text' id='minPause' value="" placeholder='Pause: 1000ms'>
+                    </div>
+                    <div class="input-group">
+                      <label for="maxPause">Max Pause:</label>
+                      <input type='text' id='maxPause' value="" placeholder='Pause: 1000ms'>
+                    </div>
+
+                    <!-- Reps -->
+                    <div class="input-group">
+                      <label for="minReps">Min Reps:</label>
+                      <input type='text' id='minReps' value="" placeholder='Repetitions: 20'>
+                    </div>
+                    <div class="input-group">
+                      <label for="maxReps">Max Reps:</label>
+                      <input type='text' id='maxReps' value="" placeholder='Repetitions: 20'>
+                    </div>
+
+                    <!-- Spread -->
+                    <div class="input-group">
+                      <label for="minSpread">Min Spread:</label>
+                      <input type='text' id='minSpread' value="" placeholder='Repetitions: 20'>
+                    </div>
+                    <div class="input-group">
+                      <label for="maxSpread">Max Spread:</label>
+                      <input type='text' id='maxSpread' value="" placeholder='Repetitions: 20'>
+                    </div>
                   <button id='submit_animation_1'>Submit</button>
                   </div>
               </span>
@@ -153,7 +204,7 @@
         <div class="card card--50">
           <p>
               <span class="reading">
-                  <span id="cmd_animate1" class="devicenum">WAKE UP</span>
+                  <span id="cmd_goodmorning" class="devicenum">WAKE UP</span>
                   <div class='inputs'>
                     <div class="input-group">
                       <label for="hours">Hours:</label>
@@ -197,6 +248,12 @@
         <div class="card deviceList">
           <p>
               <span class="reading">
+                <div class='inputs'>
+                  <div class="input-group">
+                    <label for="hours">Brightness:</label>
+                    <input type='text' id='brightness' value="150" placeholder=''>
+                </div>
+                </div>
                   <span id="cmd_animate" class="devicenum">Animate</span>
               </span>
           </p>
@@ -228,7 +285,7 @@
   </div>
 
 <script>
-  var debug = 1;
+  var debug = 0;
   function toggleMenu() {
       var menu = document.getElementById('navMenu');
       menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
@@ -250,7 +307,15 @@
   fetchMe(fetchUrl);
 }
   setInterval(setTime, 1000);
-  document.getElementById("setClock").addEventListener('click', sendTime);
+  document.getElementById("setClock").addEventListener('click', function() {
+    sendTime();
+    var setClockButton = document.getElementById("setClock");
+    setClockButton.classList.add("active");
+    setTimeout(function() {
+          setClockButton.classList.remove('active');
+        }, 1000);
+  }
+  );
   function statusUpdate(obj) {
     document.getElementById('status').textContent = obj.status;
   }
@@ -260,13 +325,24 @@
     if (userConfirmed) {
       fetchMe(fetchUrl);
     }
+    var clickButton = document.getElementById("resetSystem");
+    clickButton.classList.add("active");
+    setTimeout(function() {
+          clickButton.classList.remove('active');
+        }, 1000);
   });
 
   document.getElementById('cmd_animate').addEventListener('click', function() {
-    var fetchUrl = '/commandAnimate';
-    console.log("cmd_animate called");
-    fetchMe(fetchUrl, animateUpdate);
 
+    var fetchUrl = '/commandAnimate?brightness=' + document.getElementById('brightness').value;
+    console.log("cmd_animate called");
+    console.log(fetchUrl);
+    fetchMe(fetchUrl, animateUpdate);
+    var clickButton = document.getElementById("cmd_animate");
+    clickButton.classList.add("active");
+    setTimeout(function() {
+          clickButton.classList.remove('active');
+        }, 1000);
   });
 
   document.getElementById("addressList").addEventListener('click', function() {
@@ -275,8 +351,21 @@
   document.getElementById("neutral").addEventListener('click', function() {
     var fetchUrl = '/neutral';
     fetchMe(fetchUrl);
+    var clickButton = document.getElementById("neutral");
+    clickButton.classList.add("active");
+    setTimeout(function() {
+          clickButton.classList.remove('active');
+        }, 1000);
   });
-
+  document.getElementById("triggerSync").addEventListener('click', function() {
+    var fetchUrl = '/triggerSync';
+    fetchMe(fetchUrl);
+    var clickButton = document.getElementById("triggerSync");
+    clickButton.classList.add("active");
+    setTimeout(function() {
+          clickButton.classList.remove('active');
+        }, 1000);
+  });
 
   document.getElementById('submit_goodnight').addEventListener('click', function() {
     var hours = document.getElementById('hours_goodnight').value;
@@ -285,6 +374,11 @@
     var fetchUrl = `/goodNight?hours=${encodeURIComponent(hours)}&minutes=${encodeURIComponent(minutes)}&seconds=${encodeURIComponent(seconds)}`;
     console.log(fetchUrl);
       fetchMe(fetchUrl);
+      var clickButton = document.getElementById("cmd_goodnight");
+    clickButton.classList.add("active");
+    setTimeout(function() {
+          clickButton.classList.remove('active');
+        }, 1000);
   });
   document.getElementById('submit_goodmorning').addEventListener('click', function() {
     var hours = document.getElementById('hours_goodmorning').value;
@@ -293,6 +387,11 @@
     var fetchUrl = `/goodMorning?hours=${encodeURIComponent(hours)}&minutes=${encodeURIComponent(minutes)}&seconds=${encodeURIComponent(seconds)}`;
     console.log(fetchUrl);
       fetchMe(fetchUrl);
+      var clickButton = document.getElementById("cmd_goodmorning");
+    clickButton.classList.add("active");
+    setTimeout(function() {
+          clickButton.classList.remove('active');
+        }, 1000);
   });
 
   document.getElementById('submit_animation_1').addEventListener('click', function() {
@@ -317,24 +416,42 @@
     } 
   };
     function handleAnimation(id) {
-      const input1 = document.getElementById(`speed_${String(id)}`).value;
-  const input2 = document.getElementById(`pause_${String(id)}`).value;
-  const input3 = document.getElementById(`reps_${String(id)}`).value;
-  const red = document.getElementById(`red${String(id)}`).value;
-  const green = document.getElementById(`green${String(id)}`).value;
-  const blue = document.getElementById(`blue${String(id)}`).value;
-  const anireps = document.getElementById(`anireps_${String(id)}`).value;
-  const exponent = document.getElementById(`exponent_${String(id)}`).value;
-  const spread = document.getElementById(`spread_${String(id)}`).value;
-    console.log(input1);
+      const minSpeed = document.getElementById('minSpeed').value;
+      const maxSpeed = document.getElementById('maxSpeed').value;
+
+      const minPause = document.getElementById('minPause').value;
+      const maxPause = document.getElementById('maxPause').value;
+
+      const minReps = document.getElementById('minReps').value;
+      const maxReps = document.getElementById('maxReps').value;
+
+      const minSpread = document.getElementById('minSpread').value;
+      const maxSpread = document.getElementById('maxSpread').value;
+      const minRed = document.getElementById('minRed').value;
+      const minGreen = document.getElementById('minGreen').value;
+      const minBlue = document.getElementById('minBlue').value;
+
+      const maxRed = document.getElementById('maxRed').value;
+      const maxGreen = document.getElementById('maxGreen').value;
+      const maxBlue = document.getElementById('maxBlue').value;
+
+      const minAniReps = document.getElementById('minAniReps').value;
+      const maxAniReps = document.getElementById('maxAniReps').value;
+
     // Handle form submission logic here
-    var fetchUrl = `/sendSyncAsyncAnimation?type=${encodeURIComponent(id)}&speed=${encodeURIComponent(input1)}&pause=${encodeURIComponent(input2)}&reps=${encodeURIComponent(input3)}&red=${encodeURIComponent(red)}&green=${encodeURIComponent(green)}&blue=${encodeURIComponent(blue)}&exponent=${encodeURIComponent(exponent)}&anireps=${encodeURIComponent(anireps)}&spread=${encodeURIComponent(spread)}`;
-    //fetchMe(fetchUrl);
+    var fetchUrl = `/setSyncAsyncParams?minSpeed=${encodeURIComponent(minSpeed)}&maxSpeed=${encodeURIComponent(maxSpeed)}&minPause=${encodeURIComponent(minPause)}&maxPause=${encodeURIComponent(maxPause)}&minReps=${encodeURIComponent(minReps)}&maxReps=${encodeURIComponent(maxReps)}&minSpread=${encodeURIComponent(minSpread)}&maxSpread=${encodeURIComponent(maxSpread)}&minRed=${encodeURIComponent(minRed)}&maxRed=${encodeURIComponent(maxRed)}&minGreen=${encodeURIComponent(minGreen)}&maxGreen=${encodeURIComponent(maxGreen)}&minBlue=${encodeURIComponent(minBlue)}&maxBlue=${encodeURIComponent(maxBlue)}&minAniReps=${encodeURIComponent(minAniReps)}&maxAniReps=${encodeURIComponent(maxAniReps)}`;
+    fetchMe(fetchUrl);
     console.log(fetchUrl);
     };
   if (debug == 0) {
+    console.log("aha");
     if (!!window.EventSource) {
     var sourceEvents = new EventSource('/events');
+    sourceEvents.addEventListener('num_devices', function(e) {
+      var obj = JSON.parse(e.data);
+      console.log(obj);
+      document.getElementById("num_devices").textContent = obj.num_devices;
+    }, false);
     console.log("ok worked");
     };
   }
@@ -369,7 +486,27 @@ function fetchMe(fetchUrl, callback) {
           console.error('Fetch error:', error);
       });
 }
-
+document.addEventListener('DOMContentLoaded', function() {fetchMe('/getParamsJson', setLedParams)});
+function setLedParams(obj) {
+  console.log("setLedParams called");
+  console.log(obj);
+  document.getElementById('minSpeed').value = obj.minS;
+document.getElementById('maxSpeed').value = obj.maxS;
+document.getElementById('minPause').value = obj.minP;
+document.getElementById('maxPause').value = obj.maxP;
+document.getElementById('minSpread').value = obj.minSp;
+document.getElementById('maxSpread').value = obj.maxSp;
+document.getElementById('minReps').value = obj.minR;
+document.getElementById('maxReps').value = obj.maxR;
+document.getElementById('minAniReps').value = obj.minAR;
+document.getElementById('maxAniReps').value = obj.maxAR;
+document.getElementById('minRed').value = obj.minRGBR;
+document.getElementById('maxRed').value = obj.maxRGBR;
+document.getElementById('minGreen').value = obj.minRGBG;
+document.getElementById('maxGreen').value = obj.maxRGBG;
+document.getElementById('minBlue').value = obj.minRGBB;
+document.getElementById('maxBlue').value = obj.maxRGBB;
+}
 </script>
 // Function to handle click on the t1 span element
 

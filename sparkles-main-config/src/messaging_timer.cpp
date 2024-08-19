@@ -34,7 +34,8 @@ void messaging::goodNight() {
         Serial.println("sleeping until "+String(wakeupTime.hours)+":"+String(wakeupTime.minutes)+":"+String(wakeupTime.seconds));
         WiFi.mode(WIFI_OFF);
         esp_now_deinit();
-        esp_sleep_enable_timer_wakeup((unsigned long)((unsigned long)difference*1000000UL));
+        unsigned long sleepTimeMicroseconds = (unsigned long long) difference * 1000000ULL;
+        esp_sleep_enable_timer_wakeup(sleepTimeMicroseconds);
         esp_light_sleep_start();
         Serial.println("woke up");
         webServer->setWifi();

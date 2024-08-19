@@ -1,0 +1,160 @@
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP-NOW DASHBOARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="all.css" >
+  <link rel="icon" href="data:,">
+  <style>
+    html {font-family: Arial; display: inline-block; text-align: center;}
+    p {  font-size: 1.2rem;}
+    body {  margin: 0;}
+    .topnav { overflow: hidden; background-color: #2f4468; color: white; font-size: 1.7rem; }
+    .content { padding: 20px; }
+    .card { background-color: white; box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5); display: block; margin-bottom: 20px; flex: 1 0 100%; padding:5px;}
+    .card span {display:block; }
+    .cards { max-width: 700px; margin: 0 auto; display:flex; flex-flow: row wrap; gap:0.5em; flex-wrap: wrap; }
+    .card--50 {flex-basis: 40%}
+    .reading { font-size: 2.8rem; }
+    .packet { color: #bebebe; }
+    .devicenum { color: #fd7e14; }
+    .devicenum.red-background {
+      background-color: #ff0000; /* Bright red background */
+      color: #ffffff; /* White font */
+    }
+    .active { background-color: rgba(0, 139, 0, 0.2); }
+    .inactive { background-color: rgba(255, 0, 0, 0.2) }
+    .card.humidity { color: #1b78e2; }
+    .card.deviceList { color: #010702; }
+    .inputs { margin-top: 10px; }
+    .inputs input[type='text'] { margin: 5px 0; padding: 8px; width: calc(100% - 66px); box-sizing: border-box; }
+    .inputs button { display: block; margin: 10px 0; padding: 10px; width: 100%; background-color: #4CAF50; color: white; border: none; cursor: pointer; font-size: 1rem; }
+    .inputs button:hover { background-color: #45a049; }
+    .inputs .blue-button { background-color: #1b78e2; }
+    .input-group {display: flex; align-items: center; margin: 5px 0;}
+    .input-group label {margin-right: 10px; width: 100%; text-align: center;/* Adjust as necessary for alignment */}
+  </style>
+</head>
+<body>
+  <div class="topnav">
+    <h3>ESP-NOW DASHBOARD</h3>
+  </div>
+  <div class="content">
+    <div class="cards">
+      <div class="card deviceList">
+        <p>
+            <span class="reading">
+                <span id="addressList" class="devicenum">Battery Status</span>
+            </span>
+        </p>
+      </div>
+      <div class="card deviceList">
+        <p>
+            <span class="reading">
+                <span id="setClock" class="devicenum">00:00:00</span>
+            </span>
+        </p>
+      </div>
+      <div class="card deviceList">
+        <p>
+            <span class="devicenum" id="batteryStatus">
+            </span>
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+
+<script>
+  var debug = 1;
+
+  async function setTime() {
+    try { 
+    const response = await(fetch('systemTime'));
+    if (!response.ok) {
+      throw new Error('something didnt work'+response.statusText);
+      
+    }
+    const data = await response.json();
+    result = convertMilliseconds(data.ms);
+    var textResponse = "";
+    if (result.days > 0) {
+      textResponse += `${result.days} Days, ${result.hours} Hours, ${result.minutes} minutes`;
+    }
+    else if (result.hours > 0 ) {
+       textResponse += `${result.hours} Hours, ${result.minutes} minutes`;
+    }
+    else if (result.minutes > 0) {
+      textResponse += `${result.minutes} minutes`;
+    }
+    else {
+      textResponse += `${result.seconds} seconds`;
+    }
+      document.getElementById("setClock").textContent = 'Time elapsed: '+textResponse;
+    } catch(error) {
+      console.error('problem!', error);
+    }
+
+  }  
+  setInterval(setTime, 60000);
+  setInterval(batteryUpdate, 30000);
+async function batteryUpdate() {
+  try { 
+    const response = await(fetch('batteryStatus'));
+    if (!response.ok) {
+      throw new Error('something didnt work'+response.statusText);
+      
+    }
+    const data = await response.json();
+  
+      document.getElementById("batteryStatus").innerHTML = `
+        <span id='reading'>Analog Read: ${data.reading}</span>
+      <span id='voltage'>Voltage: ${data.voltage}</span>
+      <span id='percentage'>Percentage: ${data.percentage}</span>
+  `
+    } catch(error) {
+      console.error('problem!', error);
+    }
+  }
+  batteryUpdate();
+  setTime();
+
+  function convertMilliseconds(ms) {
+    const seconds = Math.floor((ms / 1000) % 60);
+    const minutes = Math.floor((ms / (1000 * 60)) % 60);
+    const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+
+    return {
+        days: days,
+        hours: hours,
+        minutes: minutes,
+        seconds: seconds
+    };
+}
+
+
+function fetchMe(fetchUrl) {
+
+    fetch(fetchUrl)
+        .then(response => {
+            // Check if the response is successful
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            // Parse the response as JSON
+            console.log("response ok");
+        })
+        .then(data => {
+            // Handle the received data
+            console.log('Data received:', data);
+        })
+        .catch(error => {
+            // Handle errors
+            console.error('Fetch error:', error);
+        });
+}
+
+</script>
+</body>
+</html>

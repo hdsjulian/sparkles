@@ -363,6 +363,7 @@ struct message_animate {
   float exponent = 5.0;
   uint16_t animationreps = 0;
   float maxPos;
+  uint8_t brightness = 255;
 } ;
 
 

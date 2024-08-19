@@ -65,10 +65,13 @@ class webserver {
     void statusUpdate(AsyncWebServerRequest *request);
     void statusUpdate();
     void setNeutral(AsyncWebServerRequest *request);
+    void triggerSync(AsyncWebServerRequest *request);
+    void updateDeviceNum();
     void submitPdParams(AsyncWebServerRequest *request);
     void updateMode(String modeText);
     void setFull();
     void resetSystem(AsyncWebServerRequest *request);
+    void setSyncAsyncParams(AsyncWebServerRequest *request);
 
 };
 #endif

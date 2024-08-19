@@ -509,7 +509,7 @@ void messaging::init() {
 void messaging::goToSleep(unsigned long sleepTime) {
     Serial.println("time is "+String(millis()));
     Serial.println("going to sleep for "+String(sleepTime)); 
-    sleepTime = sleepTime*1000000;
+    unsigned long long sleepTimeMicroseconds = (unsigned long long)sleepTime * 1000000ULL;  
     delay(100);
    #if DEVICE_MODE != WEBSERVER
     handleLed->ledsOff();
@@ -517,7 +517,7 @@ void messaging::goToSleep(unsigned long sleepTime) {
     WiFi.disconnect();
     WiFi.mode(WIFI_OFF);
     esp_now_deinit();
-    esp_sleep_enable_timer_wakeup(sleepTime);
+    esp_sleep_enable_timer_wakeup(sleepTimeMicroseconds);
     esp_light_sleep_start();
     Serial.println("time is "+String(millis()));
     init();

@@ -455,3 +455,7 @@ void messaging::switchMode(int mode) {
     switchModeMessage.mode = mode;
     pushDataToSendQueue(broadcastAddress, MSG_SWITCH_MODE, -1);
 }
+
+int messaging::getAddressCounter() {
+    return addressCounter;
+}

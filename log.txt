@@ -1,0 +1,1565 @@
+--- Terminal on /dev/tty.usbmodem11201 | 9600 8-N-1
+--- Available filters and text transformations: colorize, debug, default, direct, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+Mode: MODE_STARTUP
+Number of Peers start: 2
+huch
+
+ERRORS:
+added peer
+Sending message MSG_ADDRESS
+To: HOST ADDRESS
+processing sent
+Sent MSG_ADDRESS to HOST ADDRESS
+
+Mode: MODE_STARTUP
+Success
+
+ERRORS:
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+
+Mode: MODE_WAIT_FOR_TIMER
+
+ERRORS:
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Timerreset = trueDifference: 1696116
+Message Arrive Time 1696116
+Last Time 0
+Doesn't Count. Difference 1096116
+
+
+ERRORS:
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+
+Mode: MODE_WAIT_FOR_TIMER
+
+ERRORS:
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Timerreset = trueDifference: 599993
+Message Arrive Time 2296109
+Last Time 1696116
+Counts. Arraycounter: 0
+
+
+ERRORS:
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+
+Mode: MODE_WAIT_FOR_TIMER
+
+ERRORS:
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Timerreset = trueDifference: 603045
+Message Arrive Time 2899154
+Last Time 2296109
+Doesn't Count. Difference 3045
+
+
+ERRORS:
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+
+Mode: MODE_WAIT_FOR_TIMER
+
+ERRORS:
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Difference: 597740
+Message Arrive Time 3496894
+Last Time 2899154
+Doesn't Count. Difference 2260
+
+
+ERRORS:
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+
+Mode: MODE_WAIT_FOR_TIMER
+
+ERRORS:
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Difference: 599220
+Message Arrive Time 4096114
+Last Time 3496894
+Counts. Arraycounter: 1
+
+
+ERRORS:
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+
+Mode: MODE_WAIT_FOR_TIMER
+Send time is 3824788785
+Arrive time is: 4696040
+multiplier positive
+timeOffset 3820091835
+Mode: MODE_NEUTRAL
+
+ERRORS:
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Difference: 599926
+Message Arrive Time 4696040
+Last Time 4096114
+Counts. Arraycounter: 2
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+RECEIVED MESSAGE MSG_TIMER_CALIBRATION from HOST ADDRESS
+Sending message MSG_GOT_TIMER
+To: HOST ADDRESS
+switched mode to Neutral
+Client still alive
+Mode: MODE_NEUTRAL
+34:85:18:8f:c0:d8
+
+-----
+
+ERRORS:
+processing sent
+Sent MSG_GOT_TIMER to HOST ADDRESS
+Handling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Got Timer = trueHandling Received MSG_TIMER_CALIBRATION from HOST ADDRESS
+received timer calibration message
+Got Timer = true
+Mode: MODE_NEUTRAL
+Success
+Client still alive
+Mode: MODE_NEUTRAL
+34:85:18:8f:c0:d8
+
+-----
+
+ERRORS:
+RECEIVED MESSAGE MSG_ANIMATION from HOST ADDRESS
+
+Mode: MODE_ANIMATE
+setupanimation
+Setting up anim
+calculating for 
+syncasync
+base time 11728
+animation reps 1
+reps 7
+Speed 675
+Pause 58
+spread time 3973
+num devices 2
+base time 27616
+millis 11671
+Next animation should start in 27615ms
+
+ERRORS:
+Handling Received MSG_ANIMATION from HOST ADDRESS
+Blinking
+
+normalized time is 0.00 and currentStep is 0
+brigthness is 150
+rgb set to 108.00 82.00 5.00
+normalized time is 0.00 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.02 and currentStep is 1
+normalized time is 0.02 and factor is0.00
+normalized time is 0.02 and currentStep is 1
+normalized time is 0.02 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.06 and currentStep is 1
+normalized time is 0.06 and factor is0.00
+normalized time is 0.06 and currentStep is 1
+normalized time is 0.06 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.10 and currentStep is 1
+normalized time is 0.10 and factor is0.00
+normalized time is 0.10 and currentStep is 1
+normalized time is 0.10 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.14 and currentStep is 1
+normalized time is 0.14 and factor is0.01
+normalized time is 0.14 and currentStep is 1
+normalized time is 0.14 and factor is0.01
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.02
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.04
+normalized time is 0.18 and currentStep is 1
+normalized time is 0.18 and factor is0.04
+normalized time is 0.18 and currentStep is 1
+normalized time is 0.18 and factor is0.05
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.06
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.06
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.07
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.08
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.09
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.10
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.11
+normalized time is 0.22 and currentStep is 1
+normalized time is 0.22 and factor is0.12
+normalized time is 0.22 and currentStep is 1
+normalized time is 0.22 and factor is0.14
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.15
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.17
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.18
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.20
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.22
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.24
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.26
+normalized time is 0.26 and currentStep is 1
+normalized time is 0.26 and factor is0.28
+normalized time is 0.26 and currentStep is 1
+normalized time is 0.26 and factor is0.31
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.34
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.37
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.40
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.43
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.46
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.50
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.54
+normalized time is 0.30 and currentStep is 1
+normalized time is 0.30 and factor is0.58
+normalized time is 0.30 and currentStep is 1
+normalized time is 0.30 and factor is0.63
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.68
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.73
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.78
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.83
+normalized time is 0.33 and currentStep is 1
+normalized time is 0.33 and factor is0.89
+normalized time is 0.33 and currentStep is 1
+current Step is1
+current step is 2
+normalized time is 0.33
+ diff: 0.11 pos: 0.00 per: 0.34 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.01
+normalized time is 0.33 and currentStep is 2
+ diff: 0.11 pos: 0.00 per: 4.38 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.18
+normalized time is 0.34 and currentStep is 2
+ diff: 0.11 pos: 0.01 per: 8.42 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.34
+normalized time is 0.34 and currentStep is 2
+ diff: 0.11 pos: 0.01 per: 12.46 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.50
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 16.50 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.66
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 20.54 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.82
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 24.58 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 108.98
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 28.62 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 109.14
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 32.66 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 109.31
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 36.70 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 109.47
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 40.74 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 109.63
+normalized time is 0.38 and currentStep is 2
+ diff: 0.11 pos: 0.05 per: 44.78 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 109.79
+normalized time is 0.38 and currentStep is 2
+ diff: 0.11 pos: 0.05 per: 48.82 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 109.95
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 52.86 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 110.11
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 56.90 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 110.28
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 60.94 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 110.44
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 64.98 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 110.60
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 69.02 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 110.76
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 73.06 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 110.92
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 77.10 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 111.08
+normalized time is 0.42 and currentStep is 2
+ diff: 0.11 pos: 0.09 per: 81.14 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 111.25
+normalized time is 0.42 and currentStep is 2
+ diff: 0.11 pos: 0.09 per: 85.19 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 111.41
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 89.23 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 111.57
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 93.27 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 111.73
+normalized time is 0.44 and currentStep is 2
+ diff: 0.11 pos: 0.11 per: 97.31 step: 2 rgb0:112.00 oldrgb0: 108.00 rf 111.89
+normalized time is 0.44 and currentStep is 2
+current Step is2
+current step is 3
+normalized time is 0.44
+ diff: 0.11 pos: 0.00 per: 1.35 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 112.34
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 5.39 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 113.35
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 9.43 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 114.36
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 13.47 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 115.37
+normalized time is 0.46 and currentStep is 3
+ diff: 0.11 pos: 0.02 per: 17.51 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 116.38
+normalized time is 0.46 and currentStep is 3
+ diff: 0.11 pos: 0.02 per: 21.55 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 117.39
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 25.59 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 118.40
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 29.63 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 119.41
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 33.67 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 120.42
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 37.71 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 121.43
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 41.75 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 122.44
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 45.79 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 123.45
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 49.83 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 124.46
+normalized time is 0.50 and currentStep is 3
+ diff: 0.11 pos: 0.06 per: 53.87 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 125.47
+normalized time is 0.50 and currentStep is 3
+ diff: 0.11 pos: 0.06 per: 57.91 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 126.48
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 61.95 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 127.49
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 65.99 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 128.50
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 70.03 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 129.51
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 74.07 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 130.52
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 78.11 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 131.53
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 82.15 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 132.54
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 86.20 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 133.55
+normalized time is 0.54 and currentStep is 3
+ diff: 0.11 pos: 0.10 per: 90.24 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 134.56
+normalized time is 0.54 and currentStep is 3
+ diff: 0.11 pos: 0.10 per: 94.28 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 135.57
+normalized time is 0.55 and currentStep is 3
+ diff: 0.11 pos: 0.11 per: 98.32 step: 3 rgb0:137.00 oldrgb0: 112.00 rf 136.58
+normalized time is 0.55 and currentStep is 3
+current Step is3
+current step is 4
+normalized time is 0.55
+ diff: 0.11 pos: 0.00 per: 2.36 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 136.32
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 6.40 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 135.14
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 10.44 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 133.97
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 14.48 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 132.80
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 18.52 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 131.63
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 22.56 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 130.46
+normalized time is 0.58 and currentStep is 4
+ diff: 0.11 pos: 0.03 per: 26.60 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 129.29
+normalized time is 0.58 and currentStep is 4
+ diff: 0.11 pos: 0.03 per: 30.64 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 128.11
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 34.68 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 126.94
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 38.72 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 125.77
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 42.76 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 124.60
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 46.80 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 123.43
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 50.84 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 122.26
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 54.88 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 121.08
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 58.92 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 119.91
+normalized time is 0.62 and currentStep is 4
+ diff: 0.11 pos: 0.07 per: 62.96 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 118.74
+normalized time is 0.62 and currentStep is 4
+ diff: 0.11 pos: 0.07 per: 67.00 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 117.57
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 71.04 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 116.40
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 75.08 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 115.23
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 79.12 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 114.05
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 83.16 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 112.88
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 87.21 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 111.71
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 91.25 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 110.54
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 95.29 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 109.37
+normalized time is 0.66 and currentStep is 4
+ diff: 0.11 pos: 0.11 per: 99.33 step: 4 rgb0:108.00 oldrgb0: 137.00 rf 108.20
+normalized time is 0.66 and currentStep is 4
+current Step is4
+current step is 5
+normalized time is 0.66
+normalized time is 0.66 and factor is1.05
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is0.98
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is0.91
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.85
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.80
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.74
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.69
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.64
+normalized time is 0.70 and currentStep is 5
+normalized time is 0.70 and factor is0.60
+normalized time is 0.70 and currentStep is 5
+normalized time is 0.70 and factor is0.55
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.51
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.48
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.44
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.41
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.38
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.35
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.32
+normalized time is 0.74 and currentStep is 5
+normalized time is 0.74 and factor is0.29
+normalized time is 0.74 and currentStep is 5
+normalized time is 0.74 and factor is0.27
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.25
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.23
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.21
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.19
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.17
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.16
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.14
+normalized time is 0.78 and currentStep is 5
+normalized time is 0.78 and factor is0.13
+normalized time is 0.78 and currentStep is 5
+normalized time is 0.78 and factor is0.12
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.10
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.09
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.08
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.07
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.07
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.06
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.05
+normalized time is 0.82 and currentStep is 5
+normalized time is 0.82 and factor is0.05
+normalized time is 0.82 and currentStep is 5
+normalized time is 0.82 and factor is0.04
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.04
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.86 and currentStep is 5
+normalized time is 0.86 and factor is0.01
+normalized time is 0.86 and currentStep is 5
+normalized time is 0.86 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.90 and currentStep is 5
+normalized time is 0.90 and factor is0.00
+normalized time is 0.90 and currentStep is 5
+normalized time is 0.90 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.94 and currentStep is 5
+normalized time is 0.94 and factor is0.00
+normalized time is 0.94 and currentStep is 5
+normalized time is 0.94 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.98 and currentStep is 5
+normalized time is 0.98 and factor is0.00
+normalized time is 0.98 and currentStep is 5
+normalized time is 0.98 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 1.00 and currentStep is 5
+normalized time is 1.00 and factor is0.00
+repeat counter is now 1 of 7
+normalized time is 0.00 and currentStep is 0
+brigthness is 150
+rgb set to 145.00 84.00 10.00
+normalized time is 0.00 and factor is0.00
+normalized time is 0.00 and currentStep is 1
+normalized time is 0.00 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.02 and currentStep is 1
+normalized time is 0.02 and factor is0.00
+normalized time is 0.02 and currentStep is 1
+normalized time is 0.02 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.06 and currentStep is 1
+normalized time is 0.06 and factor is0.00
+normalized time is 0.06 and currentStep is 1
+normalized time is 0.06 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.10 and currentStep is 1
+normalized time is 0.10 and factor is0.00
+normalized time is 0.10 and currentStep is 1
+normalized time is 0.10 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.14 and currentStep is 1
+normalized time is 0.14 and factor is0.01
+normalized time is 0.14 and currentStep is 1
+normalized time is 0.14 and factor is0.01
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.02
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.03
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.04
+normalized time is 0.18 and currentStep is 1
+normalized time is 0.18 and factor is0.04
+normalized time is 0.18 and currentStep is 1
+normalized time is 0.18 and factor is0.05
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.06
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.06
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.07
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.08
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.09
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.10
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.11
+normalized time is 0.22 and currentStep is 1
+normalized time is 0.22 and factor is0.12
+normalized time is 0.22 and currentStep is 1
+normalized time is 0.22 and factor is0.13
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.15
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.16
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.18
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.19
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.21
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.23
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.25
+normalized time is 0.26 and currentStep is 1
+normalized time is 0.26 and factor is0.28
+normalized time is 0.26 and currentStep is 1
+normalized time is 0.26 and factor is0.30
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.33
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.36
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.39
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.42
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.45
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.49
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.53
+normalized time is 0.30 and currentStep is 1
+normalized time is 0.30 and factor is0.57
+normalized time is 0.30 and currentStep is 1
+normalized time is 0.30 and factor is0.61
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.66
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.71
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.76
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.82
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.87
+normalized time is 0.33 and currentStep is 1
+normalized time is 0.33 and factor is0.94
+normalized time is 0.33 and currentStep is 1
+current Step is1
+current step is 2
+normalized time is 0.33
+ diff: 0.11 pos: 0.00 per: 3.03 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 144.18
+normalized time is 0.34 and currentStep is 2
+ diff: 0.11 pos: 0.01 per: 7.07 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 143.09
+normalized time is 0.34 and currentStep is 2
+ diff: 0.11 pos: 0.01 per: 11.11 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 142.00
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 15.15 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 140.91
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 19.19 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 139.82
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 23.23 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 138.73
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 27.27 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 137.64
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 31.31 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 136.55
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 35.35 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 135.45
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 39.39 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 134.36
+normalized time is 0.38 and currentStep is 2
+ diff: 0.11 pos: 0.05 per: 43.43 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 133.27
+normalized time is 0.38 and currentStep is 2
+ diff: 0.11 pos: 0.05 per: 47.47 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 132.18
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 51.52 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 131.09
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 55.56 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 130.00
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 59.60 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 128.91
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 63.64 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 127.82
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 67.68 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 126.73
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 71.72 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 125.64
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 75.76 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 124.55
+normalized time is 0.42 and currentStep is 2
+ diff: 0.11 pos: 0.09 per: 79.80 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 123.45
+normalized time is 0.42 and currentStep is 2
+ diff: 0.11 pos: 0.09 per: 83.84 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 122.36
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 87.88 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 121.27
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 91.92 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 120.18
+normalized time is 0.44 and currentStep is 2
+ diff: 0.11 pos: 0.11 per: 95.96 step: 2 rgb0:118.00 oldrgb0: 145.00 rf 119.09
+normalized time is 0.44 and currentStep is 2
+current Step is2
+current step is 3
+normalized time is 0.44
+ diff: 0.11 pos: 0.00 per: 0.00 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 118.00
+normalized time is 0.44 and currentStep is 3
+ diff: 0.11 pos: 0.00 per: 4.04 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 118.93
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 8.08 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 119.86
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 12.12 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 120.79
+normalized time is 0.46 and currentStep is 3
+ diff: 0.11 pos: 0.02 per: 16.16 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 121.72
+normalized time is 0.46 and currentStep is 3
+ diff: 0.11 pos: 0.02 per: 20.20 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 122.65
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 24.24 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 123.58
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 28.28 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 124.51
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 32.32 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 125.43
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 36.36 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 126.36
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 40.40 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 127.29
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 44.44 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 128.22
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 48.48 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 129.15
+normalized time is 0.50 and currentStep is 3
+ diff: 0.11 pos: 0.06 per: 52.53 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 130.08
+normalized time is 0.50 and currentStep is 3
+ diff: 0.11 pos: 0.06 per: 56.57 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 131.01
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 60.61 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 131.94
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 64.65 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 132.87
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 68.69 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 133.80
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 72.73 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 134.73
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 76.77 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 135.66
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 80.81 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 136.59
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 84.85 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 137.52
+normalized time is 0.54 and currentStep is 3
+ diff: 0.11 pos: 0.10 per: 88.89 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 138.44
+normalized time is 0.54 and currentStep is 3
+ diff: 0.11 pos: 0.10 per: 92.93 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 139.37
+normalized time is 0.55 and currentStep is 3
+ diff: 0.11 pos: 0.11 per: 96.97 step: 3 rgb0:141.00 oldrgb0: 118.00 rf 140.30
+normalized time is 0.55 and currentStep is 3
+current Step is3
+current step is 4
+normalized time is 0.55
+ diff: 0.11 pos: 0.00 per: 1.01 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 140.81
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 5.05 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 140.04
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 9.09 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 139.27
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 13.13 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 138.51
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 17.17 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 137.74
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 21.21 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 136.97
+normalized time is 0.58 and currentStep is 4
+ diff: 0.11 pos: 0.03 per: 25.25 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 136.20
+normalized time is 0.58 and currentStep is 4
+ diff: 0.11 pos: 0.03 per: 29.29 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 135.43
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 33.33 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 134.67
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 37.37 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 133.90
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 41.41 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 133.13
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 45.45 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 132.36
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 49.49 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 131.60
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 53.54 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 130.83
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 57.58 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 130.06
+normalized time is 0.62 and currentStep is 4
+ diff: 0.11 pos: 0.07 per: 61.62 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 129.29
+normalized time is 0.62 and currentStep is 4
+ diff: 0.11 pos: 0.07 per: 65.66 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 128.53
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 69.70 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 127.76
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 73.74 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 126.99
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 77.78 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 126.22
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 81.82 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 125.45
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 85.86 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 124.69
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 89.90 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 123.92
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 93.94 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 123.15
+normalized time is 0.66 and currentStep is 4
+ diff: 0.11 pos: 0.11 per: 97.98 step: 4 rgb0:122.00 oldrgb0: 141.00 rf 122.38
+normalized time is 0.66 and currentStep is 4
+current Step is4
+current step is 5
+normalized time is 0.66
+normalized time is 0.66 and factor is1.07
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is1.00
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is0.94
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.87
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.82
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.76
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.71
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.66
+normalized time is 0.70 and currentStep is 5
+normalized time is 0.70 and factor is0.61
+normalized time is 0.70 and currentStep is 5
+normalized time is 0.70 and factor is0.57
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.53
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.49
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.45
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.42
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.39
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.36
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.33
+normalized time is 0.74 and currentStep is 5
+normalized time is 0.74 and factor is0.30
+normalized time is 0.74 and currentStep is 5
+normalized time is 0.74 and factor is0.28
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.25
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.23
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.21
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.19
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.18
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.16
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.15
+normalized time is 0.78 and currentStep is 5
+normalized time is 0.78 and factor is0.13
+normalized time is 0.78 and currentStep is 5
+normalized time is 0.78 and factor is0.12
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.11
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.10
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.09
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.08
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.07
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.06
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.06
+normalized time is 0.82 and currentStep is 5
+normalized time is 0.82 and factor is0.05
+normalized time is 0.82 and currentStep is 5
+normalized time is 0.82 and factor is0.04
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.04
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.86 and currentStep is 5
+normalized time is 0.86 and factor is0.01
+normalized time is 0.86 and currentStep is 5
+normalized time is 0.86 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.90 and currentStep is 5
+normalized time is 0.90 and factor is0.00
+normalized time is 0.90 and currentStep is 5
+normalized time is 0.90 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.94 and currentStep is 5
+normalized time is 0.94 and factor is0.00
+normalized time is 0.94 and currentStep is 5
+normalized time is 0.94 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.98 and currentStep is 5
+normalized time is 0.98 and factor is0.00
+normalized time is 0.98 and currentStep is 5
+normalized time is 0.98 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 1.00 and currentStep is 5
+normalized time is 1.00 and factor is0.00
+repeat counter is now 2 of 7
+normalized time is 0.00 and currentStep is 0
+brigthness is 150
+rgb set to 127.00 84.00 7.00
+normalized time is 0.00 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.01 and currentStep is 1
+normalized time is 0.01 and factor is0.00
+normalized time is 0.02 and currentStep is 1
+normalized time is 0.02 and factor is0.00
+normalized time is 0.02 and currentStep is 1
+normalized time is 0.02 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.03 and currentStep is 1
+normalized time is 0.03 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.04 and currentStep is 1
+normalized time is 0.04 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.05 and currentStep is 1
+normalized time is 0.05 and factor is0.00
+normalized time is 0.06 and currentStep is 1
+normalized time is 0.06 and factor is0.00
+normalized time is 0.06 and currentStep is 1
+normalized time is 0.06 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.07 and currentStep is 1
+normalized time is 0.07 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.08 and currentStep is 1
+normalized time is 0.08 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.09 and currentStep is 1
+normalized time is 0.09 and factor is0.00
+normalized time is 0.10 and currentStep is 1
+normalized time is 0.10 and factor is0.00
+normalized time is 0.10 and currentStep is 1
+normalized time is 0.10 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.11 and currentStep is 1
+normalized time is 0.11 and factor is0.00
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.12 and currentStep is 1
+normalized time is 0.12 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.13 and currentStep is 1
+normalized time is 0.13 and factor is0.01
+normalized time is 0.14 and currentStep is 1
+normalized time is 0.14 and factor is0.01
+normalized time is 0.14 and currentStep is 1
+normalized time is 0.14 and factor is0.01
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.15 and currentStep is 1
+normalized time is 0.15 and factor is0.02
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.02
+normalized time is 0.16 and currentStep is 1
+normalized time is 0.16 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.03
+normalized time is 0.17 and currentStep is 1
+normalized time is 0.17 and factor is0.04
+normalized time is 0.18 and currentStep is 1
+normalized time is 0.18 and factor is0.04
+normalized time is 0.18 and currentStep is 1
+normalized time is 0.18 and factor is0.05
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.05
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.06
+normalized time is 0.19 and currentStep is 1
+normalized time is 0.19 and factor is0.07
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.07
+normalized time is 0.20 and currentStep is 1
+normalized time is 0.20 and factor is0.08
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.09
+normalized time is 0.21 and currentStep is 1
+normalized time is 0.21 and factor is0.10
+normalized time is 0.22 and currentStep is 1
+normalized time is 0.22 and factor is0.12
+normalized time is 0.22 and currentStep is 1
+normalized time is 0.22 and factor is0.13
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.14
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.16
+normalized time is 0.23 and currentStep is 1
+normalized time is 0.23 and factor is0.17
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.19
+normalized time is 0.24 and currentStep is 1
+normalized time is 0.24 and factor is0.21
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.23
+normalized time is 0.25 and currentStep is 1
+normalized time is 0.25 and factor is0.25
+normalized time is 0.26 and currentStep is 1
+normalized time is 0.26 and factor is0.27
+normalized time is 0.26 and currentStep is 1
+normalized time is 0.26 and factor is0.29
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.32
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.35
+normalized time is 0.27 and currentStep is 1
+normalized time is 0.27 and factor is0.38
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.41
+normalized time is 0.28 and currentStep is 1
+normalized time is 0.28 and factor is0.44
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.48
+normalized time is 0.29 and currentStep is 1
+normalized time is 0.29 and factor is0.51
+normalized time is 0.30 and currentStep is 1
+normalized time is 0.30 and factor is0.55
+normalized time is 0.30 and currentStep is 1
+normalized time is 0.30 and factor is0.60
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.64
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.69
+normalized time is 0.31 and currentStep is 1
+normalized time is 0.31 and factor is0.74
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.80
+normalized time is 0.32 and currentStep is 1
+normalized time is 0.32 and factor is0.85
+normalized time is 0.33 and currentStep is 1
+normalized time is 0.33 and factor is0.91
+normalized time is 0.33 and currentStep is 1
+current Step is1
+current step is 2
+normalized time is 0.33
+ diff: 0.11 pos: 0.00 per: 1.68 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 126.71
+normalized time is 0.34 and currentStep is 2
+ diff: 0.11 pos: 0.01 per: 5.72 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 126.03
+normalized time is 0.34 and currentStep is 2
+ diff: 0.11 pos: 0.01 per: 9.76 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 125.34
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 13.80 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 124.65
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 17.85 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 123.97
+normalized time is 0.35 and currentStep is 2
+ diff: 0.11 pos: 0.02 per: 21.89 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 123.28
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 25.93 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 122.59
+normalized time is 0.36 and currentStep is 2
+ diff: 0.11 pos: 0.03 per: 29.97 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 121.91
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 34.01 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 121.22
+normalized time is 0.37 and currentStep is 2
+ diff: 0.11 pos: 0.04 per: 38.05 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 120.53
+normalized time is 0.38 and currentStep is 2
+ diff: 0.11 pos: 0.05 per: 42.09 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 119.85
+normalized time is 0.38 and currentStep is 2
+ diff: 0.11 pos: 0.05 per: 46.13 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 119.16
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 50.17 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 118.47
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 54.21 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 117.78
+normalized time is 0.39 and currentStep is 2
+ diff: 0.11 pos: 0.06 per: 58.25 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 117.10
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 62.29 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 116.41
+normalized time is 0.40 and currentStep is 2
+ diff: 0.11 pos: 0.07 per: 66.33 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 115.72
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 70.37 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 115.04
+normalized time is 0.41 and currentStep is 2
+ diff: 0.11 pos: 0.08 per: 74.41 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 114.35
+normalized time is 0.42 and currentStep is 2
+ diff: 0.11 pos: 0.09 per: 78.45 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 113.66
+normalized time is 0.42 and currentStep is 2
+ diff: 0.11 pos: 0.09 per: 82.49 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 112.98
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 86.53 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 112.29
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 90.57 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 111.60
+normalized time is 0.43 and currentStep is 2
+ diff: 0.11 pos: 0.10 per: 94.61 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 110.92
+normalized time is 0.44 and currentStep is 2
+ diff: 0.11 pos: 0.11 per: 98.65 step: 2 rgb0:110.00 oldrgb0: 127.00 rf 110.23
+normalized time is 0.44 and currentStep is 2
+current Step is2
+current step is 3
+normalized time is 0.44
+ diff: 0.11 pos: 0.00 per: 2.69 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.03
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 6.73 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.07
+normalized time is 0.45 and currentStep is 3
+ diff: 0.11 pos: 0.01 per: 10.77 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.11
+normalized time is 0.46 and currentStep is 3
+ diff: 0.11 pos: 0.02 per: 14.81 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.15
+normalized time is 0.46 and currentStep is 3
+ diff: 0.11 pos: 0.02 per: 18.86 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.19
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 22.90 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.23
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 26.94 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.27
+normalized time is 0.47 and currentStep is 3
+ diff: 0.11 pos: 0.03 per: 30.98 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.31
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 35.02 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.35
+normalized time is 0.48 and currentStep is 3
+ diff: 0.11 pos: 0.04 per: 39.06 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.39
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 43.10 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.43
+normalized time is 0.49 and currentStep is 3
+ diff: 0.11 pos: 0.05 per: 47.14 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.47
+normalized time is 0.50 and currentStep is 3
+ diff: 0.11 pos: 0.06 per: 51.18 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.51
+normalized time is 0.50 and currentStep is 3
+ diff: 0.11 pos: 0.06 per: 55.22 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.55
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 59.26 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.59
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 63.30 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.63
+normalized time is 0.51 and currentStep is 3
+ diff: 0.11 pos: 0.07 per: 67.34 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.67
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 71.38 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.71
+normalized time is 0.52 and currentStep is 3
+ diff: 0.11 pos: 0.08 per: 75.42 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.75
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 79.46 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.79
+normalized time is 0.53 and currentStep is 3
+ diff: 0.11 pos: 0.09 per: 83.50 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.84
+normalized time is 0.54 and currentStep is 3
+ diff: 0.11 pos: 0.10 per: 87.54 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.88
+normalized time is 0.54 and currentStep is 3
+ diff: 0.11 pos: 0.10 per: 91.58 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.92
+normalized time is 0.55 and currentStep is 3
+ diff: 0.11 pos: 0.11 per: 95.62 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 110.96
+normalized time is 0.55 and currentStep is 3
+ diff: 0.11 pos: 0.11 per: 99.66 step: 3 rgb0:111.00 oldrgb0: 110.00 rf 111.00
+normalized time is 0.55 and currentStep is 3
+current Step is3
+current step is 4
+normalized time is 0.55
+ diff: 0.11 pos: 0.00 per: 3.70 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 111.19
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 7.74 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 111.39
+normalized time is 0.56 and currentStep is 4
+ diff: 0.11 pos: 0.01 per: 11.78 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 111.59
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 15.82 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 111.79
+normalized time is 0.57 and currentStep is 4
+ diff: 0.11 pos: 0.02 per: 19.87 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 111.99
+normalized time is 0.58 and currentStep is 4
+ diff: 0.11 pos: 0.03 per: 23.91 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 112.20
+normalized time is 0.58 and currentStep is 4
+ diff: 0.11 pos: 0.03 per: 27.95 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 112.40
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 31.99 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 112.60
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 36.03 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 112.80
+normalized time is 0.59 and currentStep is 4
+ diff: 0.11 pos: 0.04 per: 40.07 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 113.00
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 44.11 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 113.21
+normalized time is 0.60 and currentStep is 4
+ diff: 0.11 pos: 0.05 per: 48.15 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 113.41
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 52.19 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 113.61
+normalized time is 0.61 and currentStep is 4
+ diff: 0.11 pos: 0.06 per: 56.23 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 113.81
+normalized time is 0.62 and currentStep is 4
+ diff: 0.11 pos: 0.07 per: 60.27 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 114.01
+normalized time is 0.62 and currentStep is 4
+ diff: 0.11 pos: 0.07 per: 64.31 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 114.22
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 68.35 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 114.42
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 72.39 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 114.62
+normalized time is 0.63 and currentStep is 4
+ diff: 0.11 pos: 0.08 per: 76.43 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 114.82
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 80.47 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 115.02
+normalized time is 0.64 and currentStep is 4
+ diff: 0.11 pos: 0.09 per: 84.51 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 115.23
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 88.55 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 115.43
+normalized time is 0.65 and currentStep is 4
+ diff: 0.11 pos: 0.10 per: 92.59 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 115.63
+normalized time is 0.66 and currentStep is 4
+ diff: 0.11 pos: 0.11 per: 96.63 step: 4 rgb0:116.00 oldrgb0: 111.00 rf 115.83
+normalized time is 0.66 and currentStep is 4
+current Step is4
+current step is 5
+normalized time is 0.66
+normalized time is 0.66 and factor is1.09
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is1.02
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is0.96
+normalized time is 0.67 and currentStep is 5
+normalized time is 0.67 and factor is0.89
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.83
+normalized time is 0.68 and currentStep is 5
+normalized time is 0.68 and factor is0.78
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.73
+normalized time is 0.69 and currentStep is 5
+normalized time is 0.69 and factor is0.68
+normalized time is 0.70 and currentStep is 5
+normalized time is 0.70 and factor is0.63
+normalized time is 0.70 and currentStep is 5
+normalized time is 0.70 and factor is0.58
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.54
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.50
+normalized time is 0.71 and currentStep is 5
+normalized time is 0.71 and factor is0.46
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.43
+normalized time is 0.72 and currentStep is 5
+normalized time is 0.72 and factor is0.40
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.37
+normalized time is 0.73 and currentStep is 5
+normalized time is 0.73 and factor is0.34
+normalized time is 0.74 and currentStep is 5
+normalized time is 0.74 and factor is0.31
+normalized time is 0.74 and currentStep is 5
+normalized time is 0.74 and factor is0.28
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.26
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.24
+normalized time is 0.75 and currentStep is 5
+normalized time is 0.75 and factor is0.22
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.20
+normalized time is 0.76 and currentStep is 5
+normalized time is 0.76 and factor is0.18
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.17
+normalized time is 0.77 and currentStep is 5
+normalized time is 0.77 and factor is0.15
+normalized time is 0.78 and currentStep is 5
+normalized time is 0.78 and factor is0.14
+normalized time is 0.78 and currentStep is 5
+normalized time is 0.78 and factor is0.12
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.11
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.10
+normalized time is 0.79 and currentStep is 5
+normalized time is 0.79 and factor is0.09
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.08
+normalized time is 0.80 and currentStep is 5
+normalized time is 0.80 and factor is0.07
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.06
+normalized time is 0.81 and currentStep is 5
+normalized time is 0.81 and factor is0.06
+normalized time is 0.82 and currentStep is 5
+normalized time is 0.82 and factor is0.05
+normalized time is 0.82 and currentStep is 5
+normalized time is 0.82 and factor is0.04
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.04
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.03
+normalized time is 0.83 and currentStep is 5
+normalized time is 0.83 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.03
+normalized time is 0.84 and currentStep is 5
+normalized time is 0.84 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.85 and currentStep is 5
+normalized time is 0.85 and factor is0.02
+normalized time is 0.86 and currentStep is 5
+normalized time is 0.86 and factor is0.01
+normalized time is 0.86 and currentStep is 5
+normalized time is 0.86 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.87 and currentStep is 5
+normalized time is 0.87 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.88 and currentStep is 5
+normalized time is 0.88 and factor is0.01
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.89 and currentStep is 5
+normalized time is 0.89 and factor is0.00
+normalized time is 0.90 and currentStep is 5
+normalized time is 0.90 and factor is0.00
+normalized time is 0.90 and currentStep is 5
+normalized time is 0.90 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.91 and currentStep is 5
+normalized time is 0.91 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.92 and currentStep is 5
+normalized time is 0.92 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.93 and currentStep is 5
+normalized time is 0.93 and factor is0.00
+normalized time is 0.94 and currentStep is 5
+normalized time is 0.94 and factor is0.00
+normalized time is 0.94 and currentStep is 5
+normalized time is 0.94 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.95 and currentStep is 5
+normalized time is 0.95 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.96 and currentStep is 5
+normalized time is 0.96 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.97 and currentStep is 5
+normalized time is 0.97 and factor is0.00
+normalized time is 0.98 and currentStep is 5
+normalized time is 0.98 and factor is0.00
+normalized time is 0.98 and currentStep is 5
+normalized time is 0.98 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 0.99 and currentStep is 5
+normalized time is 0.99 and factor is0.00
+normalized time is 1.00 and currentStep is 5
+normalized time is 1.00 and factor is0.00
+repeat counter is now 3 of 7
+Client still alive
+Mode: MODE_ANIMATE
+34:85:18:8f:c0:d8
+
+-----
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x3 (RTC_SW_SYS_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4037741c
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3818,len:0x158
+load:0x403c9700,len:0x4
+load:0x403c9704,len:0xa88
+load:0x403cc700,len:0x2834

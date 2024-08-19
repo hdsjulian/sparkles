@@ -39,6 +39,7 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
             }
             else {
                 addError("We have "+String(addressCounter)+" addresses\n"); 
+                webServer->updateDeviceNum();
                 return;
             }
         }
@@ -322,6 +323,39 @@ void messaging::updateDevice(int id) {
     pushDataToSendQueue(clientAddresses[id].address, MSG_COMMANDS, -1);
 }
 
+
+void messaging::setTimerReceiver(const uint8_t * incomingData) {
+    memcpy(&addressMessage,incomingData,sizeof(addressMessage));
+    globalModeHandler->setPreviousMode();
+    globalModeHandler->switchMode( MODE_SENDING_TIMER);
+    addError("setting timer receiver to "+stringAddress(addressMessage.address));
+    if (memcmp(&addressMessage.address, clapDeviceAddress, 6) == 0) {
+        addError("setting timer receiver to clap device");
+        memcpy(&timerReceiver, addressMessage.address, 6);
+        addPeer(timerReceiver);
+        return;
+    }
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(&clientAddresses[i].address, emptyAddress, 6) == 0) {
+            //printAddress(addressMessage.address);
+            memcpy(&clientAddresses[i].address, addressMessage.address, 6);
+            clientAddresses[i].id = i;
+            memcpy(&timerReceiver, addressMessage.address, 6);
+            addPeer(timerReceiver);
+            timerMessage.addressId = i;
+            addressCounter++;
+            webServer->updateDeviceNum();
+            handleLed->flash(0, 125, 0, 100, 2, 50);
+            break;
+        }
+        else if (memcmp(&clientAddresses[i].address, addressMessage.address, 6) == 0) {
+            memcpy(&timerReceiver, addressMessage.address, 6);
+            timerMessage.addressId = i;
+            addPeer(timerReceiver);
+            break;
+        }
+    }
+}
 void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddress) {
     addError("Handling Got Timer\n");
     memcpy(&gotTimerMessage, incomingData, sizeof(gotTimerMessage));
@@ -441,6 +475,24 @@ void messaging::broadcastTimer() {
 
 }
 
+void messaging::resetTimer() {
+    timersUpdated = 0;
+    timeoutRetry.currentId = 0;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(clientAddresses[i].address, emptyAddress, 6) != 0) {
+            addError("Found address at index "+String(i)+"\n");
+            addError(stringAddress(clientAddresses[i].address));
+            clientAddresses[i].clapTimes.clapCounter = 0;
+            clientAddresses[i].delay = 0;
+            clientAddresses[i].timerOffset = 0;
+            clientAddresses[i].active = INACTIVE;
+        }
+        else {
+            addError("We have "+String(addressCounter)+" addresses\n"); 
+            return;
+        }
+    }
+}
 void messaging::handleTimerUpdates() {
 if (millis() > tick+10000) {
     addError("Handling Timer Updates\n");
@@ -612,4 +664,18 @@ void messaging::printPeers() {
   } else {
     Serial.println("Failed to get number of peers");
   }
+}
+
+void messaging::setGlobalBrightness(int brightness) {
+    handleLed->setGlobalBrightness(brightness);
+}
+
+String messaging::getLedHandlerParams() {
+    return handleLed->getParamsJson();
+}
+void messaging::setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int minSp, int maxSp, int minR, int maxR, int minAR, int maxAR, int minRGBR, int maxRGBR, int minRGBG, int maxRGBG, int minRGBB, int maxRGBB) {
+    Serial.println("setting sync async params");
+    Serial.println("minS "+String(minS)+" maxS "+String(maxS)+" minP "+String(minP)+" maxP "+String(maxP)+" minSp "+String(minSp)+" maxSp "+String(maxSp)+" minR "+String(minR)+" maxR "+String(maxR)+" minAR "+String(minAR)+" maxAR "+String(maxAR)+" minRGBR "+String(minRGBR)+" maxRGBR "+String(maxRGBR)+" minRGBG "+String(minRGBG)+" maxRGBG "+String(minRGBG)+" minRGBB "+String(minRGBB)+" maxRGBB "+String(maxRGBB));
+    handleLed->setSyncAsyncParams(minS, maxS, minP, maxP, minSp, maxSp, minR, maxR, minAR, maxAR, minRGBR, maxRGBR, minRGBG, maxRGBG, minRGBB, maxRGBB);
+
 }

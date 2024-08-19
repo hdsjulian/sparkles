@@ -109,7 +109,9 @@ class messaging {
         //host 3.1
         //uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc0, 0x80 };
         //host 1 15
-        uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8e, 0xf9, 0x20 };
+        //uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8e, 0xf9, 0x20 };
+        //host 2.44
+        uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8e, 0xf9, 0x68 };
         //blue host address
         //uint8_t hostAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xe9, 0xae}; 
         uint8_t clientAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xbd, 0x8a};
@@ -196,6 +198,7 @@ class messaging {
         String messageCodeToText(int message);
         void prepareSendAddress(int i);
         int getAddressId(const uint8_t * address);
+        int getAddressCounter();
         void filterClaps(int index);
         void writeStructsToFile(const client_address* data, int count, const char* filename);
         bool readStructsFromFile(client_address* data, int count, const char* filename);
@@ -229,6 +232,7 @@ class messaging {
         void sendMessageById(int messageId, int addressId, int param) ;
         void receiveClapTimes(uint8_t * senderAdddress);
         void timeoutRetryHandler();
+        void resetTimer();
         void setUnreachable(int id);
         void nextRetry();
         void updateDevice(int id);
@@ -266,6 +270,10 @@ class messaging {
         unsigned long getLastBroadcastTimer();
         void setLastBroadcastTimer();
         void printPeers();
+        void setGlobalBrightness(int brightness);
+        String getLedHandlerParams();
+        void setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int minSp, int maxSp, int minR, int maxR, int minAR, int maxAR, int minRGBR, int maxRGBR, int minRGBG, int maxRGBG, int minRGBB, int maxRGBB);
+
 };
 
 

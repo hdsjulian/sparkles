@@ -6,13 +6,32 @@
 //#include <../../sparkles-main-config/src/messaging.h>
 #include <queue>
 
-#define FRACTION 3
+#define FRACTION 5
 
 class ledHandler {
     private: 
         float rgb[3];
+        float oldrgb[3];
+        float steps[6] = {0, 0.33, 0.44, 0.55, 0.66, 1.0};
+        int currentStep = 0;
         float redfloat = 0, greenfloat = 0, bluefloat = 0;
         float redsteps, greensteps, bluesteps;
+        int minRed = 180;
+        int maxRed = 255;
+        int minGreen = 60;
+        int maxGreen = 120;
+        int minBlue = 0;
+        int maxBlue = 30;
+        int maxSpeed = 3000;
+        int minSpeed = 1000;
+        int maxPause = 200;
+        int minPause = 0;
+        int maxSpread = 1000;
+        int minSpread = 300;
+        int maxReps = 10;
+        int minReps = 5;
+        int maxAniReps = 20;
+        int minAniReps = 5;
         concentric_animation concentricAnimation;
         float distance;
         animationEnum currentAnimation;      
@@ -38,6 +57,7 @@ class ledHandler {
         int maxY = 0;        
         bool once = false;
         int fraction = 0;
+        int globalBrightness = 150;
 
     public:
     ledHandler();
@@ -47,6 +67,7 @@ class ledHandler {
     float fract(float x);
     float mix(float a, float b, float t);
     float step(float e, float x);
+    float clamp(float value);
     float* hsv2rgb(float h, float s, float b, float* rgb);
     void ledsOff();
     void flash(int r = 255, int g = 0, int b = 0, int duration = 50, int reps = 2, int pause = 50);
@@ -60,6 +81,7 @@ class ledHandler {
     void setupRowBlink();
     void setupSlowStartup();
     void setupSyncEnd();
+
     void setTimeOffset(unsigned long setOffset, int offsetMultiplier);
 
     void ledOn(int r, int g, int b, int duration, int frontback);
@@ -67,6 +89,8 @@ class ledHandler {
     void setDistance(float dist);
     void writeLeds();
     float calculateFlash(int targetVal, unsigned long timeElapsed, int speedfactor = 1);
+    void calculateCandle(int targetVal, unsigned long timeElapsed, int speedfactor = 1);
+
     void setPosition(int position);
     void setLocation(int xpos, int ypos, int zpos);
     void printStatus();
@@ -85,6 +109,9 @@ class ledHandler {
     void startFlashTask();
     void flashTask(void *parameters);
     void turnOff();
+    void setGlobalBrightness(int brightness);
+    void setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int minSp, int maxSp, int minR, int maxR, int minAR, int maxAR, int minRGBR, int maxRGBR, int minRGBG, int maxRGBG, int minRGBB, int maxRGBB);
+    String getParamsJson();
 };
 
 #endif

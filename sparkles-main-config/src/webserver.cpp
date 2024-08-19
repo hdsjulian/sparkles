@@ -72,6 +72,9 @@ void webserver::configRoutes() {
     server.on("/neutral", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setNeutral(request);
     });
+    server.on("/triggerSync", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->triggerSync(request);
+    });
     server.on("/sendSyncAsyncAnimation", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->sendSyncAsyncAnimation(request);
     });
@@ -99,6 +102,16 @@ void webserver::configRoutes() {
     server.on("/submitPdParams", HTTP_GET, [this] (AsyncWebServerRequest *request){ 
       this->submitPdParams(request);
     });   
+     server.on("/setSyncAsyncParams", HTTP_GET, [this] (AsyncWebServerRequest *request){ 
+      this->setSyncAsyncParams(request);
+    });   
+  
+
+    server.on("/getParamsJson", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      String jsonString;
+      jsonString = messageHandler->getLedHandlerParams();
+      request->send(200, "text/html", jsonString.c_str());
+    });
 
 }
 
@@ -161,13 +174,16 @@ void webserver::commandCalculate(AsyncWebServerRequest *request) {
 void webserver::commandAnimate(AsyncWebServerRequest *request) {
   messageHandler->addError("Called Animate");
   String jsonString;
-
+  if (request->hasParam("brightness")) {
+    int brightness = request->getParam("brightness")->value().toInt();
+    messageHandler->setGlobalBrightness(brightness);
+  }
   if (stateMachine->getMode() == MODE_WAIT_FOR_TIMER || stateMachine->getMode() == MODE_CALIBRATE) {
     request->send(400);
     return;
   }
   else if (stateMachine->getMode() == MODE_NEUTRAL || stateMachine->getMode() == MODE_INIT || stateMachine->getMode() == MODE_RESET_TIMER) {
-    request->send(204);
+
     jsonString = "{\"status\" : \"true\"}";
     messageHandler->addError(String(jsonString.c_str()));
     request->send(200, "text/html", "{\"status\" : \"true\"}");
@@ -175,7 +191,6 @@ void webserver::commandAnimate(AsyncWebServerRequest *request) {
     stateMachine->switchMode(MODE_STARTUP_ANIMATION);
   }
   else if (stateMachine->getMode() == MODE_ANIMATE) {
-    request->send(204);
         jsonString = "{\"status\" : \"false\"}";
         messageHandler->addError(String(jsonString.c_str()));
     request->send(200, "text/html", "{\"status\" : \"false\"}");
@@ -188,9 +203,20 @@ void webserver::commandAnimate(AsyncWebServerRequest *request) {
 void webserver::setNeutral(AsyncWebServerRequest *request) {
     stateMachine->switchMode(MODE_NEUTRAL);
     messageHandler->switchMode(MODE_NEUTRAL);
-    request->send(200, "text.html", "OK");
+    request->send(200, "text/html", "OK");
 }
 
+void webserver::triggerSync(AsyncWebServerRequest *request) {
+    request->send(200, "text/html", "OK");
+    messageHandler->resetTimer();
+}
+void webserver::updateDeviceNum() {
+    String jsonString;
+    jsonString = "{\"num_devices\" : \""+String(messageHandler->getAddressCounter())+"\"}";
+    Serial.println(jsonString);
+    events.send(jsonString.c_str(),"num_devices");
+
+}
 
 void webserver::serveStaticFile(AsyncWebServerRequest *request) {
   // Get the file path from the request
@@ -391,4 +417,126 @@ void webserver::submitPdParams(AsyncWebServerRequest *request) {
   Serial.println("called SubmitParams lag"+String(lag)+" threshold "+String(threshold)+" influence "+String(influence));
   PdParamsChanged = true;
   request->send(200, "text/html", "OK");
+}
+
+void webserver::setSyncAsyncParams(AsyncWebServerRequest *request) {
+  int minS, maxS, minP, maxP, minR, maxR, minSp, maxSp;
+  int minRed, maxRed, minGreen, maxGreen, minBlue, maxBlue;
+  int minAniReps, maxAniReps;
+  if (request->hasParam("minSpeed")) {
+      minS = request->getParam("minSpeed")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minSpeed");
+      return;
+  }
+
+  if (request->hasParam("maxSpeed")) {
+      maxS = request->getParam("maxSpeed")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxSpeed");
+      return;
+  }
+
+  if (request->hasParam("minPause")) {
+      minP = request->getParam("minPause")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minPause");
+      return;
+  }
+
+  if (request->hasParam("maxPause")) {
+      maxP = request->getParam("maxPause")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxPause");
+      return;
+  }
+
+  if (request->hasParam("minReps")) {
+      minR = request->getParam("minReps")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minReps");
+      return;
+  }
+
+  if (request->hasParam("maxReps")) {
+      maxR = request->getParam("maxReps")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxReps");
+      return;
+  }
+
+  if (request->hasParam("minSpread")) {
+      minSp = request->getParam("minSpread")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minSpread");
+      return;
+  }
+
+  if (request->hasParam("maxSpread")) {
+      maxSp = request->getParam("maxSpread")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxSpread");
+      return;
+  }
+
+  if (request->hasParam("minRed")) {
+      minRed = request->getParam("minRed")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minRed");
+      return;
+  }
+
+  if (request->hasParam("maxRed")) {
+      maxRed = request->getParam("maxRed")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxRed");
+      return;
+  }
+
+  if (request->hasParam("minGreen")) {
+      minGreen = request->getParam("minGreen")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minGreen");
+      return;
+  }
+
+  if (request->hasParam("maxGreen")) {
+      maxGreen = request->getParam("maxGreen")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxGreen");
+      return;
+  }
+
+  if (request->hasParam("minBlue")) {
+      minBlue = request->getParam("minBlue")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minBlue");
+      return;
+  }
+
+  if (request->hasParam("maxBlue")) {
+      maxBlue = request->getParam("maxBlue")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxBlue");
+      return;
+  }
+
+  if (request->hasParam("minAniReps")) {
+      minAniReps = request->getParam("minAniReps")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: minAniReps");
+      return;
+  }
+
+  if (request->hasParam("maxAniReps")) {
+      maxAniReps = request->getParam("maxAniReps")->value().toInt();
+  } else {
+      request->send(400, "text/plain", "Missing parameter: maxAniReps");
+      return;
+  }
+
+  messageHandler->setSyncAsyncParams(minS, maxS, minP, maxP, minSp, maxSp, minR, maxR,minAniReps, maxAniReps, minRed, maxRed, minGreen, maxGreen, minBlue, maxBlue );
+  request->send(200, "text/html", "OK");
+
+
 }

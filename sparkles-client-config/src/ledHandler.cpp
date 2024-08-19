@@ -406,9 +406,7 @@ void ledHandler::syncAsyncBlink() {
     //cyclestart berechnen auch abhängig vom spread und ansonsten einfach runterrattern dat ding
 
     int elapsedTime = millis()-localAnimationStart;
-    redfloat  = calculateFlash(animationMessage.rgb1[0], elapsedTime);
-    greenfloat = calculateFlash(animationMessage.rgb1[1], elapsedTime);
-    bluefloat = calculateFlash(animationMessage.rgb1[2], elapsedTime);  
+    calculateCandle(animationMessage.brightness, elapsedTime);
     writeLeds();
     // how to calculate?
     animationNextStep = millis()+animationMessage.speed/256;
@@ -651,6 +649,88 @@ void ledHandler::rowBlink() {
 }
  */
 
+void ledHandler::calculateCandle(int brightness, unsigned long timeElapsed, int speedfactor){
+  if (timeElapsed < 0) {
+    timeElapsed = 0;
+    Serial.println("elapsed time was negative");
+    return;
+  }  else if (timeElapsed > animationMessage.speed) {
+    ledsOff();
+    currentStep = 0;
+    return;
+  }
+  float normalizedTime = (float)timeElapsed/((float)animationMessage.speed/speedfactor);
+
+  float factor;  
+  float colorValue;
+  if (currentStep == 0) {
+    oldrgb[0] = 0;
+    oldrgb[1] = 0;
+    oldrgb[2] = 0;
+    rgb[0] = brightness * random(animationMessage.rgb1[0], animationMessage.rgb2[0])/255;
+    rgb[1] = brightness * random(animationMessage.rgb1[1], animationMessage.rgb2[1])/255;
+    rgb[2] = brightness * random(animationMessage.rgb1[2], animationMessage.rgb2[2])/255;
+    Serial.println("brigthness is "+String(brightness));
+    Serial.println("rgb set to "+String(rgb[0])+" "+String(rgb[1])+" "+String(rgb[2]));
+    currentStep++;
+  }
+  if (normalizedTime >=steps[currentStep] && currentStep < 5) {
+    Serial.println("current Step is"+String(currentStep));
+    memcpy(oldrgb, rgb, sizeof(rgb));
+    rgb[0] = brightness * random(animationMessage.rgb1[0], animationMessage.rgb2[0])/255;
+    rgb[1] = brightness * random(animationMessage.rgb1[1], animationMessage.rgb2[1])/255;
+    rgb[2] = brightness * random(animationMessage.rgb1[2], animationMessage.rgb2[2])/255;
+    Serial.println("rgb set to "+String(rgb[0])+" "+String(rgb[1])+" "+String(rgb[2]));
+    if (currentStep < 5) {
+      currentStep++;
+
+    }
+  }
+  if (normalizedTime >= steps[5] && currentStep == 5) {
+    memcpy(oldrgb, rgb, sizeof(rgb));
+    rgb[0] = 0;
+    rgb[1] = 0;
+    rgb[2] = 0;
+    currentStep++;
+  }
+  if (normalizedTime >= steps[5] && currentStep == 5) {
+    currentStep = 0;
+  }
+  if (normalizedTime <= steps[1]) {
+    factor = pow(normalizedTime * 3, animationMessage.exponent);
+    redfloat = (rgb[0] * factor);
+    greenfloat = (rgb[1] * factor);
+    bluefloat = (rgb[2] * factor);
+  }
+  else if (normalizedTime >= steps[4]) {
+
+    factor = pow(abs(normalizedTime - 1) *3, animationMessage.exponent);
+    redfloat = (rgb[0] * factor);
+    greenfloat = (rgb[1] * factor);
+    bluefloat = (rgb[2] * factor);
+  }
+  else {
+    float difference = (steps[currentStep]-steps[currentStep-1]);
+    float position = (normalizedTime-steps[currentStep-1]);
+    float percentage = (position / difference * 100);
+
+    
+    redfloat = oldrgb[0] + (rgb[0]-oldrgb[0]) * (percentage/100);
+    greenfloat = oldrgb[1] + (rgb[1]-oldrgb[1]) * (percentage/100);
+    bluefloat = oldrgb[2] + (rgb[2]-oldrgb[2]) * (percentage/100);
+  }
+
+
+  redfloat = clamp(redfloat);
+  bluefloat = clamp(bluefloat);
+  greenfloat = clamp(greenfloat);
+
+}
+float ledHandler::clamp(float value) {
+  if (value < 0) return 0;
+  if (value > 255) return 255;
+  return value;
+}
 float ledHandler::calculateFlash(int targetVal, unsigned long timeElapsed, int speedfactor){
   if (timeElapsed < 0) {
     timeElapsed = 0;
@@ -689,6 +769,90 @@ void ledHandler::writeLeds() {
   ledcWrite(ledPinGreen2, (int)floor(greenfloat));
   ledcWrite(ledPinBlue2, (int)floor(bluefloat));
 }
+/*
+void ledHandler::candle(int duration, int reps, int pause, unsigned long startTime, unsigned long timeOffset) {
+  Serial.println("should blink");
+  //entfernung einbauen
+  uint32_t currentTime = micros();
+  uint32_t difference = currentTime-timeOffset;
+  if (startTime-difference > 0) {
+    Serial.println("time now: "+String(micros()));
+    Serial.println("Delaying for"+String(startTime-difference+((distance/34300)*1000000*1500)));
+    //todo turn this into sleep
+    delayMicroseconds(startTime-difference+((distance/34300)*1000000*1500));
+    Serial.println("delay done");
+  }
+  bool heating = true;
+  float redsteps = 255.0/(duration/3);
+  float greensteps = 255.0/(duration/3);
+  float bluesteps = 80.0/(duration/3);
+  redfloat = 0.0;
+  greenfloat = 0.0;
+  bluefloat = 0.0;
+  
+for (int i = 0; i < reps; i++ ){
+  redfloat = 0.0;
+  greenfloat = 0.0;
+  bluefloat = 0.0;
+  for (int j = 0; j <=duration; j++ ) 
+    {
+    if (redfloat <255) {
+      redfloat += redsteps;
+    }
+    else if (greenfloat <255) {
+      greenfloat += greensteps;
+    }
+    else {
+      bluefloat+=bluesteps;
+    }
+    ledcWrite(ledPinRed2, (int)floor(redfloat));
+    ledcWrite(ledPinGreen2, (int)floor(greenfloat));
+    ledcWrite(ledPinBlue2, (int)floor(bluefloat));
+    ledcWrite(ledPinRed1, (int)floor(redfloat));
+    ledcWrite(ledPinGreen1, (int)floor(greenfloat));
+    ledcWrite(ledPinBlue1, (int)floor(bluefloat));
+    int start = millis();
+    while (true) {
+      if (millis()-start > 100) {
+        break;
+      }
+
+    }
+    delay(1);
+  }
+  for (int j = 0; j <=duration; j++ ) 
+    {
+    if (bluefloat > 0) {
+      bluefloat -= bluesteps;
+      if (bluefloat <= 0) {
+        bluefloat = 0;
+      }
+    }
+    else if (greenfloat > 0) {
+      greenfloat -= greensteps;
+      if (greenfloat <= 0) {
+        greenfloat = 0;
+      }
+    }
+    else {
+      redfloat-=redsteps;
+      if (redfloat <= 0) {
+        redfloat = 0;
+      }
+    }
+    ledcWrite(ledPinRed2, (int)floor(redfloat));
+    ledcWrite(ledPinGreen2, (int)floor(greenfloat));
+    ledcWrite(ledPinBlue2, (int)floor(bluefloat));
+    ledcWrite(ledPinRed1, (int)floor(redfloat));
+    ledcWrite(ledPinGreen1, (int)floor(greenfloat));
+    ledcWrite(ledPinBlue1, (int)floor(bluefloat));
+    delay(1);
+  }
+  ledsOff(); 
+  delay(1);
+  }
+}
+*/
 
 void ledHandler::candle(int duration, int reps, int pause, unsigned long startTime, unsigned long timeOffset) {
   Serial.println("should blink");
@@ -776,7 +940,6 @@ for (int i = 0; i < reps; i++ ){
 
 
 
-
   void ledHandler::blink() {
     Serial.println("should blink");
   uint32_t currentTime = micros();
@@ -850,16 +1013,41 @@ void ledHandler::getNextAnimation(message_animate *animationMessage) {
       blue = blue+1 > 255? blue : blue+1;
       green = green+1 > 255? green : green+1;
     }
-    animationMessage->rgb1[0] =red;
-    animationMessage->rgb1[1] =  green;
-    animationMessage->rgb1[2] = blue;
-    animationMessage->speed = random(500, 2000);
-    animationMessage->pause = random(0, 200);
-    animationMessage->spread_time = random(1000, 5000);
-    animationMessage->reps = random(5, 10);
-    animationMessage->animationreps = random(5, 20);
+    animationMessage->rgb1[0] =minRed;;
+    animationMessage->rgb1[1] =  minGreen;
+    animationMessage->rgb1[2] = minBlue;
+    animationMessage->rgb2[0] = maxRed;
+    animationMessage->rgb2[1] = maxGreen;
+    animationMessage->rgb2[2] = maxBlue;
+    animationMessage->speed = random(minSpeed, maxSpeed);
+    animationMessage->pause = random(minPause, maxPause);
+    animationMessage->spread_time = random(minSpread, maxSpread);
+    animationMessage->reps = random(minReps, maxReps);
+    animationMessage->animationreps = random(minAniReps, maxAniReps);
+    animationMessage->brightness = globalBrightness;
+  }
+
+  void ledHandler::setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int minSp, int maxSp, int minR, int maxR, int minAR, int maxAR, int minRGBR, int maxRGBR, int minRGBG, int maxRGBG, int minRGBB, int maxRGBB) {
+    minSpeed = minS;
+    maxSpeed = maxS;
+    minPause = minP;
+    maxPause = maxP;
+    minSpread = minSp;
+    maxSpread = maxSp;
+    minReps = minR;
+    maxReps = maxR;
+    minAniReps = minAR;
+    maxAniReps = maxAR;
+    minRed = minRGBR;
+    maxRed = maxRGBR;
+    minGreen = minRGBG;
+    maxGreen = maxRGBG;
+    minBlue = minRGBB;
+    maxBlue = maxRGBB;
+
   }
 /* old
+
   void ledHandler::createSyncAsyncBlink(message_animate *animationMessage) {
     
     int red = random(0,256);
@@ -1000,3 +1188,30 @@ void ledHandler::printAnimationMessage(const message_animate &animationMessage) 
 }
 
 
+void ledHandler::setGlobalBrightness(int brightness) {
+  globalBrightness = brightness;
+}
+
+String ledHandler::getParamsJson() {
+  String jsonString = "{";
+  jsonString += "\"minS\":"+String(minSpeed)+",";
+  jsonString += "\"maxS\":"+String(maxSpeed)+",";
+  jsonString += "\"minP\":"+String(minPause)+",";
+  jsonString += "\"maxP\":"+String(maxPause)+",";
+  jsonString += "\"minSp\":"+String(minSpread)+",";
+  jsonString += "\"maxSp\":"+String(maxSpread)+",";
+  jsonString += "\"minR\":"+String(minReps)+",";
+  jsonString += "\"maxR\":"+String(maxReps)+",";
+  jsonString += "\"minAR\":"+String(minAniReps)+",";
+  jsonString += "\"maxAR\":"+String(maxAniReps)+",";
+  jsonString += "\"minRGBR\":"+String(minRed)+",";
+  jsonString += "\"maxRGBR\":"+String(maxRed)+",";
+  jsonString += "\"minRGBG\":"+String(minGreen)+",";
+  jsonString += "\"maxRGBG\":"+String(maxGreen)+",";
+  jsonString += "\"minRGBB\":"+String(minBlue)+",";
+  jsonString += "\"maxRGBB\":"+String(maxBlue);
+  jsonString += "}";
+  return jsonString;
+
+
+}
