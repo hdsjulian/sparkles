@@ -11,8 +11,8 @@ webserver::webserver(FS* fs) : server(80), events("/events"), filesystem(fs) {
 void webserver::setup(messaging &Messaging, modeMachine &modeHandler) {
   debugVariable++;
     WiFi.mode(WIFI_AP_STA);
-    Serial.println("setting up webserver "+String(ssid));
-    WiFi.softAP(ssid, password);  
+    Serial.println("setting up webserver "+String(WIFI_SSID));
+    WiFi.softAP(WIFI_SSID, PASSWORD);  
     debugVariable++;
     configRoutes(); 
     debugVariable++;
@@ -26,7 +26,7 @@ void webserver::setup(messaging &Messaging, modeMachine &modeHandler) {
 
 void webserver::setWifi() {
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssid, password);  
+  WiFi.softAP(WIFI_SSID, PASSWORD);  
 }
 
 

@@ -52,7 +52,7 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
 
 
 
-void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long long msgReceiveTime) {
     addError("Handling Received "+String(incomingData[0]), false);
     //Serial.println(messageCodeToText(incomingData[0]));
     addError(" from ");
@@ -88,12 +88,33 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
             if (globalModeHandler->getMode() == MODE_WAIT_FOR_TIMER or globalModeHandler->getMode() == MODE_RESET_TIMER) {
                 break;
             }
+            else if (globalModeHandler->getMode() == MODE_OTA) {
+                if (memcmp(senderAddress, otaAddress, 6) != 0)  {
+                    ESP_LOGI("ota", "received address from different device while in ota mode");
+                    break;
+                }
+                else if (incomingData[offsetof(message_address, version)] < version) {
+                    ESP_LOGI("ota", "received address while in OTA mode, but version still smaller");
+                    pushDataToSendQueue(senderAddress, MSG_OTA, -1);
+                }
+                else {
+                    ESP_LOGI("ota", "received address while in OTA mode, version is ok");
+                    setTimerReceiver(incomingData);
+                }
+            }
+            else if (incomingData[offsetof(message_address, version)] < version && false) {
+                ESP_LOGI("ota", "received address while not in OTA mode, but version smaller");
+                pushDataToSendQueue(senderAddress, MSG_OTA, -1);
+                memcpy(&otaAddress, senderAddress, 6);
+                globalModeHandler->switchMode(MODE_OTA);
+            }
             else {
+                ESP_LOGI("ota", "received address while not in OTA mode, version is ok");
                 setTimerReceiver(incomingData);
             }
             break;
 
-        case MSG_GOT_TIMER:
+        case MSG_GOT_TIMER:                                          
             handleGotTimer(incomingData, senderAddress);
             break; 
         case MSG_SEND_CLAP_TIMES:
@@ -229,7 +250,7 @@ void messaging::startCalibrationMode() {
     pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_START_CALIBRATION_MODE);
 }
 
-String messaging::printClapTimes(unsigned long* array, int size) {
+String messaging::printClapTimes(unsigned long long* array, int size) {
   String returnString;
   for (int i = 0; i < NUM_CLAPS; i++) {
     returnString +=array[i];
@@ -363,7 +384,7 @@ void messaging::handleGotTimer(const uint8_t * incomingData, uint8_t * macAddres
     addError("SendTime"+String(gotTimerMessage.sendTime), false);
     addError("Offset "+String(gotTimerMessage.timerOffset), false);
     addError("Delay "+String(gotTimerMessage.delayAvg), false);
-    unsigned long expect = gotTimerMessage.sendTime+gotTimerMessage.delayAvg+gotTimerMessage.timerOffset;
+    unsigned long long expect = gotTimerMessage.sendTime+gotTimerMessage.delayAvg+gotTimerMessage.timerOffset;
     addError("expected "+String(expect));
     addError("Difference "+String(micros()-expect));
 
@@ -622,7 +643,7 @@ float messaging::largestDistance() {
 void messaging::resetSystem() {
     pushDataToSendQueue(broadcastAddress, MSG_COMMANDS, CMD_RESET_SYSTEM);
 }
-unsigned long messaging::getLastBroadcastTimer() {
+unsigned long long messaging::getLastBroadcastTimer() {
     return lastBroadcastTimer;
 }
 void messaging::setLastBroadcastTimer() {
@@ -678,4 +699,11 @@ void messaging::setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int m
     Serial.println("minS "+String(minS)+" maxS "+String(maxS)+" minP "+String(minP)+" maxP "+String(maxP)+" minSp "+String(minSp)+" maxSp "+String(maxSp)+" minR "+String(minR)+" maxR "+String(maxR)+" minAR "+String(minAR)+" maxAR "+String(maxAR)+" minRGBR "+String(minRGBR)+" maxRGBR "+String(maxRGBR)+" minRGBG "+String(minRGBG)+" maxRGBG "+String(minRGBG)+" minRGBB "+String(minRGBB)+" maxRGBB "+String(maxRGBB));
     handleLed->setSyncAsyncParams(minS, maxS, minP, maxP, minSp, maxSp, minR, maxR, minAR, maxAR, minRGBR, maxRGBR, minRGBG, maxRGBG, minRGBB, maxRGBB);
 
+}
+
+void messaging::sendMidi(uint8_t note, uint8_t velocity) {
+    midiMessage.note = note;
+    midiMessage.velocity = velocity;
+    Serial.println("sending midi note "+String(note)+" velocity "+String(velocity));
+    esp_now_send(broadcastAddress, (uint8_t*) &midiMessage, sizeof(midiMessage));
 }

@@ -20,8 +20,6 @@
 #define CALIBRATION_IN_BETWEEN 4
 class webserver {
     private:
-        const char* ssid = "Sparkles-Admin";
-        const char* password = "sparkles";
         int msgType;
         String outputJson;
         int calibrationStatus;

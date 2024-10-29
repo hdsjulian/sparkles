@@ -11,12 +11,12 @@
 // Function to read an array of structs from a file
 
 
-void reorderTimestamps(unsigned long timestamps[], int size) {
+void reorderTimestamps(unsigned long long timestamps[], int size) {
     // Sort the timestamps
     std::sort(timestamps, timestamps + size);
     
     // Find the first occurrence of zero
-    unsigned long* zeroPos = std::find(timestamps, timestamps + size, 0);
+    unsigned long long* zeroPos = std::find(timestamps, timestamps + size, 0);
 
     // Move all non-zero elements to the beginning of the array
     std::rotate(timestamps, zeroPos, std::remove(timestamps, timestamps + size, 0));

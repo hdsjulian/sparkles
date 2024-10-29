@@ -14,6 +14,7 @@
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "soc/rtc.h"
+#include <Midi.h>
 //#include "rtc_time.h"
 //#include "ESPAsyncWebServer.h"
 //#include "webserver.h"
@@ -30,7 +31,8 @@ const char* password = "sparkles";
 const int batteryPin = 4; 
 
 struct testing {
-  bool rtc = true;
+  bool midi = true;
+  bool rtc = false;
   bool send_message = false;
   bool recv_message = false;
   bool findGreen = false;
@@ -213,8 +215,42 @@ void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus)  {
      if (sendStatus == ESP_NOW_SEND_SUCCESS) {
      }
 }
+
+void handleNoteOn(byte channel, byte note, byte velocity) {
+  Serial.print("Note On, Channel: ");
+  Serial.print(channel);
+  Serial.print(", Note: ");
+  Serial.print(note);
+  Serial.print(", Velocity: ");
+  Serial.println(velocity);
+}
+void handleNoteOff(byte channel, byte note, byte velocity) {
+  Serial.print("Note Off, Channel: ");
+  Serial.print(channel);
+  Serial.print(", Note: ");
+  Serial.print(note);
+  Serial.print(", Velocity: ");
+  Serial.println(velocity);
+}
+
+void handleControlChange(byte channel, byte control, byte value) {
+  Serial.print("Control Change, Channel: ");
+  Serial.print(channel);
+  Serial.print(", Control: ");
+  Serial.print(control);
+  Serial.print(", Value: ");
+  Serial.println(value);
+}
+
+void midiSetup() {
+  MIDI_CREATE_DEFAULT_INSTANCE();
+  MIDI.begin(MIDI_CHANNEL_OMNI);
+  MIDI.setHandleNoteOn(handleNoteOn);
+  MIDI.setHandleNoteOff(handleNoteOff);
+  MIDI.setHandleControlChange(handleControlChange);
+}
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(33);
 //  while (!Serial) {
  //   ;
  // }
@@ -291,8 +327,11 @@ void loop() {
     delay(200);
     tick++;
   }
+
+if (testStruct.midi == true) {
+  MIDI.read();
+}
 if (testStruct.rtc == true) {
-  delay(3000);
   Serial.println("blubblub");
   ESP_LOGI(TAG, "Dingsbums %d", DINGSBUMS);
   rtc_cpu_freq_config_t config;
@@ -301,7 +340,7 @@ if (testStruct.rtc == true) {
   ESP_LOGI(TAG, "Clock Config, Current CPU Freq: %d MHz", mhz);
   String xtal = config.source == RTC_CPU_FREQ_SRC_XTAL ? "XTAL" : "Other";
   ESP_LOGI(TAG, "Clock Config, Source: %s", xtal.c_str());
-  rtc_slow_freq_t slow_clk_src = rtc_clk_slow_src_get();
+  /*rtc_slow_freq_t slow_clk_src = rtc_clk_slow_src_get();
   const char* source_name = "";
   float frequency_kHz = 0;
   switch (slow_clk_src) {
@@ -323,17 +362,19 @@ if (testStruct.rtc == true) {
   }
   ESP_LOGI(TAG, "RTC INFO: RTC Slow Clock Source: %s", source_name);
   ESP_LOGI(TAG, "RTC INFO: Frequency: %.3f kHz and %d", frequency_kHz, slow_clk_src);
-  unsigned int cal = rtc_clk_cal(RTC_CAL_RTC_MUX, 1000);
-  ESP_LOGI("Sleep", "RTC Calibration value: %u", cal);
+*/
   rtc_clk_32k_enable(true);
+
   rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
-  delay(100);
+  //unsigned int cal = rtc_clk_cal(RTC_CAL_RTC_MUX, 1000);
+  //ESP_LOGI("Sleep", "RTC Calibration value: %u", cal);
+ //delay(100);
   int j = 0;
   for (int i = 0; i < 1000000; i++) {
     j++;
   }
-  slow_clk_src = rtc_clk_slow_src_get();
-  delay(1000);
+  rtc_slow_freq_t slow_clk_src = rtc_clk_slow_src_get();
+  delay(3000);
   if (slow_clk_src == RTC_SLOW_FREQ_32K_XTAL) {
     ESP_LOGI(TAG, "RTC slow clock source set to external 32.768 kHz XTAL successfully.");
   } else {
@@ -344,9 +385,9 @@ if (testStruct.rtc == true) {
   esp_sleep_enable_timer_wakeup((unsigned long long)(20*1000000ULL));
 
 
-  delay(100);
+  //delay(100);
   uint32_t slowclk_cycles = 100;
-
+/*
       rtc_cal_sel_t cal_clk = RTC_CAL_RTC_MUX;
     if (slow_clk_src == SOC_RTC_SLOW_CLK_SRC_XTAL32K) {
         cal_clk = RTC_CAL_32K_XTAL;
@@ -374,19 +415,24 @@ if (testStruct.rtc == true) {
 
 
   ESP_LOGI(TAG, "woke up");
+  */
   slow_clk_src = rtc_clk_slow_src_get();
   if (slow_clk_src == RTC_SLOW_FREQ_32K_XTAL) {
     ESP_LOGI(TAG, "RTC slow clock source set to external 32.768 kHz XTAL.");
   } else {
     ESP_LOGI(TAG, "RTC Clock Source not set to external 32.768 kHz XTAL.");
   }
-
+    ESP_LOGI(TAG, "time %d", rtc_time_get());
+    ESP_LOGI(TAG, "time millis %d", millis());
     esp_err_t result = esp_light_sleep_start();
     if (result == ESP_OK) {
         ESP_LOGI("Sleep", "Woke up from light sleep");
     } else {
         ESP_LOGE("Sleep", "Failed to enter light sleep");
     }
+    ESP_LOGI(TAG, "time %d", rtc_time_get());
+    ESP_LOGI(TAG, "time millis %d", millis());
+
   delay(10000);
 }
 

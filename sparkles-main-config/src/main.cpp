@@ -14,6 +14,7 @@
 #include <messaging.h>
 #include <LittleFS.h>
 #include <webserver.h>
+#include <BLEMidi.h>
 #define SWITCH_PIN 48
 //#include "ESP32TimerInterrupt.h"
 //#include "driver/gptimer.h"
@@ -37,19 +38,20 @@ int totalInterruptCounter;   	//total interrupt counting
 bool start = true;
 bool lfs_started = true;
 esp_now_peer_info_t peerInfo;
-
+unsigned long long lastKeyPress;
 int audioPin = 5;
 int cycleCounter = 0;
 
 bool isSetup = false;
 bool isTimerSet = false;
 
-unsigned long wokeUpTime = 0;
+unsigned long long wokeUpTime = 0;
 
 //-----------
 //Timer config variables
 //-----------
-unsigned long msgSendTime;
+unsigned long long msgSendTime;
+unsigned long bleTimeout;
 uint32_t msgArriveTime;
 uint32_t msgReceiveTime;
 int lastDelay = 0;
@@ -113,6 +115,36 @@ void IRAM_ATTR onTimer()
 }
 
 
+void onNoteOn(uint8_t channel, uint8_t note, uint8_t velocity, uint16_t timestamp)
+{
+  if (channel != 0) {
+    Serial.println("channel not 0");
+    return;
+  }
+  if (modeHandler.getMode() == MODE_SENDING_TIMER or modeHandler.getMode() == MODE_RESET_TIMER) {
+    return;
+  }
+  if (modeHandler.getMode() == MODE_ANIMATE) {
+    messageHandler.endAnimation();
+  }
+  modeHandler.switchMode(MODE_MIDI);
+
+  lastKeyPress = millis();
+  messageHandler.sendMidi(note, velocity);
+  Serial.printf("Received note on : channel %d, note %d, velocity %d (timestamp %dms)\n", channel, note, velocity, timestamp);
+  
+}
+
+void onNoteOff(uint8_t channel, uint8_t note, uint8_t velocity, uint16_t timestamp)
+{
+  if (channel != 0) {
+    return;
+  }
+  lastKeyPress = millis();
+  messageHandler.sendMidi(note, 0);
+  Serial.printf("Received note off : channel %d, note %d, velocity %d (timestamp %dms)\n", channel, note, velocity, timestamp);
+}
+
 void  OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     if (incomingData[0] == MSG_TIMESYNC) {
         messageHandler.addError("arriveTime: "+String(micros()), false);
@@ -153,11 +185,13 @@ void  OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
 
   }
 }
+static void midi_task_read_example(void *arg) {
 
+}
 
 void setup() {
   Serial.begin(115200);
-  unsigned long startTime = millis();
+  unsigned long long startTime = millis();
   while (!Serial) {
     if (millis() - startTime > 3000) {
       break;
@@ -205,6 +239,9 @@ void setup() {
   peakDetection.begin(48, 10, 0.5);   
   //randomSeed(analogRead(33));
   myWebserver.PdParamsChanged = true;
+  BLEMidiClient.begin("Midi client"); // "Midi client" is the name you want to give to the ESP32
+  BLEMidiClient.setNoteOnCallback(onNoteOn);
+  BLEMidiClient.setNoteOffCallback(onNoteOff);
 }
 double data;
 void loop() {
@@ -212,6 +249,20 @@ void loop() {
     messageHandler.testTrilateration();
   }
   else {
+    if(!BLEMidiClient.isConnected() && bleTimeout+3000 < millis()) {
+        // If we are not already connected, we try te connect to the first BLE Midi device we find
+        int nDevices = BLEMidiClient.scan();
+        if(nDevices > 0) {
+            if(BLEMidiClient.connect(0))
+                Serial.println("Connection established");
+            else {
+                Serial.println("Connection failed");
+            }
+        }
+        bleTimeout = millis();
+    }
+
+
   if (modeHandler.getMode() == MODE_SENDING_TIMER || modeHandler.getMode() == MODE_RESET_TIMER || modeHandler.getMode() == MODE_BROADCAST_TIMER || modeHandler.getMode() == MODE_PRE_CALIBRATION_BROADCAST) {
     if (isTimerSet == false ){
       Serial.println("attaching interrupt");
@@ -294,10 +345,16 @@ void loop() {
 
     cycleCounter++;
     Serial.print("-----\nMain still Alive ");
+    Serial.print("Mode: ");
+    modeHandler.printCurrentMode();
     Serial.println(cycleCounter);
     messageHandler.printAddress(myAddress);
     //messageHandler.printPeers();
     Serial.println("timerCounter "+String(messageHandler.getTimerCounter()));
+    int* time; 
+    time = messageHandler.getSystemTime();
+    Serial.println("System time is "+String(time[0])+":"+String(time[1])+":"+String(time[2]));
+
   }
 
   if (messageHandler.clapsReceived == messageHandler.addressCounter && messageHandler.clapsReceived != 0) {
@@ -369,6 +426,11 @@ void loop() {
       modeHandler.switchMode(MODE_CALIBRATION_WAITING);
       messageHandler.setTimerCounter(0);
   }
+  if (modeHandler.getMode() == MODE_MIDI) {
+    if (millis() > lastKeyPress+60000) {
+      messageHandler.startAnimation();
+  }
 
-} 
+  } 
+}
 }

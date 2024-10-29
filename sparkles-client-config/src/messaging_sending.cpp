@@ -179,6 +179,9 @@ void messaging::processDataFromSendQueue() {
             case MSG_TIMESYNC:
                 esp_now_send(sendData.address, (uint8_t*) &timeSyncMessage, sizeof(timeSyncMessage));
                 break;
+            case MSG_MIDI:
+                esp_now_send(sendData.address, (uint8_t*) &midiMessage, sizeof(midiMessage));
+                break;
             default: 
                 addError("Message to send: unknown\n");
                 break;

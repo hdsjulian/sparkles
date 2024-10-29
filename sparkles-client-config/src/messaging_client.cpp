@@ -31,7 +31,7 @@ void messaging::setup(modeMachine &modeHandler, ledHandler &globalHandleLed, esp
 
 
 
-void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingData, int len, unsigned long long msgReceiveTime) {
     /*
     if (memcmp(senderAddress, hostAddress, 6) !=0 and memcmp(senderAddress, clapDeviceAddress, 6) !=0 ) {
         addError("received command from untrusted source\n");
@@ -65,7 +65,7 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
                 break;
                 case CMD_GO_TO_SLEEP:
                         Serial.println("received go to sleep with "+String(commandMessage.param));
-                         goToSleep((unsigned long)commandMessage.param);
+                         goToSleep((unsigned long long)commandMessage.param);
                 break;
                 case CMD_RESET:
                     ESP.restart();
@@ -116,12 +116,17 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
             addError("Switching mode to "+String(switchModeMessage.mode)+"\n");
             globalModeHandler->switchMode(switchModeMessage.mode);
         break;
-
+        case MSG_OTA_UPDATE: 
+            addError("Received OTA Update\n");
+            memcpy(&otaMessage, incomingData, sizeof(otaMessage));
+            handleOTA();
+            break;
         case MSG_BROADCAST_TIMER: 
             addError("Received Broadcast Timer\n");
             memcpy(&timerMessage, incomingData, sizeof(timerMessage));
             receiveBroadcastTimer(msgReceiveTime);
             break;
+
         case MSG_TIMER_CALIBRATION:  
         { 
             addError("received timer calibration message\n");
@@ -215,3 +220,24 @@ void messaging::handleReceive(uint8_t *senderAddress, const uint8_t *incomingDat
     }
 }
 
+void messaging::handleMidi(const uint8_t *incomingData) {
+    memcpy(&midiMessage, incomingData, sizeof(midiMessage));
+    Serial.println("Midi Note: "+String(midiMessage.note)+ " - "+String(midiMessage.note % 12)+ " - "+String(midiMessage.velocity));
+    if (globalModeHandler->getMode() != MODE_MIDI) {
+        globalModeHandler->switchMode(MODE_MIDI);
+        handleLed->ledsOff();
+        Serial.println("Mode Midi initiated: Leds off");
+    }
+    if ((midiMessage.note % 12) == (handleLed->getPosition()+12) % 12) {
+        Serial.println("midi note matches position, velocity: "+String(midiMessage.velocity)+" Note: "+String(midiMessage.note));
+        handleLed->midi(midiMessage.note, midiMessage.velocity);
+    }
+    else {
+        String noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    
+    // MIDI note modulo 12 gives the note index within the octave
+        int noteIndex = midiMessage.note % 12;
+        Serial.println("Mssg key doesn't apply");
+        Serial.println("midi note: "+String(midiMessage.note)+ " - "+noteNames[noteIndex]+ " Position: "+String(handleLed->getPosition())+ " Note From Position: "+String(handleLed->getNoteFromPosition()));
+    }
+}

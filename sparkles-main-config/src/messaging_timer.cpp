@@ -15,7 +15,7 @@ void messaging::goodNight() {
     int* time;  
     time = getSystemTime();
 
-    unsigned long difference;
+    unsigned long long difference;
     if (millis() > goToSleepTime && sentToSleep == false) {
         Serial.println("should be time to say good night and waiting ten seconds");
         difference = wakeupTime.hours*3600+wakeupTime.minutes*60+wakeupTime.seconds;
@@ -24,20 +24,27 @@ void messaging::goodNight() {
         goToSleepTime = goToSleepTime+10000;
         Serial.println("time is "+String(millis()));
         Serial.println("setting gotosleeptime to "+String(goToSleepTime));
+        //rtc_clk_32k_enable(true);
+        //rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
         sentToSleep = true;
+        
     }
     if ((millis() > goToSleepTime && goToSleepTime!=0 && sentToSleep == true)) {
         difference = wakeupTime.hours*3600+wakeupTime.minutes*60+wakeupTime.seconds;
         Serial.println("time is "+String(millis()));
-        Serial.println("and system tieme is "+String(time[0])+":"+String(time[1])+":"+String(time[2]));
+        Serial.println("and system time is "+String(time[0])+":"+String(time[1])+":"+String(time[2]));
         Serial.println("sleeping for "+String(difference));
         Serial.println("sleeping until "+String(wakeupTime.hours)+":"+String(wakeupTime.minutes)+":"+String(wakeupTime.seconds));
         WiFi.mode(WIFI_OFF);
         esp_now_deinit();
-        unsigned long sleepTimeMicroseconds = (unsigned long long) difference * 1000000ULL;
+        unsigned long long sleepTimeMicroseconds = (unsigned long long) difference * 1000000ULL;
+        Serial.println("Sleeping for "+String(sleepTimeMicroseconds)+" us");
         esp_sleep_enable_timer_wakeup(sleepTimeMicroseconds);
         esp_light_sleep_start();
         Serial.println("woke up");
+        time = getSystemTime();
+        Serial.println(" system time is "+String(time[0])+":"+String(time[1])+":"+String(time[2]));
+
         webServer->setWifi();
         if (esp_now_init() != 0) {
             Serial.println("Error initializing ESP-NOW");

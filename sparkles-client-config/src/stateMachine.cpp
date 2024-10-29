@@ -114,6 +114,9 @@ String modeMachine::modeToText(int mode) {
     case MODE_PRE_CALIBRATION_BROADCAST:
         out += "MODE_PRE_CALIBRATION_BROADCAST";
         break;
+    case MODE_MIDI:
+        out += "MODE_MIDI";
+        break;
     default: 
         out += "Mode unknown ";
         out += String(mode); // Convert 'mode' integer to String and concatenate

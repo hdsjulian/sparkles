@@ -9,6 +9,11 @@
 #ifndef DEFINE_H
 #define DEFINE_H
 
+const float version = 0.1;
+#define WIFI_SSID "Sparkles-Admin"
+#define PASSWORD "sparkles"
+#define FIRMWARE_URL "https://192.168.1.4/firmware.bin"
+
 //LEDHANDLER
 #define LEDC_TIMER_12_BIT  8
 #define LEDC_BASE_FREQ     5000
@@ -111,6 +116,9 @@ const int ledChannelBlue2 = 5;
 #define MODE_WOKEUP 16
 #define MODE_STARTUP_ANIMATION 17
 #define MODE_END_ANIMATION 18
+#define MODE_OTA 19
+#define MODE_MIDI 20
+
 #define MODE_NO_SEND 90
 #define MODE_RESPOND_ANNOUNCE 91
 #define MODE_RESPOND_TIMER 92
@@ -151,6 +159,9 @@ const int ledChannelBlue2 = 5;
 #define MSG_TIMESYNC 111
 #define MSG_CONFIRM_CLAP 112
 #define MSG_BEGIN_BROADCAST 113
+#define MSG_OTA 114
+#define MSG_OTA_UPDATE 115
+#define MSG_MIDI 116
 
 #define CMD_START 200
 #define CMD_MSG_SEND_ADDRESS_LIST 201
@@ -190,7 +201,7 @@ const int ledChannelBlue2 = 5;
 struct message_timer {
   uint8_t messageType;
   uint16_t counter;
-  unsigned long sendTime;
+  unsigned long long sendTime;
   uint16_t lastDelay;
   bool reset = false;
   int addressId = 0;
@@ -202,7 +213,7 @@ struct message_got_timer {
   uint16_t delayAvg;
   uint32_t timerOffset;
   float batteryPercentage = 0;
-  unsigned long sendTime;
+  unsigned long long sendTime;
 };
 
 struct message_set_sleep_wakeup {
@@ -211,6 +222,11 @@ struct message_set_sleep_wakeup {
   unsigned long minutes;
   unsigned long seconds;
   bool isGoodNight;
+};
+
+struct message_ota {
+  uint8_t messageType = MSG_OTA;
+  float version = version;
 };
 
 struct message_status {
@@ -232,7 +248,7 @@ struct message_timer_received {
 //14 bytes
 struct message_announce {
   uint8_t messageType = MSG_ANNOUNCE;
-  unsigned long sendTime;
+  unsigned long long sendTime;
   uint8_t address[6];
 } ;
 
@@ -240,6 +256,7 @@ struct message_announce {
 struct message_address{
   uint8_t messageType = MSG_ADDRESS;
   uint8_t address[6];
+  float version = version;
 } ;
 
 struct message_distance{
@@ -249,8 +266,8 @@ struct message_distance{
 
 struct message_timesync {
   uint8_t messageType = MSG_TIMESYNC;
-  unsigned long myTime;
-  unsigned long offset;
+  unsigned long long myTime;
+  unsigned long long offset;
 };
 
 
@@ -262,7 +279,7 @@ struct message_timesync {
 struct message_send_clap_times {
   uint8_t messageType = MSG_SEND_CLAP_TIMES;
   int clapCounter;
-  unsigned long timeStamp[NUM_CLAPS]; //offsetted.
+  unsigned long long timeStamp[NUM_CLAPS]; //offsetted.
   float xLoc = 0.0;
   float yLoc = 0.0;
   float zLoc = 0.0;
@@ -273,7 +290,7 @@ struct message_send_clap_times {
 struct message_send_single_clap {
   uint8_t messageType = MSG_SEND_SINGLE_CLAP;
   int clapCounter;
-  unsigned long timeStamp; //offsetted.
+  unsigned long long timeStamp; //offsetted.
   float xLoc = 0.0;
   float yLoc = 0.0;
   float zLoc = 0.0;
@@ -328,9 +345,15 @@ struct message_address_list {
   int status;
 };
 
+struct message_midi {
+  uint8_t messageType = MSG_MIDI;
+  uint8_t note;
+  uint8_t velocity;
+};
+
 struct timeout_retry {
   int currentId;
-  unsigned long lastMsg;
+  unsigned long long lastMsg;
   int tries;
   int unavailableCounter;
 };
@@ -357,7 +380,7 @@ struct message_animate {
   uint16_t reps = 0;
   uint8_t rgb1[3] = {0,0,0};
   uint8_t rgb2[3] = {0,0,0};
-  unsigned long startTime = 0;
+  unsigned long long startTime = 0;
   int num_devices  = 0;
   int spread_time = 100;
   float exponent = 5.0;
@@ -407,7 +430,7 @@ struct calculation_struct {
 
 struct concentric_animation {
   uint8_t speed = 0;
-  unsigned long startTime = 0;
+  unsigned long long startTime = 0;
   uint8_t reps = 0;
   uint8_t rgb1[3] = {0,0,0};
   uint8_t rgb2[3] = {0,0,0};

@@ -60,10 +60,10 @@ message_timer_received timerReceivedMessage;
 
 //timer stuff
 uint32_t timeOffset;
-uint32_t lastTime = 0;
-uint32_t msgSendTime;
-uint32_t msgArriveTime;
-uint32_t msgReceiveTime;
+unsigned long long lastTime = 0;
+unsigned long long msgSendTime;
+unsigned long long msgArriveTime;
+unsigned long long msgReceiveTime;
 int timerCounter = 0;
 int lastDelay = 0;
 int oldTimerCounter = 0;
@@ -148,7 +148,12 @@ void OnDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int 
     if (incomingData[0] == MSG_COMMANDS) {
       messageHandler.addError("RECEIVED MESSAGE "+messageHandler.messageCodeToText(incomingData[1])+" from "+messageHandler.stringAddress(mac->src_addr)+"\n");
     }
-    } 
+    if (incomingData[0] == MSG_MIDI) {
+      messageHandler.handleMidi(incomingData);
+      return;
+    }
+    }
+
   uint8_t senderAddress[6];
   memcpy(senderAddress, mac->src_addr, 6);
   messageHandler.pushDataToReceivedQueue(senderAddress, incomingData, len, msgReceiveTime);
@@ -312,6 +317,9 @@ void loop() {
   if (modeHandler.getMode() == MODE_ANIMATE ) {
     //messageHandler.nextAnimation();
       handleLed.run();
+  }
+  if (modeHandler.getMode() == MODE_MIDI && micros() < handleLed.getMidiBlinkEndTime()) {
+    handleLed.midiBlink();
   }
 
 

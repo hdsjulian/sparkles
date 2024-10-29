@@ -14,7 +14,7 @@
 		},
 		{
 			"name": "sparkles-hardware-check",
-			"path": "../../Documents/PlatformIO/Projects/sparkles-hardware-check"
+			"path": "sparkles-hardware-check"
 		},
 		{
 			"name": "hardware_check_client",
@@ -27,6 +27,18 @@
 		{
 			"name": "Sparkles-Clapdevice",
 			"path": "Sparkles-Clapdevice"
+		},
+		{
+			"name": "BTMIDI",
+			"path": "../../Documents/PlatformIO/Projects/BTMIDI"
+		},
+		{
+			"name": "sparkles-BTMIDI",
+			"path": "sparkles-BTMIDI"
+		},
+		{
+			"name": "BLEUSBTest",
+			"path": "../../Documents/PlatformIO/Projects/BLEUSBTest"
 		}
 	],
 	"settings": {

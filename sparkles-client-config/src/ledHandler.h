@@ -40,11 +40,11 @@ class ledHandler {
         int repeatCounter = 0;
         int animationRepeatCounter = 0;
         int animationNextStep = 0;
-        unsigned long localAnimationStart = 0;
-        unsigned long globalAnimationStart = 0;
-        unsigned long localAnimationTimeframe = 0;
-        unsigned long globalAnimationTimeframe = 0;
-        unsigned long timeOffset = 0;
+        unsigned long long localAnimationStart = 0;
+        unsigned long long globalAnimationStart = 0;
+        unsigned long long localAnimationTimeframe = 0;
+        unsigned long long globalAnimationTimeframe = 0;
+        unsigned long long timeOffset = 0;
         int position;
         int runs = 0;
         int runs2 =0;
@@ -58,6 +58,12 @@ class ledHandler {
         bool once = false;
         int fraction = 0;
         int globalBrightness = 150;
+        int midiLight = 0;
+        unsigned long long lastMidi = 0;
+        float decayTime = 0;
+        float value = 0;
+        float hueMod = 0;
+        float satMod = 0;
 
     public:
     ledHandler();
@@ -72,7 +78,7 @@ class ledHandler {
     void ledsOff();
     void flash(int r = 255, int g = 0, int b = 0, int duration = 50, int reps = 2, int pause = 50);
     void blink();
-    void candle(int duration, int reps, int pause, unsigned long startTime, unsigned long timeOffset);
+    void candle(int duration, int reps, int pause, unsigned long long startTime, unsigned long long timeOffset);
     void syncAsyncBlink();
     void slowStartup();
     void rowBlink();
@@ -82,24 +88,26 @@ class ledHandler {
     void setupSlowStartup();
     void setupSyncEnd();
 
-    void setTimeOffset(unsigned long setOffset, int offsetMultiplier);
+    void setTimeOffset(unsigned long long setOffset, int offsetMultiplier);
 
     void ledOn(int r, int g, int b, int duration, int frontback);
     void concentric();
     void setDistance(float dist);
     void writeLeds();
-    float calculateFlash(int targetVal, unsigned long timeElapsed, int speedfactor = 1);
-    void calculateCandle(int targetVal, unsigned long timeElapsed, int speedfactor = 1);
+    float calculateFlash(int targetVal, unsigned long long timeElapsed, int speedfactor = 1);
+    void calculateCandle(int targetVal, unsigned long long timeElapsed, int speedfactor = 1);
 
     void setPosition(int position);
+    int getPosition();
+    int getNoteFromPosition();
     void setLocation(int xpos, int ypos, int zpos);
     void printStatus();
     
-    unsigned long calculate(message_animate *animationMessage);
-    unsigned long calculateSyncAsyncBlink(message_animate *animationMessage);
-    unsigned long calculateSlowStartup(message_animate *animationMessage);
-    unsigned long calculateRowBlink(message_animate *animationMessage);
-    unsigned long calculateSyncEnd(message_animate *animationMessage);
+    unsigned long long calculate(message_animate *animationMessage);
+    unsigned long long calculateSyncAsyncBlink(message_animate *animationMessage);
+    unsigned long long calculateSlowStartup(message_animate *animationMessage);
+    unsigned long long calculateRowBlink(message_animate *animationMessage);
+    unsigned long long calculateSyncEnd(message_animate *animationMessage);
     void getNextAnimation(message_animate *animationMessage);
     void createSyncAsyncBlink(message_animate *animationMessage);
     void createSlowStartup(message_animate* animationmessage);
@@ -112,6 +120,13 @@ class ledHandler {
     void setGlobalBrightness(int brightness);
     void setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int minSp, int maxSp, int minR, int maxR, int minAR, int maxAR, int minRGBR, int maxRGBR, int minRGBG, int maxRGBG, int minRGBB, int maxRGBB);
     String getParamsJson();
+    void midi(int note, int velocity);
+    void midiBlink();
+    float getDecayTime(int midiNote, int velocity);
+    float calculateDecayFactor();
+    unsigned long long getMidiBlinkEndTime();
+    float float_to_sRGB ( float val );
+
 };
 
 #endif

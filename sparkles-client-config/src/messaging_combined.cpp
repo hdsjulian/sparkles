@@ -79,20 +79,20 @@ int messaging::getLastDelay() {
 void messaging::setLastDelay(int delay) {
     lastDelay = delay;
 }
-void messaging::setSendTime(unsigned long time) {
+void messaging::setSendTime(unsigned long long time) {
     sendTime = time;
 }
-void messaging::setArriveTime(unsigned long time) {
+void messaging::setArriveTime(unsigned long long time) {
     arriveTime = time;
 }
-unsigned long messaging::getSendTime() {
+unsigned long long messaging::getSendTime() {
     return sendTime;
 }
-unsigned long messaging::getArriveTime() {
+unsigned long long messaging::getArriveTime() {
     return arriveTime;
 }
 
-unsigned long messaging::getTimeOffset() {
+unsigned long long messaging::getTimeOffset() {
     return timeOffset;
 }
 int messaging::getTimerCounter(){
@@ -234,6 +234,9 @@ String messaging::messageCodeToText(int message) {
     case CMD_END_ANIMATION:
         out = "CMD_END_ANIMATION";
         break;
+    case MSG_MIDI:
+        out = "MSG_MIDI";
+        break;
     default:
         out = "UNKNOWN_MESSAGE";
         break;
@@ -318,7 +321,7 @@ void messaging::addSent(String sent) {
 }
 
 
-void messaging::receiveBroadcastTimer(unsigned long messageReceiveTime) {
+void messaging::receiveBroadcastTimer(unsigned long long messageReceiveTime) {
     addError("receive broadcast timer", false);
     int difference = messageReceiveTime - lastTime;
     if (abs(difference-CALIBRATION_FREQUENCY*TIMER_INTERVAL_MS) < 1000) {
@@ -346,7 +349,7 @@ void messaging::receiveBroadcastTimer(unsigned long messageReceiveTime) {
     }
 }
 
-void messaging::receiveTimer(unsigned long messageArriveTime) {
+void messaging::receiveTimer(unsigned long long messageArriveTime) {
   //add condition that if nothing happened after 5 seconds, situation goes back to start
   //wenn die letzte message maximal 300 mikrosekunden abweicht und der letzte delay auch nicht mehr als 1500ms her war, dann muss die msg korrekt sein
   int difference = messageArriveTime - lastTime;
@@ -417,12 +420,12 @@ void messaging::receiveTimer(unsigned long messageArriveTime) {
 }
 
 
-void messaging::pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime) {
+void messaging::pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long long msgReceiveTime) {
     std::lock_guard<std::mutex> lock(receiveQueueMutex); // Lock the mutex
     dataQueue.push(ReceivedData{senderAddress, incomingData, len, msgReceiveTime}); // Push the received data into the queue
 }
 #if DEVICE_MODE != WEBSERVER
-void messaging::addClap(unsigned long timeStamp) {
+void messaging::addClap(unsigned long long timeStamp) {
     Serial.println("Addclap "+String(timeStamp));
     //todo refactor
        //todo send clap times / my clap times
@@ -506,7 +509,7 @@ void messaging::init() {
   }
   
 }
-void messaging::goToSleep(unsigned long sleepTime) {
+void messaging::goToSleep(unsigned long long sleepTime) {
     Serial.println("time is "+String(millis()));
     Serial.println("going to sleep for "+String(sleepTime)); 
     unsigned long long sleepTimeMicroseconds = (unsigned long long)sleepTime * 1000000ULL;  

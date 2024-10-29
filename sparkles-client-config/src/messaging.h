@@ -44,21 +44,21 @@ class messaging {
           int param2 =0;
         };
         
-        unsigned long arriveTime, receiveTime, sendTime, lastDelay, lastTime, timeOffset;
+        unsigned long long arriveTime, receiveTime, sendTime, lastDelay, lastTime, timeOffset;
         int offsetMultiplier = 1;
         int timerCounter = 0;
         int timerArray[TIMER_ARRAY_COUNT];
         int arrayCounter =0;
         int delayAvg = 0;
         int tick = 0;
-        unsigned long oldMsgReceiveTime; 
+        unsigned long long oldMsgReceiveTime; 
         esp_now_peer_info_t* peerInfo;
         bool haveSentAddress = false;
       struct ReceivedData {
           uint8_t* senderAddress;
           const uint8_t* incomingData;
           int len;
-          unsigned long msgReceiveTime;
+          unsigned long long msgReceiveTime;
           
       };
 
@@ -91,6 +91,8 @@ class messaging {
         message_set_sleep_wakeup setSleepWakeupMessage;
         message_send_single_clap sendSingleClapMessage;
         message_timesync timeSyncMessage;
+        message_ota otaMessage;
+        message_midi midiMessage;
         clap_device_location clapDeviceLocations[NUM_CLAPS];
         String error_message = "";
         String message_received = "";
@@ -117,19 +119,20 @@ class messaging {
         uint8_t clientAddress[6] = {0x68, 0xb6, 0xb3, 0x08, 0xbd, 0x8a};
         uint8_t myAddress[6];
         uint8_t timerReceiver[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        unsigned long ClapTime; 
+        uint8_t otaAddress[6];
+        unsigned long long ClapTime; 
         int clapsReceived = 0;
         timeout_retry timeoutRetry;
         int timersUpdated =0;
         int goToSleepTime = 0;
         bool sentToSleep = false;
         int forcedDebugCounter = 0;
-        unsigned long lastTry = 0;
-        unsigned long nextAnimationPing;
+        unsigned long long lastTry = 0;
+        unsigned long long nextAnimationPing;
         int maxPos;
         int announceCounter = 0;
         bool finishAnimation = false;
-        unsigned long lastBroadcastTimer = 0;
+        unsigned long long lastBroadcastTimer = 0;
         //esp8266
         //uint8_t webserverAddress[6] = {0xe8, 0xdb, 0x84, 0x99, 0x5e, 0x44};
         //        uint8_t clapDeviceAddress[6] = {0x80, 0x65, 0x99, 0xc7, 0xc2, 0x3c};
@@ -155,19 +158,19 @@ class messaging {
         void handleClapTimes(const uint8_t *incomingData);
         void calculateDistances(int id);
         void unifyDistances(int id);
-        void addClap(unsigned long timeStamp);
+        void addClap(unsigned long long timeStamp);
         void getClapTimes(int i);
         int getTimerCounter();
         void setTimerCounter(int counter);
         void incrementTimerCounter();
-        void setSendTime(unsigned long time);
-        void setArriveTime(unsigned long time);
-        unsigned long getSendTime();
-        unsigned long getTimeOffset();
+        void setSendTime(unsigned long long time);
+        void setArriveTime(unsigned long long time);
+        unsigned long long getSendTime();
+        unsigned long long getTimeOffset();
         void setTimeOffset();
-        unsigned long getArriveTime();
+        unsigned long long getArriveTime();
         void printMessage(int message);
-        void receiveTimer(unsigned long messageArriveTime);
+        void receiveTimer(unsigned long long messageArriveTime);
         void prepareAnnounceMessage();
         void prepareTimerMessage();
         void printBroadcastAddress();
@@ -184,12 +187,12 @@ class messaging {
         void handleReceived();
         void handleSent();
         void addSent(String sent);
-        void pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t* incomingData, int len, unsigned long msgReceiveTime);
+        void pushDataToReceivedQueue(uint8_t* senderAddress, const uint8_t* incomingData, int len, unsigned long long msgReceiveTime);
         void processDataFromReceivedQueue();
         void pushDataToSendQueue(const uint8_t * address, int messageId, int param1, int param2=0);
         void pushDataToSendQueue(int messageId, int param1, int param2=0);
         void processDataFromSendQueue();
-        void handleReceive(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long msgReceiveTime);
+        void handleReceive(uint8_t* senderAddress, const uint8_t *incomingData, int len, unsigned long long  msgReceiveTime);
         void printMessagingMode();
         String stringAddress(const uint8_t * mac_addr);
         void printMessageModeLog();
@@ -205,7 +208,7 @@ class messaging {
         void deleteFile(const char* filename);
         void checkFile(const char* filename);
         void updateTimers(int addressId);
-        void goToSleep(unsigned long sleepTime);
+        void goToSleep(unsigned long long sleepTime);
         void handleTimerUpdates();
         void globalHandleTimerUpdates();
         void setNoSuccess();
@@ -241,9 +244,9 @@ class messaging {
         void printTimerStuff();
         void clientAddressToJsonObject(JsonObject& jsonObj, client_address& client);
         String allClientAddressesToJson();
-        String printClapTimes(unsigned long* array, int size);
+        String printClapTimes(unsigned long long* array, int size);
         void updateAddressesToWebserver();
-        void sendSingleClap(unsigned long buttonPressTime);
+        void sendSingleClap(unsigned long long buttonPressTime);
         void deleteClap(int clapId);
         void resetCalibration();
         bool arePointsEqual(clap_device_location &point1, clap_device_location &point2);
@@ -257,7 +260,7 @@ class messaging {
         int checkAndAverage(float x0[3], float x1[3], float x2[3]);
         void handleSingleClap();
         void sendTimeSync(int id = -1);
-        void receiveBroadcastTimer(unsigned long messageArriveTime);
+        void receiveBroadcastTimer(unsigned long long messageArriveTime);
         void broadcastTimer();
         void setAddressesInactive();
         int getTimeoutRetryId();
@@ -267,13 +270,16 @@ class messaging {
         float largestDistance();
         void setDistanceFromCenter();
         void resetSystem();
-        unsigned long getLastBroadcastTimer();
+        unsigned long long getLastBroadcastTimer();
         void setLastBroadcastTimer();
         void printPeers();
         void setGlobalBrightness(int brightness);
         String getLedHandlerParams();
         void setSyncAsyncParams(int minS, int maxS, int minP, int maxP, int minSp, int maxSp, int minR, int maxR, int minAR, int maxAR, int minRGBR, int maxRGBR, int minRGBG, int maxRGBG, int minRGBB, int maxRGBB);
-
+        void handleOTA();
+        void performOTAUpdate();
+        void handleMidi(const uint8_t *incomingData);
+        void sendMidi(uint8_t note, uint8_t velocity);
 };
 
 

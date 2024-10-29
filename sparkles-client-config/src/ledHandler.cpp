@@ -65,7 +65,6 @@ float ledHandler::step(float e, float x) { return x < e ? 0.0 : 1.0; }
 
 float* ledHandler::hsv2rgb(float h, float s, float b, float* rgb) {
   rgb[0] = b * mix(1.0, constrain(abs(fract(h + 1.0) * 6.0 - 3.0) - 1.0, 0.0, 1.0), s);
-  Serial.println(rgb[0]); 
   rgb[1] = b * mix(1.0, constrain(abs(fract(h + 0.6666666) * 6.0 - 3.0) - 1.0, 0.0, 1.0), s);
   rgb[2] = b * mix(1.0, constrain(abs(fract(h + 0.3333333) * 6.0 - 3.0) - 1.0, 0.0, 1.0), s);
   return rgb;
@@ -206,7 +205,7 @@ void ledHandler::setupSlowStartup() {
   localAnimationStart = 0;
   animationNextStep = 0;
   currentAnimation = animationMessage.animationType;
-  unsigned long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
+  unsigned long long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
   //calculate start of first round
   //was will ich hier
   localAnimationStart = localAnimationStartMicros/1000;
@@ -232,7 +231,7 @@ void ledHandler::setupSyncEnd() {
   localAnimationStart = 0;
   animationNextStep = 0;
   currentAnimation = animationMessage.animationType;
-  unsigned long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
+  unsigned long long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
   //calculate start of first round
   //was will ich hier
   localAnimationStart = localAnimationStartMicros/1000;
@@ -254,7 +253,7 @@ void ledHandler::setupSyncAsyncBlink() {
   localAnimationStart = 0;
   animationNextStep = 0;
   currentAnimation = animationMessage.animationType;
-  unsigned long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
+  unsigned long long localAnimationStartMicros = animationMessage.startTime-(timeOffset*offsetMultiplier);
   fraction = animationMessage.num_devices/FRACTION == 0 ? 1 : animationMessage.num_devices/FRACTION;
   //calculate start of first round
   //was will ich hier
@@ -321,7 +320,7 @@ void ledHandler::run() {
   }
 }
 
-unsigned long ledHandler::calculate(message_animate *animationMessage) {
+unsigned long long ledHandler::calculate(message_animate *animationMessage) {
   Serial.println("calculating for ");
   switch(animationMessage->animationType) {
     case OFF:
@@ -344,8 +343,8 @@ unsigned long ledHandler::calculate(message_animate *animationMessage) {
 
 }
 
-unsigned long ledHandler::calculateSyncAsyncBlink(message_animate *animationMessage) {
-  unsigned long base_time = (animationMessage->pause+animationMessage->speed)*(animationMessage->reps+1)*(animationMessage->animationreps+1);
+unsigned long long ledHandler::calculateSyncAsyncBlink(message_animate *animationMessage) {
+  unsigned long long base_time = (animationMessage->pause+animationMessage->speed)*(animationMessage->reps+1)*(animationMessage->animationreps+1);
   Serial.println("base time "+String(base_time));
   Serial.println("animation reps "+String(animationMessage->animationreps));
   Serial.println("reps "+String(animationMessage->reps));
@@ -373,8 +372,8 @@ unsigned long ledHandler::calculateSyncAsyncBlink(message_animate *animationMess
   return base_time;
 }
 
-unsigned long ledHandler::calculateSlowStartup(message_animate *animationMessage) {
-  unsigned long base_time = 0;
+unsigned long long ledHandler::calculateSlowStartup(message_animate *animationMessage) {
+  unsigned long long base_time = 0;
   Serial.println("animation reps "+String(animationMessage->animationreps));
   Serial.println("reps "+String(animationMessage->reps));
   Serial.println("Speed "+String(animationMessage->speed));
@@ -391,8 +390,8 @@ unsigned long ledHandler::calculateSlowStartup(message_animate *animationMessage
   return base_time;
 }
 
-unsigned long ledHandler::calculateSyncEnd(message_animate *animationMessage) {
-  unsigned long base_time = animationMessage->speed;
+unsigned long long ledHandler::calculateSyncEnd(message_animate *animationMessage) {
+  unsigned long long base_time = animationMessage->speed;
   return base_time;
 }
 
@@ -649,7 +648,7 @@ void ledHandler::rowBlink() {
 }
  */
 
-void ledHandler::calculateCandle(int brightness, unsigned long timeElapsed, int speedfactor){
+void ledHandler::calculateCandle(int brightness, unsigned long long timeElapsed, int speedfactor){
   if (timeElapsed < 0) {
     timeElapsed = 0;
     Serial.println("elapsed time was negative");
@@ -731,7 +730,7 @@ float ledHandler::clamp(float value) {
   if (value > 255) return 255;
   return value;
 }
-float ledHandler::calculateFlash(int targetVal, unsigned long timeElapsed, int speedfactor){
+float ledHandler::calculateFlash(int targetVal, unsigned long long timeElapsed, int speedfactor){
   if (timeElapsed < 0) {
     timeElapsed = 0;
   }  else if (timeElapsed > animationMessage.speed) {
@@ -759,6 +758,24 @@ float ledHandler::calculateFlash(int targetVal, unsigned long timeElapsed, int s
     return colorValue;
   }
 
+}
+
+float ledHandler::float_to_sRGB ( float val )
+{
+    if( val < 0.0031308 )
+        val *= 12.92;
+    else
+        val = 1.055 * pow(val,1.0/2.4) - 0.055;
+    return val;
+}
+
+float ledHandler::sRGB_to_float (float val)
+{
+    if( val < 0.04045 )
+        val /= 12.92;
+    else
+        val = pow((val + 0.055)/1.055,2.4);
+    return val;
 }
 
 void ledHandler::writeLeds() {
@@ -854,7 +871,7 @@ for (int i = 0; i < reps; i++ ){
 }
 */
 
-void ledHandler::candle(int duration, int reps, int pause, unsigned long startTime, unsigned long timeOffset) {
+void ledHandler::candle(int duration, int reps, int pause, unsigned long long startTime, unsigned long long timeOffset) {
   Serial.println("should blink");
   //entfernung einbauen
   uint32_t currentTime = micros();
@@ -968,13 +985,22 @@ void ledHandler::setDistance(float dist) {
 }
 
 
-void ledHandler::setTimeOffset(unsigned long setOffset, int setOffsetMultiplier) {
+void ledHandler::setTimeOffset(unsigned long long setOffset, int setOffsetMultiplier) {
   timeOffset = setOffset;
   offsetMultiplier = setOffsetMultiplier;
 }
 
 void ledHandler::setPosition(int id) {
   position = id;
+}
+
+int ledHandler::getPosition() {
+  return position;
+}
+
+int ledHandler::getNoteFromPosition() {
+  int noteFromPosition = position+21;
+  return noteFromPosition;
 }
 
 void ledHandler::setLocation(int xposition, int yposition, int zposition) {
@@ -1215,3 +1241,132 @@ String ledHandler::getParamsJson() {
 
 
 }
+
+
+void ledHandler::midi(int note, int velocity) {
+  if (velocity == 0) {
+    value = 0;
+    ledsOff();
+    return;
+  }
+  if ((note % 12 != (position+12) % 12)) {
+    String noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    int noteIndex = note % 12;
+    /*
+    Serial.println("No APplico");
+    Serial.println("midi note: "+String(note));
+    Serial.println("position: "+String(position));
+    Serial.println("left "+String(note % 12));
+    Serial.println("right "+String((position+12) % 12));
+    Serial.println("note from position: "+String(getNoteFromPosition()));
+    Serial.println("midi note modulo 12 plus 1: " +String(note % 12 + 1));
+    Serial.println("whatever this massacre is "+String(note % (position+1))+1);
+    */
+    return;
+  }
+  else {
+
+  }
+  //calculate octave distance
+
+  int midiPosition = position+21;
+  int octaveDistance = (note-midiPosition)/12;
+  if (octaveDistance == 0) {
+    if ((float)velocity / 127 > value*calculateDecayFactor()) {
+      Serial.println("setting value, octave distance is "+String(octaveDistance)+ "note is "+String(note)+" and midiPosition is "+String(midiPosition));  
+      value = (float)velocity/127;
+      note % 12 == 1 ? value *= 0.8: value;
+      lastMidi = micros(); 
+    }
+    else {
+      Serial.println("not setting value");
+      Serial.println("velocity / 127 is "+String(velocity/127));
+      Serial.println("value is "+String(value));
+      Serial.println("decay factor is "+String(calculateDecayFactor()));  
+      }
+      hueMod = 0;
+      satMod = 0;
+  }
+  else {
+    float newval = ((float)velocity / 127) *(1-(0.2*octaveDistance));
+    if (newval > value*calculateDecayFactor()) {
+      value = newval;
+      note % 12 == 1 ? value *= 0.8: value;
+      lastMidi = micros();
+      hueMod = -0.02*octaveDistance;
+      satMod = 0.02*octaveDistance;
+    }
+    Serial.println("New Octave, distance is "+String(octaveDistance)+" and value is "+String(value));
+  }
+  /*
+  Serial.println("Octave distance is "+String(octaveDistance));
+  Serial.println("Value is "+String(value));
+  Serial.println("Velocity is "+String(velocity));
+  Serial.println("Decay Factor is "+String(calculateDecayFactor()));
+  Serial.println(" and RGB[0]"+String(rgb[0])+" RGB[1]"+String(rgb[1])+" RGB[2]"+String(rgb[2]));
+  */
+  decayTime = getDecayTime(note, velocity);
+  /*
+  Serial.println("decay time is " +String(decayTime));
+  Serial.println("lastMidi is "+String(lastMidi));
+  Serial.println("end time is "+String(getMidiBlinkEndTime()));
+  */
+}
+
+void ledHandler::midiBlink() {
+  if (value == 0) {
+    ledsOff();
+    return;
+  }
+  unsigned long elapsedTime = micros()-lastMidi;
+  hsv2rgb(25/360.0+hueMod, 0.84+satMod, value*calculateDecayFactor(), rgb);
+  if (value * calculateDecayFactor() < 0.01) {
+    value = 0;
+  }
+  redfloat = float_to_sRGB(rgb[0])*255;
+  greenfloat = float_to_sRGB(rgb[1])*255;
+  bluefloat = float_to_sRGB(rgb[2])*255;
+
+ writeLeds();
+}
+float ledHandler::getDecayTime(int midiNote, int velocity) {
+    int minNote = 21;         // Lowest note on an 88-key keyboard (A0)
+    int maxNote = 108;        // Highest note on an 88-key keyboard (C8)
+    float minDecay = 8.0;     // Decay time for the lowest note in seconds
+    float maxDecay = 2.0;     // Decay time for the highest note in seconds
+
+    // Linear interpolation formula
+    float decayTime = (minDecay - ((midiNote - minNote) * (minDecay - maxDecay) / (maxNote - minNote))) * velocity/127;
+    return decayTime*1000000;
+}
+float ledHandler::calculateDecayFactor() {
+  unsigned long elapsedTime = micros()-lastMidi;
+  return exp(-5*(static_cast<double>(elapsedTime/decayTime)));
+}
+
+unsigned long long ledHandler::getMidiBlinkEndTime() {
+  return lastMidi+(unsigned long long)decayTime;
+}
+
+
+/*
+
+    float rgb2[3];
+    hsv2rgb(25/360.0, 0.84, velocity/127, rgb2);
+    rgb[0] = max(rgb[0],rgb2[0]);
+    rgb[1] = max(rgb[1],rgb2[1]);
+    rgb[2] = max(rgb[2],rgb2[2]);
+  }
+  else {
+    float rgb2[3];
+    hsv2rgb(25/360.0, 0.84, velocity/127/octaveDistance, rgb2);
+    rgb[0] = max(rgb[0],rgb2[0]);
+    rgb[1] = max(rgb[1],rgb2[1]);
+    rgb[2] = max(rgb[2],rgb2[2]);    
+  }
+  if (note % 12 == 1) {
+    rgb[0] = rgb[0]*0.8;
+    rgb[1] = rgb[0]*0.8;
+    rgb[2] = rgb[0]*0.8;
+  }
+*/
