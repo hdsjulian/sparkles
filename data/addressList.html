@@ -1,0 +1,328 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <title>ESP-NOW DASHBOARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="all.css">
+  <link rel="stylesheet" type="text/css" href="sparkles.css">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <div class="topnav">
+    <h3>ESP-NOW DASHBOARD</h3>
+    <div class="hamburger" onclick="toggleMenu()">
+      <div></div>
+      <div></div>
+      <div></div>
+    </div>
+    <div class="nav-menu" id="navMenu">
+      <a href="calibrationTest.html">Calibration Test</a>
+      <a href="multiCalibration.html">Calibration</a>
+      <a href="settings.html">Settings</a>
+    </div>
+  </div>
+  <div class="content">
+    <div class="cards">
+      <div class="card deviceList">
+        <p>
+          <span class="reading">
+            <span id="settings" class="devicenum">Settings</span>
+          </span>
+        </p>
+      </div>
+      <div class="card deviceList">
+        <h4><i class="fas fa-wifi"></i> DEVICE LIST</h4>
+        <p>
+          <span class="reading">
+            <span id="t1" class="devicenum">0</span>
+          </span>
+        </p>
+      </div>
+      <div class="card deviceList">
+        <h4><i class="fas fa-bell"></i> STATUS</h4>
+        <p>
+          <span class="reading">
+            <span id="status" class="devicenum">0</span>
+          </span>
+        </p>
+      </div>
+      <div class="card card--50">
+        <p>
+          <span class="reading">
+            <span id="cmd_calibrate" class="devicenum">CALIBRATE</span>
+          </span>
+        </p>
+      </div>
+      <div class="card card--50">
+        <p>
+          <span class="reading">
+            <span id="cmd_animate" class="devicenum">ANIMATE</span>
+          </span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  
+<script>
+
+    function toggleMenu() {
+      var menu = document.getElementById('navMenu');
+      menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+    }
+  var debug = 0;
+  function boardCards(obj) {
+    console.log(obj);
+    var existingPacket = document.getElementById("boardCard" + obj.id);
+  if (!existingPacket) {
+    var newCard = document.createElement("div");
+    newCard.className = "card";
+    newCard.id = "boardCard" + obj.id;
+    //newCard.innerHTML = "<span id='b"+obj.index+"'>Board ID "+obj.index+":</span>\n<span id='addr" + obj.index + "'></span><span id='del"+obj.index+"'></span><span id='dist"+obj.index+"'></span>";
+    const placeholderXText = obj.xpos == 0 ? "placeholder='X position'" : `value='${obj.xpos}'`;
+    const placeholderYText = obj.ypos == 0 ? "placeholder='Y position'" : `value='${obj.ypos}'`;
+    const placeholderZText = obj.zpos == 0 ? "placeholder='Z position'" : `value='${obj.zpos}'`;
+    newCard.innerHTML = `
+  <span id='b${obj.id}'>Board ID ${obj.id}:</span>
+  <span id='addr${obj.id}'></span>
+  <span id='del${obj.id}'></span>
+  <span id='dist${obj.id}'></span>
+  <span id='battery${obj.id}'></span>
+  
+  <div class='inputs'>
+    <input type='text' id='xpos_${obj.id}' ${placeholderXText} >
+    <input type='text' id='ypos_${obj.id}' ${placeholderYText}>
+    <input type='text' id='zpos_${obj.id}' ${placeholderZText}>
+    <button id='submit_${obj.id}'>Submit</button>
+    <button id='update_${obj.id}' class='blue-button'>Update Device</button>
+  </div>
+`;
+    var cardsContainer = document.querySelector(".cards");
+    var inserted = false;
+    for (var i = 0; i < cardsContainer.children.length; i++) {
+        var child = cardsContainer.children[i];
+        var childIndex = parseInt(child.id.replace("boardCard", ""));
+        if (childIndex > obj.id) {
+            cardsContainer.insertBefore(newCard, child);
+            inserted = true;
+            break;
+        }
+    }
+
+    // If no suitable position was found, append the new card at the end
+    if (!inserted) {
+        cardsContainer.appendChild(newCard);
+    }
+    document.getElementById('update_'+obj.id).addEventListener('click', function() {
+        handleUpdateDeviceClick(String(obj.id));
+    });
+
+    //hier fehlt noch irgendwie die klarheit wo eigentlich der eventlistener hin muss. 
+  }
+  if (obj.status=="active" ) {
+    document.getElementById("boardCard"+obj.id).classList.add("active");
+    document.getElementById("boardCard"+obj.id).classList.remove("inactive");
+  }
+  else {
+    document.getElementById("boardCard"+obj.id).classList.remove("active");
+    document.getElementById("boardCard"+obj.id).classList.add("inactive");
+  }
+  document.getElementById("addr" + obj.id).textContent = "Address: "+obj.address;
+
+  document.getElementById("del"+obj.id).textContent = "Delay: "+obj.delay;
+  document.getElementById("dist"+obj.id).textContent = "Distance: "+obj.distance;
+  document.getElementById("battery"+obj.id).textContent = "Battery: "+obj.battery;
+  document.getElementById("settings").addEventListener('click', function() {
+    window.location.href = "settings.html";
+  });
+
+    document.getElementById('submit_' + obj.id).addEventListener('click', function() {
+    var input1 = document.getElementById('xpos_' + obj.id).value;
+    var input2 = document.getElementById('ypos_' + obj.id).value;
+    var input3 = document.getElementById('zpos_' + obj.id).value;
+    // Handle form submission logic here
+    var fetchUrl = `/submitPositions?xpos=${encodeURIComponent(input1)}&ypos=${encodeURIComponent(input2)}&zpos=${encodeURIComponent(input3)}&boardId=${obj.id}`;
+    console.log(fetchUrl);
+    fetchMe(fetchUrl);
+  });
+  };
+  function statusUpdate(obj) {
+    document.getElementById('status').textContent = obj.status;
+  }
+  function calibrateUpdate(obj) {
+    if (obj.status == "true") {
+      document.getElementById('cmd_calibrate').textContent = "END CALIB";
+    }
+    else {
+      document.getElementById('cmd_calibrate').textContent = "CALIBRATE";
+    }
+  }
+  function animateUpdate(obj) {
+    if (obj.status == "true") {
+      document.getElementById('cmd_animate').textContent = "END ANIM";
+    }
+    else {
+      document.getElementById('cmd_animate').textContent = "ANIMATE";
+    }
+  }
+  function numDevicesUpdate(obj) {
+    console.log("ndu");
+    console.log(obj);
+    console.log(obj.numDevices);
+    document.getElementById('t1').textContent = obj.numDevices;
+  }
+
+  if (debug == 0) {
+    if (!!window.EventSource) {
+    var sourceEvents = new EventSource('/events');
+    console.log("ok worked");
+    sourceEvents.addEventListener('open', function(e) {
+      console.log("Events Connected");
+    }, false);
+    sourceEvents.addEventListener('error', function(e) {
+      if (e.target.readyState != EventSource.OPEN) {
+        console.log("Events Disconnected");
+      }
+    }, false);
+    sourceEvents.addEventListener('message', function(e) {
+
+      console.log("message", e.data);
+    }, false);
+    
+    sourceEvents.addEventListener('new_board', function(e) {
+      var obj = JSON.parse(e.data);
+      boardCards(obj);
+    })
+    sourceEvents.addEventListener('calibrationStatus', function(e) {
+      var obj = JSON.parse(e.data);
+      if (obj.calibrateEnd == "true")
+      document.getElementById("cmd_calibrate").classList.add("active");
+
+      
+    })
+    sourceEvents.addEventListener('new_status', function(e) {
+      var obj = JSON.parse(e.data);
+      statusUpdate(obj);
+    })
+    sourceEvents.addEventListener('calibrateStatus', function(e) {
+      console.log("calibratestatus");
+      console.log(e);
+      var obj = JSON.parse(e.data);
+      console.log(obj.status)
+      calibrateUpdate(obj);
+    })
+
+};
+  }
+
+else if (debug == 1) {
+  var boards = [];
+   boards[0] = {
+    index : 0,
+    address: "68:b6:b3:08:e0:60",
+    delay : 1001,
+    status: "MODE_WAIT_FOR_TIMER"
+  };
+  boards[1] = {
+    index : 1,
+    address: "78:b6:b3:08:e0:66",
+    delay : 0,
+    status: "MODE_WAIT_FOR_TIMER"
+  };
+
+  boards.forEach(function(obj) {
+  boardCards(obj);
+  });
+  updatedStatus = {
+    statusId : 1,
+    status : "WAIT_FOR_TIMER"
+  };
+  statusUpdate(updatedStatus);
+  
+}
+
+function sendDeviceUpdateRequest(id) {
+  console.log("ok worked");
+    // Make a GET request to the /events endpoint using fetch
+    if (id != -1) {
+      var fetchUrl = '/getAddressList?id='+id;
+    }
+    else {
+      var fetchUrl = '/getAddressList';
+    }
+  console.log(fetchUrl);
+  console.log(id);
+
+  fetch(fetchUrl)
+        .then(response => {
+            // Check if the response is successful
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            // Parse the response as JSON
+
+            return response.json();
+        })
+        .then(data => {
+            // Handle the received data
+            numDevicesUpdate(data);
+            data.addresses.forEach(function(data) {
+                console.log("bla"); 
+                console.log(data);
+                boardCards(data);
+            });
+        })
+        .catch(error => {
+            // Handle errors
+            console.error('Fetch error:', error);
+        });
+
+}
+
+function fetchMe(fetchUrl) {
+
+    fetch(fetchUrl)
+        .then(response => {
+            // Check if the response is successful
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            // Parse the response as JSON
+            console.log("response ok");
+        })
+        .then(data => {
+            // Handle the received data
+            console.log('Data received:', data);
+        })
+        .catch(error => {
+            // Handle errors
+            console.error('Fetch error:', error);
+        });
+}
+
+
+// Function to handle click on the t1 span element
+function handleUpdateDeviceClick(id) {
+  console.log("clicked");
+    sendDeviceUpdateRequest(id); // Trigger HTTP request when span is clicked
+}
+
+function handleCommandCalibrateClick() {
+  console.log("calibrate!");
+  var fetchUrl = '/commandCalibrate';
+  fetchMe(fetchUrl);
+}
+function handleCommandAnimateClick() {
+  console.log("animate!");
+  var fetchUrl = '/commandAnimate';
+  fetchMe(fetchUrl);
+}
+
+
+// Add an event listener to the t1 span element
+document.getElementById('t1').addEventListener('click', function() {handleUpdateDeviceClick(-1)});
+document.getElementById('cmd_calibrate').addEventListener('click', handleCommandCalibrateClick);
+document.getElementById('cmd_animate').addEventListener('click', function() {handleCommandAnimateClick()});
+document.addEventListener('DOMContentLoaded', function() {handleUpdateDeviceClick(-1)});</script>
+</body>
+</html>
