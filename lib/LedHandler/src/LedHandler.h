@@ -33,6 +33,11 @@ public:
     void setCurrentPosition(int position);
     void setAnimation(message_animation& animationData);
     message_animation getAnimation();
+    unsigned long long calculateAnimation(message_animation& animationData);
+    unsigned long long calculateSyncAsyncBlink(message_animation& animationData);
+    void setNumDevices(int numDevices);
+    int getNumDevices();
+
 
 private:
     LedHandler();
@@ -42,14 +47,13 @@ private:
     static void runMidiWrapper(void *pvParameters);
     static void runBlinkWrapper(void *pvParameters);
     static void runStrobeWrapper(void *pvParameters);
+    static void runSyncAsyncBlinkWrapper(void *pvParameters);
     void ledTask();
     void runMidi();
     void runBlink();
     void runStrobe();
+    void runSyncAsyncBlink();
     static void ledsOff();
-    int timerOffset;
-    int mode;
-    int position;
     static constexpr float midiHue = 25.0f / 360.0f;
     static constexpr float midiSat = 0.84;
     static void writeLeds(CRGB color);
@@ -66,7 +70,10 @@ private:
     static int getMidiNoteFromPosition(int position);
     TickType_t microsToTicks(unsigned long long micros);
     void handleQueue(message_animation& animation, message_animation& animationData, int currentPosition);
-
+    int numDevices;
+    int timerOffset;
+    int mode;
+    int position;
     SemaphoreHandle_t configMutex;
     QueueHandle_t ledQueue;
     message_animation animation;

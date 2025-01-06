@@ -67,3 +67,18 @@ message_animation LedHandler::getAnimation() {
     }
     return returnAnimation;
 }
+
+void LedHandler::setNumDevices(int numDevices) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        numDevices = numDevices;
+        xSemaphoreGive(configMutex);
+    }
+}
+int LedHandler::getNumDevices() {
+    int returnNumDevices;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnNumDevices = numDevices;
+        xSemaphoreGive(configMutex);
+    }
+    return returnNumDevices;
+}

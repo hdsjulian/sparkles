@@ -174,3 +174,8 @@ float MessageHandler::getBatteryPercentage() {
     percentage = round(percentage * 100) / 100;
     return percentage;
 }
+
+void MessageHandler::handleSystemStatus(message_data incomingData) {
+    message_system_status systemStatus = incomingData.payload.systemStatus;
+    setNumDevices(systemStatus.numDevices);
+}

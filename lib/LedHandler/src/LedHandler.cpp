@@ -84,6 +84,10 @@ void LedHandler::runStrobeWrapper(void *pvParameters) {
     LedHandlerInstance->runStrobe();
 }
 
+void LedHandler::runSyncAsyncBlinkWrapper(void *pvParameters) {
+    LedHandler *LedHandlerInstance = (LedHandler *)pvParameters;
+    LedHandlerInstance->runSyncAsyncBlink();
+}
 
 void LedHandler::ledTask()
 {
@@ -206,6 +210,46 @@ void LedHandler::runStrobe() {
     
 }
 
+void LedHandler::runSyncAsyncBlink() {
+    message_animation animation = getAnimation();
+    float hue = animation.animationParams.syncAsyncBlink.hue;
+    float saturation = animation.animationParams.syncAsyncBlink.saturation;
+    float value = animation.animationParams.syncAsyncBlink.brightness;
+    TickType_t currentTicks = xTaskGetTickCount();
+    unsigned long long microsUntilStart = animation.animationParams.syncAsyncBlink.startTime-getTimerOffset()-micros();
+    TickType_t ticksUntilStart = microsToTicks(microsUntilStart);
+    int repetitions = animation.animationParams.syncAsyncBlink.repetitions;
+    int animationReps = animation.animationParams.syncAsyncBlink.animationReps;
+    int spreadTime = animation.animationParams.syncAsyncBlink.spreadTime;
+    int blinkDuration = animation.animationParams.syncAsyncBlink.blinkDuration;
+    int pause = animation.animationParams.syncAsyncBlink.pause;
+    uint8_t fraction = animation.animationParams.syncAsyncBlink.fraction;
+    ledsOff();
+    vTaskDelayUntil(&currentTicks, ticksUntilStart);
+    float rgb[3];
+    for (int i = 0; i < animationReps; i++) {
+        for (int j = 0; j < repetitions; j++) {
+            if (j <= repetitions/2) {
+                float brightness = value * (1 - (float)j/(repetitions/2));
+                CRGB color = CHSV(hue, saturation, brightness);
+                writeLeds(color);
+                vTaskDelay(blinkDuration);
+                ledsOff();
+                vTaskDelay(spreadTime/(repetitions/2)*fraction*j);
+            }
+            else {
+                float brightness = value * (1 - (float)(repetitions-j)/(repetitions/2));
+                CRGB color = CHSV(hue, saturation, brightness);
+                writeLeds(color);
+                vTaskDelay(blinkDuration);
+                ledsOff();
+                vTaskDelay(spreadTime/(repetitions/2)*fraction*(repetitions-j));
+            }
+        }
+        vTaskDelay(pause);
+    }
+}
+
 void LedHandler::runBlink() {
     message_animation animation = getAnimation();
     float hue = animation.animationParams.blink.hue;
@@ -270,7 +314,7 @@ void LedHandler::runMidi()
                 continue;
             }
             //ESP_LOGI("LED", "Decay factor: %f at %d", midiDecayFactor, micros());
-            if (midiDecayFactor == 1)
+            if (midiDecayFactor <= 1)
             {
                 localMidiNoteTableArray[i].velocity = 0;
                 localMidiNoteTableArray[i].note = 0;
@@ -282,7 +326,7 @@ void LedHandler::runMidi()
                 int velocity = localMidiNoteTableArray[i].velocity;
                 int octave = (note / OCTAVE) - 1;
                 int ledOctave = getOctaveFromPosition(position);
-                int octaveDistance = abs(octave - ledOctave);
+                int octaveDistance = abs((octave % getNumDevices()) - ledOctave);
                 float distanceFactor = 0.2 * octaveDistance;
                 float currentBrightness = (int)(velocity * (1-midiDecayFactor) * (1 - distanceFactor));
                 if (currentBrightness > brightness)

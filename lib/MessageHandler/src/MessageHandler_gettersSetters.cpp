@@ -243,6 +243,7 @@ activeStatus MessageHandler::getActiveStatus(int index) {
 
 void MessageHandler::setNumDevices(int num) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        ledInstance->setNumDevices(num);
         numDevices = num;
         xSemaphoreGive(configMutex);
     }

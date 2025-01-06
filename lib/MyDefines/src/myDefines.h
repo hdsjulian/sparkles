@@ -92,6 +92,7 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define MSG_STATUS 4
 #define MSG_ANIMATION 5
 #define MSG_SEND_CLAP_TIMES 6
+#define MSG_SYSTEM_STATUS 7
 enum activeStatus {
   ACTIVE, 
   INACTIVE, 
@@ -177,6 +178,19 @@ struct animation_blink {
   animation_blink() : repetitions(0), duration(0), startTime(0), hue(0), saturation(0), brightness(0) {}
 };
 
+struct animation_sync_async_blink {
+  int spreadTime;
+  int blinkDuration;
+  int pause;
+  uint8_t repetitions;
+  uint16_t animationReps;
+  unsigned long long startTime;
+  int hue;
+  int saturation;
+  int brightness;
+  uint8_t fraction;
+  animation_sync_async_blink() : spreadTime(0), blinkDuration(0), pause(0), repetitions(0), animationReps(0), startTime(0), hue(0), saturation(0), brightness(0), fraction(0) {}
+};
 struct animation_midi {
   uint8_t note;
   uint8_t velocity;
@@ -188,6 +202,7 @@ union animation_params {
   struct animation_strobe strobe;
   struct animation_midi midi;
   struct animation_blink blink;
+  struct animation_sync_async_blink syncAsyncBlink;
   animation_params() {}
   ~animation_params() {}
 };
@@ -214,6 +229,11 @@ struct message_status {
   message_status() : messageType(0), batteryPercentage(0.0) {}
 };
      
+struct message_system_status {
+  uint8_t messageType = MSG_SYSTEM_STATUS;
+  int numDevices;
+  message_system_status() : messageType(MSG_SYSTEM_STATUS), numDevices(0) {}
+};
 struct message_timer {
   uint8_t messageType = MSG_TIMER;
   uint16_t counter;
@@ -233,6 +253,7 @@ union message_payload {
   struct message_send_clap_times clapTimes;
   struct message_got_timer gotTimer;
   struct message_status status;
+  struct message_system_status systemStatus;
 
   message_payload() {}
   ~message_payload() {}
@@ -244,4 +265,6 @@ struct message_data {
   message_payload payload;
   message_data() : messageType(0), address{0}, payload() {}
 };
+
+
 #endif
