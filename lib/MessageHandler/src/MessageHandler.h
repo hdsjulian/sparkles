@@ -5,6 +5,7 @@
 #include <LedHandler.h>
 #include "LittleFS.h"
 #include <WebServer.h>
+#include <MyDefines.h>
 class MessageHandler
 {
 public:
@@ -71,6 +72,8 @@ public:
     void stringAllAddresses();
     void removePeer(uint8_t * address); 
     unsigned long long timeDiffAbs(unsigned long long a, unsigned long long b);
+    void sendSystemStatus();
+    
 
 
 private:
@@ -127,6 +130,7 @@ private:
     void setMsgReceiveTime(int time);
     unsigned long long getMsgReceiveTime();
     void handleTimer(message_data incomingData);
+    void handleSystemStatus(message_data incomingData);
     void handleAddressStruct();
     bool readStructsFromFile(client_address* data, int count, const char* filename);
     void writeStructsToFile(client_address* data, int count, const char* filename);

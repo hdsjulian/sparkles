@@ -61,6 +61,7 @@ void MessageHandler::handleReceive() {
                 setCurrentTimerIndex(-1);
                 setSettingTimer(false);
                 writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
+                sendSystemStatus();
                 //WebServer* webServerInstance = WebServer::getInstance();
                 //webServerInstance->updateAddress();
 
@@ -125,4 +126,14 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
     instance.pushToRecvQueue(mac, incomingData, len);
 }
 
+
+void MessageHandler::sendSystemStatus() {
+    message_system_status systemStatus;
+    systemStatus.numDevices = getNumDevices();
+    message_data message;
+    message.messageType = MSG_SYSTEM_STATUS;
+    memcpy(&message.payload, &systemStatus, sizeof(systemStatus));
+    memcpy(&message.address, broadcastAddress, sizeof(broadcastAddress));
+    pushToSendQueue(message);
+}
 #endif

@@ -33,6 +33,9 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_TIMER) {
                 handleTimer(incomingData);
             }
+            else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
+                handleSystemStatus(incomingData);
+            }
             else {
                 ESP_LOGI("MSG", "Unknown message type ");
             }

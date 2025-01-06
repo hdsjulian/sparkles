@@ -137,7 +137,6 @@ void WebServer::serveOnNotFound(AsyncWebServerRequest *request) {
 void WebServer::commandCalibrate(AsyncWebServerRequest *request) {
 }
 
-
 void WebServer::endCalibration(AsyncWebServerRequest *request) {
 }
 void WebServer::commandCalculate(AsyncWebServerRequest *request) {
