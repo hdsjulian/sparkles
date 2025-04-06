@@ -56,10 +56,12 @@ public:
     
     //tasks
     void startTimerSyncTask();
+    void startBatterySyncTask();
     void handleReceive();
     void handleSend();
     void runAnnounceAddress();
     void runTimerSync();
+    void runBatterySync();
     int addPeer(uint8_t * address);
     bool addressAnnounced = false;
 
@@ -122,6 +124,7 @@ private:
     static void announceAddressWrapper(void *pvParameters);
     static void handleSendWrapper(void *pvParameters);
     static void runAllTimerSyncWrapper(void *pvParameters);
+    static void runBatterySyncWrapper(void *pvParameters);
 
     // Member Functions
 
