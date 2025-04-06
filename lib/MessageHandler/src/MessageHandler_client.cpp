@@ -154,5 +154,22 @@ void MessageHandler::handleSend() {
         }
     }
 }
+void MessageHandler::startBatterySyncTask() {
+    xTaskCreatePinnedToCore(runTimerSyncWrapper, "runTimerSync", 10000, this, 2, NULL, 0);
+}
+void MessageHandler::runBatterySyncWrapper(void *pvParameters) {
+    MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
+    messageHandlerInstance->runBatterySync();
+}
+void MessageHandler::runBatterySync() {
+    message_status statusMessage;
+    statusMessage.messageType = MSG_STATUS;
+    statusMessage.batteryPercentage = random(0, 100);
+    esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+}
+
+
+
 
 #endif
