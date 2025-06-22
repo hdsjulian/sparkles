@@ -34,9 +34,6 @@ void WebServer::end() {
 void WebServer::begin() {
   server.begin();
 }
-
-
-
 void WebServer::configRoutes() {
   events.onConnect([this](AsyncEventSourceClient *client){ 
     // send event with message "hello!", id current millis
@@ -44,77 +41,35 @@ void WebServer::configRoutes() {
     this->handleClientConnect(client);
   });
 
-
-    server.on("/commandCalibrate", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->commandCalibrate(request);
-    });
-    server.on("/commandCalculate", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->commandCalculate(request);
-    });
-    server.on("/endCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->endCalibration(request);
-    } );
+    //call animation
     server.on("/commandAnimate", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandAnimate(request);
     });
-
-    server.on("/goodNight", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->commandGoodNight(request);
-    });
-    server.on("/goodMorning", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->commandSetWakeup(request);
-    });
-
-    server.on("/submitPositions", HTTP_GET, [this] (AsyncWebServerRequest *request){
-
-      this->submitPositions(request);
-    });
+    //command
     server.on("/setTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setTime(request);
     });
-    server.on("/testAnim", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->testAnim(request);
+    //submit board's position manually
+    server.on("/submitPositions", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->submitPositions(request);
     });
-    server.on("/neutral", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->setNeutral(request);
+    //sync individual board, not implemented in html
+    server.on("/commandSync", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandSync(request);
     });
-    server.on("/triggerSync", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->triggerSync(request);
+    //sync all boards
+    server.on("/commandSyncAll", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandSyncAll(request);
+    }); 
+    // let one board blink  
+    server.on("/commandBlink", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandBlink(request);
     });
-    server.on("/sendSyncAsyncAnimation", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->sendSyncAsyncAnimation(request);
-    });
-        server.on("/updateStatus", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->statusUpdate(request);
-    });
-        server.on("/confirmClap", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      this->confirmClap(request);
-    });
-      server.on("/cancelClap", HTTP_GET, [this] (AsyncWebServerRequest *request){
-    this->cancelClap(request);
-    });
-    server.on("/resetCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
-    this->resetCalibration(request);
-    });
-    server.on("/resetSystem", HTTP_GET, [this] (AsyncWebServerRequest *request){
-    this->resetSystem(request);
-    });
-    server.on("/submitPdParams", HTTP_GET, [this] (AsyncWebServerRequest *request){ 
-      this->submitPdParams(request);
-    });   
-     server.on("/setSyncAsyncParams", HTTP_GET, [this] (AsyncWebServerRequest *request){ 
-      this->setSyncAsyncParams(request);
-    });   
+
+    //get all addresses
     server.on("/getAddressList", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getAddressList(request);
     });
-      server.on("/getParamsJson", HTTP_GET, [this] (AsyncWebServerRequest *request){
-      String jsonString;
-      jsonString = "TO FIX";
-      //jsonString = messageHandlerInstance->getLedHandlerParams();
-      request->send(200, "text/html", jsonString.c_str());
-    });
-
       server.onNotFound([this](AsyncWebServerRequest *request) {
         this->serveOnNotFound(request);
     });
@@ -125,21 +80,13 @@ void WebServer::configRoutes() {
 
 void WebServer::handleClientConnect(AsyncEventSourceClient *client) {
     connected = true;
+    ESP_LOGI("WEB", "Client connected");
     client->send("");
 }
 
 void WebServer::serveOnNotFound(AsyncWebServerRequest *request) {
   String requestedFile = "Not Found: "+request->url();
     request->send(404, "text/plain", requestedFile.c_str());
-}
-
-
-void WebServer::commandCalibrate(AsyncWebServerRequest *request) {
-}
-
-void WebServer::endCalibration(AsyncWebServerRequest *request) {
-}
-void WebServer::commandCalculate(AsyncWebServerRequest *request) {
 }
 
 void WebServer::commandAnimate(AsyncWebServerRequest *request) {
@@ -153,62 +100,20 @@ void WebServer::commandAnimate(AsyncWebServerRequest *request) {
   request->send(200, "text/html", "{\"status\" : \"true\"}");
   }
 
-void WebServer::setNeutral(AsyncWebServerRequest *request) {
+
+void WebServer::commandSyncAll(AsyncWebServerRequest *request) {
+    messageHandlerInstance->startAllTimerSyncTask();
     request->send(200, "text/html", "OK");
 }
-
-void WebServer::triggerSync(AsyncWebServerRequest *request) {
-    request->send(200, "text/html", "OK");
-}
-
 
 void WebServer::submitPositions(AsyncWebServerRequest *request) {
+  int boardId = request->getParam("boardId")->value().toInt();
   float xpos = request->getParam("xpos")->value().toFloat();
   float ypos = request->getParam("ypos")->value().toFloat();
-  float zpos = request->getParam("zpos")->value().toFloat();
-  int boardId = request->getParam("boardId")->value().toInt();
-
-  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
-  //rueberschieben
-  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
+  messageHandlerInstance->setBoardPosition(boardId, xpos, ypos);
   request->send(200, "text/html", "OK");
 }
 
-void WebServer::confirmClap(AsyncWebServerRequest *request) {
-  Serial.println("called ConfirmClap");
-  if (request->hasParam("xpos") && request->hasParam("ypos") && request->hasParam("zpos") && request->hasParam("clapId")) {
-      float xpos = request->getParam("xpos")->value().toFloat();
-      float ypos = request->getParam("ypos")->value().toFloat();
-      float zpos = request->getParam("zpos")->value().toFloat();
-      int clapId = request->getParam("clapId")->value().toInt();
-      Serial.println("calling msghandlerconfirmclap");
-      String jsonString;
-      jsonString = "{\"status\" : \"calibrationStatus\"}";
-      request->send(200, "text/html", jsonString.c_str( ));
-
-      // Process parameters
-  } else {
-      // Handle missing parameters
-      request->send(400, "text/plain", "Missing parameters");
-  }
-  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
-  //rueberschieben
-  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
-}
-void WebServer::cancelClap(AsyncWebServerRequest *request) {
-  int clapId = request->getParam("clapId")->value().toInt();
-  request->send(200, "text/html", "{\"status\" : \"calibrationStatu\"}");
-  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
-  //rueberschiebenudn z
-  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
-}
-void WebServer::resetCalibration(AsyncWebServerRequest *request) {
-  request->send(200, "text/html", "{\"status\" : \"calibrationStatus\"}");
-
-  //messageHandler->setPositions(boardId, xpos, ypos, zpos);
-  //rueberschieben
-  //messageHandler->pushDataToSendQueue(MSG_SET_POSITIONS, -1);  
-}
 void WebServer::setTime(AsyncWebServerRequest *request) {
   struct tm timeinfo;
   memset(&timeinfo, 0, sizeof(timeinfo));
@@ -225,34 +130,9 @@ void WebServer::setTime(AsyncWebServerRequest *request) {
   request->send(200, "text/html", "OK");
 }
 
-void WebServer::testAnim(AsyncWebServerRequest *request) {
-  message_data msg;
-  msg.messageType = MSG_ANIMATION;
-  memcpy (&msg.address, broadcastAddress, sizeof(broadcastAddress));
-  msg.payload.animation.animationType = STROBE;
-  msg.payload.animation.animationParams.strobe.brightness = 255;
-  msg.payload.animation.animationParams.strobe.duration = 10000;
-  msg.payload.animation.animationParams.strobe.frequency = 15;
-  msg.payload.animation.animationParams.strobe.hue = 0;
-  msg.payload.animation.animationParams.strobe.saturation = 0;
-  msg.payload.animation.animationParams.strobe.brightness = 255;
-  msg.payload.animation.animationParams.strobe.startTime = micros()+3000000;
-  messageHandlerInstance->pushToSendQueue(msg);
-  request->send(200, "text/html", "OK");
-}
-void WebServer::statusUpdate(AsyncWebServerRequest *request) {
-  String returnString = "{\"status\":\"stateMachine->modeToText(stateMachine->getMode())\"}";
-  request->send(200, "text/html", returnString.c_str());
-  //events.send(stateMachine->modeToText(stateMachine->getMode()).c_str(), "statusUpdate");
-}
-void WebServer::statusUpdate() {
-  String returnString = "{\"status\":\"stateMachine->modeToText(stateMachine->getMode())\"}";
-  events.send(returnString.c_str(), "statusUpdate");
-}
-
 
 void WebServer::getAddressList(AsyncWebServerRequest *request) {
-
+  ESP_LOGI("WEB", "getAddressList");
   String jsonString =  "";
   jsonString += "{\"numDevices\":";
   jsonString += String(messageHandlerInstance->getNumDevices());
@@ -286,9 +166,8 @@ void WebServer::getAddressList(AsyncWebServerRequest *request) {
 
 void WebServer::updateAddress(int id) {
   String jsonString = jsonFromAddress(id);
-  events.send(jsonString.c_str(), "addressUpdate");
+  events.send(jsonString.c_str(), "update_board");
   ESP_LOGI("WEB", "Address Update: %s", jsonString.c_str());
-
 }
 String WebServer::jsonFromAddress(int id) {
   client_address address = messageHandlerInstance->getItemFromAddressList(id);
@@ -307,169 +186,31 @@ String WebServer::jsonFromAddress(int id) {
     ESP_LOGI("WEB", "Active Status %d", address.active );
     jsonString += "\",\"battery\":\"";
     jsonString += String(address.batteryPercentage);
-    jsonString += "\", \"distane\":\"";
+    jsonString += "\", \"distance\":\"";
     jsonString += String(address.distanceFromCenter);
     jsonString += "\"}";
     return jsonString;
 }
 
-void WebServer::commandGoodNight(AsyncWebServerRequest *request) {
-  int hours = request->getParam("hours")->value().toInt();
-  int minutes = request->getParam("minutes")->value().toInt();
-  int seconds = request->getParam("seconds")->value().toInt();
-  Serial.println("going to sleep at "+String(hours)+":"+String(minutes)); 
-  //messageHandler->pushDataToSendQueue(MSG_SET_SLEEP_WAKEUP, -1);
-  request->send(200, "text/html", "OK");
-}
-void WebServer::commandSetWakeup(AsyncWebServerRequest *request) {
-  int hours = request->getParam("hours")->value().toInt();
-  int minutes = request->getParam("minutes")->value().toInt();
-  int seconds = request->getParam("seconds")->value().toInt();
+void WebServer::commandSync(AsyncWebServerRequest *request) {
+  int index = request->getParam("index")->value().toInt();
+  messageHandlerInstance->setCurrentTimerIndex(index);
+  messageHandlerInstance->startTimerSyncTask();
   request->send(200, "text/html", "OK");
 }
 
-void WebServer::sendSyncAsyncAnimation(AsyncWebServerRequest *request) {
+
+void WebServer::commandBlink(AsyncWebServerRequest *request) {
+  int index = request->getParam("index")->value().toInt();
+  message_animation animation;
+  animation.animationType = BLINK;
+  animation.animationParams.blink.brightness = 255;
+  animation.animationParams.blink.duration = 500;
+  animation.animationParams.blink.repetitions = 3;
+  animation.animationParams.blink.hue = 0;
+  animation.animationParams.blink.saturation = 0;
+  animation.animationParams.blink.startTime = micros()+1000000;
+  messageHandlerInstance->sendAnimation(animation, index);
   request->send(200, "text/html", "OK");
-}
-
-void WebServer::updateMode(String modeText) {
-  Serial.println("switched to "+modeText);
-    events.send(modeText.c_str(), "statusUpdate");
-}
-
-
-void WebServer::resetSystem(AsyncWebServerRequest *request) {
-    ESP_LOGI("TBD", "Resetting system");  
-}
-void WebServer::submitPdParams(AsyncWebServerRequest *request) {
-
-  //lag = request->getParam("lag")->value().toInt();
-  //threshold = request->getParam("threshold")->value().toInt();
-  //influence = request->getParam("influence")->value().toFloat();
-  //Serial.println("called SubmitParams lag"+String(lag)+" threshold "+String(threshold)+" influence "+String(influence));
-  PdParamsChanged = true;
-  request->send(200, "text/html", "OK");
-}
-
-void WebServer::setSyncAsyncParams(AsyncWebServerRequest *request) {
-  int minS, maxS, minP, maxP, minR, maxR, minSp, maxSp;
-  int minRed, maxRed, minGreen, maxGreen, minBlue, maxBlue;
-  int minAniReps, maxAniReps;
-  if (request->hasParam("minSpeed")) {
-      minS = request->getParam("minSpeed")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minSpeed");
-      return;
-  }
-
-  if (request->hasParam("maxSpeed")) {
-      maxS = request->getParam("maxSpeed")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxSpeed");
-      return;
-  }
-
-  if (request->hasParam("minPause")) {
-      minP = request->getParam("minPause")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minPause");
-      return;
-  }
-
-  if (request->hasParam("maxPause")) {
-      maxP = request->getParam("maxPause")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxPause");
-      return;
-  }
-
-  if (request->hasParam("minReps")) {
-      minR = request->getParam("minReps")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minReps");
-      return;
-  }
-
-  if (request->hasParam("maxReps")) {
-      maxR = request->getParam("maxReps")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxReps");
-      return;
-  }
-
-  if (request->hasParam("minSpread")) {
-      minSp = request->getParam("minSpread")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minSpread");
-      return;
-  }
-
-  if (request->hasParam("maxSpread")) {
-      maxSp = request->getParam("maxSpread")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxSpread");
-      return;
-  }
-
-  if (request->hasParam("minRed")) {
-      minRed = request->getParam("minRed")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minRed");
-      return;
-  }
-
-  if (request->hasParam("maxRed")) {
-      maxRed = request->getParam("maxRed")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxRed");
-      return;
-  }
-
-  if (request->hasParam("minGreen")) {
-      minGreen = request->getParam("minGreen")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minGreen");
-      return;
-  }
-
-  if (request->hasParam("maxGreen")) {
-      maxGreen = request->getParam("maxGreen")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxGreen");
-      return;
-  }
-
-  if (request->hasParam("minBlue")) {
-      minBlue = request->getParam("minBlue")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minBlue");
-      return;
-  }
-
-  if (request->hasParam("maxBlue")) {
-      maxBlue = request->getParam("maxBlue")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxBlue");
-      return;
-  }
-
-  if (request->hasParam("minAniReps")) {
-      minAniReps = request->getParam("minAniReps")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: minAniReps");
-      return;
-  }
-
-  if (request->hasParam("maxAniReps")) {
-      maxAniReps = request->getParam("maxAniReps")->value().toInt();
-  } else {
-      request->send(400, "text/plain", "Missing parameter: maxAniReps");
-      return;
-  }
-
-  //messageHandler->setSyncAsyncParams(minS, maxS, minP, maxP, minSp, maxSp, minR, maxR,minAniReps, maxAniReps, minRed, maxRed, minGreen, maxGreen, minBlue, maxBlue );
-  request->send(200, "text/html", "OK");
-
-
 }
 #endif

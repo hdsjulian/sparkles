@@ -37,7 +37,8 @@ public:
     unsigned long long calculateSyncAsyncBlink(message_animation& animationData);
     void setNumDevices(int numDevices);
     int getNumDevices();
-
+    message_animation createAnimation(animationEnum animationType);
+    message_animation createFlash(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness);
 
 private:
     LedHandler();

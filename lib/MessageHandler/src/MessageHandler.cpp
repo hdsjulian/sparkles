@@ -22,7 +22,7 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
         //startTimerSyncTask();
     #endif
     #if (DEVICE_MODE == CLIENT)
-        addPeer(const_cast<uint8_t*>(hostAddress));\
+        addPeer(const_cast<uint8_t*>(hostAddress));
         xTaskCreatePinnedToCore(announceAddressWrapper, "runAnnounceAddress", 10000, this, 2, &announceTaskHandle, 0);
     #endif
     esp_now_register_send_cb(onDataSent);
@@ -31,17 +31,24 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
         ESP_LOGI("MSG", "Master setup");
         handleAddressStruct();
     #endif
+    #if (DEVICE_MODE == CLIENT)
+        ESP_LOGI("MSG", "Client setup");
+        //startWiFiToggleTask();
+    
+    #endif
     
 }
 
 
 
 void MessageHandler::pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
+    ESP_LOGI("MSG", "Pushing to receive queue len: %d, sizeof: %d", len, sizeof(message_data));
     if (len != sizeof(message_data)) return;
     message_data *msg = (message_data *)incomingData;
      if (msg->messageType == MSG_TIMER) {
         msg->payload.timer.receiveTime = micros();
      }
+    ESP_LOGI("MSG", "Received message type: %d", msg->messageType);
 
     if (xQueueSend(receiveQueue, msg, portMAX_DELAY) != pdTRUE) {
         ESP_LOGE("MSG", "Failed to send data to receive queue");

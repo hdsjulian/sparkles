@@ -43,3 +43,24 @@ float LedHandler::sRGB_to_float(float val)
 TickType_t LedHandler::microsToTicks(unsigned long long micros) {
     return (TickType_t)(micros / (1000000 / configTICK_RATE_HZ));
 }
+
+message_animation LedHandler::createAnimation(animationEnum animationType ) {
+    message_animation animation;
+    animation.animationType = animationType;
+
+    return animation;
+
+}
+
+message_animation LedHandler::createFlash(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness) {
+    message_animation animation;
+    animation.animationType = FLASH;
+    animation.animationParams.blink.startTime = startTime;
+    animation.animationParams.blink.duration = duration;
+    animation.animationParams.blink.repetitions = repetitions;
+    animation.animationParams.blink.hue = hue;
+    animation.animationParams.blink.saturation = saturation;
+    animation.animationParams.blink.brightness = brightness;
+
+    return animation;
+}
