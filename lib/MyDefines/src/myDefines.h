@@ -158,11 +158,10 @@ struct clap_table {
 };
 
 struct message_address{
-  uint8_t messageType;
   uint8_t address[6];
   Version version;
-  message_address() : messageType(MSG_ADDRESS), address{0}, version() {}
-  message_address(const message_address& other) : messageType(other.messageType), version(other.version) {
+  message_address() : address{0}, version() {}
+  message_address(const message_address& other) : version(other.version) {
     if (this != &other) memcpy(address, other.address, sizeof(address));
   }
 };
@@ -218,77 +217,67 @@ union animation_params {
 
 
 struct message_animation {
-  uint8_t messageType = MSG_ANIMATION;
   animationEnum animationType;
   animation_params animationParams;
   unsigned long timeStamp;
-  message_animation() : messageType(MSG_ANIMATION), animationType(OFF), animationParams(), timeStamp(0) {}
+  message_animation() : animationType(OFF), animationParams(), timeStamp(0) {}
 };
 
 struct message_got_timer{
-  uint8_t messageType = MSG_GOT_TIMER;
   int delayAverage;
   float batteryPercentage;
-  message_got_timer() : messageType(MSG_GOT_TIMER), delayAverage(0) {}
+  message_got_timer() :  delayAverage(0) {}
 };
 
 struct message_status {
-  uint8_t messageType = MSG_STATUS;
   float batteryPercentage;
-  message_status() : messageType(0), batteryPercentage(0.0) {}
+  message_status() : batteryPercentage(0.0) {}
 };
 
 struct message_ask_command {
-  uint8_t messageType = MSG_ASK_COMMAND;
   float batteryPercentage;
   unsigned long long perceivedTime;
-  message_ask_command() : messageType(MSG_STATUS), batteryPercentage(0.0), perceivedTime(0) {}
+  message_ask_command() : batteryPercentage(0.0), perceivedTime(0) {}
 };
 
 
 
 struct message_system_status {
-  uint8_t messageType = MSG_SYSTEM_STATUS;
   int numDevices;
-  message_system_status() : messageType(MSG_SYSTEM_STATUS), numDevices(0) {}
+  message_system_status() :  numDevices(0) {}
 };
 
 struct message_sleep_wakeup {
-  uint8_t messageType = MSG_SLEEP_WAKEUP;
   unsigned long long sleepTime;
   unsigned long long duration; 
-  message_sleep_wakeup() : messageType(MSG_SLEEP_WAKEUP), sleepTime(0), duration(0) {}
+  message_sleep_wakeup() : sleepTime(0), duration(0) {}
 
 };
 struct message_timer {
-  uint8_t messageType = MSG_TIMER;
   uint16_t counter;
   unsigned long long sendTime;
   unsigned long long receiveTime;
   uint16_t lastDelay;
   bool reset = false;
   int addressId = 0;
-  message_timer() : messageType(MSG_TIMER), counter(0), sendTime(0), receiveTime(0), lastDelay(0), reset(false), addressId(0) {}
+  message_timer() :  counter(0), sendTime(0), receiveTime(0), lastDelay(0), reset(false), addressId(0) {}
 } ;
 
 struct message_clap {
-  uint8_t messageType = MSG_CLAP;
   unsigned long long clapTime;
-  message_clap() : messageType(MSG_CLAP), clapTime(0) {}
+  message_clap() : clapTime(0) {}
 };
 struct message_config_data {
-  uint8_t messageType = MSG_CONFIG_DATA;
   int boardId;
   float xPos;
   float yPos;
-  message_config_data() : messageType(MSG_CONFIG_DATA), boardId(0), xPos(0.0), yPos(0.0) {}
+  message_config_data() : boardId(0), xPos(0.0), yPos(0.0) {}
 };
 
 struct message_update_version {
-  uint8_t messageType;
   Version version;
-  message_update_version() : messageType(MSG_UPDATE_VERSION), version(VERSION) {}
-  message_update_version(const message_update_version& other) : messageType(other.messageType), version(other.version) {
+  message_update_version() : version(VERSION) {}
+  message_update_version(const message_update_version& other) : version(other.version) {
   }
 };
 
@@ -313,7 +302,7 @@ struct message_data {
   uint8_t targetAddress[6];
   uint8_t senderAddress[6]; 
   message_payload payload;
-  message_data() : messageType(0), targetAddress{0}, payload() {WiFi.macAddress(senderAddress);}
+  message_data() : messageType(0), targetAddress{0}, payload() {}
 };
 
 
