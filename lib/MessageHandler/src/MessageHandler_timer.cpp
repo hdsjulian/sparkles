@@ -6,7 +6,18 @@
 
 
 void MessageHandler::startTimerSyncTask() {
-    xTaskCreatePinnedToCore(runTimerSyncWrapper, "runTimerSync", 10000, this, 2, NULL, 0);
+    if (timerSyncHandle == NULL)
+        {
+
+            xTaskCreatePinnedToCore(runTimerSyncWrapper, "runTimerSync", 10000, this, 2, &timerSyncHandle, 0);
+        }
+}
+
+void MessageHandler::startAllTimerSyncTask() {
+    if (allTimerSyncHandle == NULL)
+        {
+            xTaskCreatePinnedToCore(runAllTimerSyncWrapper, "runAllTimerSync", 10000, this, 2, &allTimerSyncHandle, 0);
+        }
 }
 void MessageHandler::runTimerSyncWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
@@ -42,8 +53,10 @@ void MessageHandler::runTimerSync() {
     setTimerCounter(0);
     setLastTimerCounter();
     int timerIndex  = getCurrentTimerIndex();
+    
     if (timerIndex > -1) {
         addPeer(addressList[timerIndex].address);
+        //setCommand(messageData, addressList[timerIndex].address);
     }
     while (getTimerSet() == false) {
         

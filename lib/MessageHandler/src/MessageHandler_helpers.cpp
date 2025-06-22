@@ -179,3 +179,21 @@ void MessageHandler::handleSystemStatus(message_data incomingData) {
     message_system_status systemStatus = incomingData.payload.systemStatus;
     setNumDevices(systemStatus.numDevices);
 }
+
+float MessageHandler::convertMicrosToMeters(unsigned long long timeInMicros) {
+    // Speed of sound in air at 20 degrees Celsius is approximately 343 meters per second
+    // Convert time from microseconds to seconds and then to meters
+    return (timeInMicros / 1e6) * 343.0;
+}
+
+void MessageHandler::setBoardPosition(int boardId, float xPos, float yPos) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        if (boardId >= 0 && boardId < NUM_DEVICES) {
+            addressList[boardId].xPos = xPos;
+            addressList[boardId].yPos = yPos;
+        }
+        xSemaphoreGive(configMutex);
+    }
+    message_data configMessage = createConfigMessage(boardId);
+    pushToSendQueue(configMessage);
+}

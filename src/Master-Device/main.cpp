@@ -1,11 +1,12 @@
 #include <Arduino.h>
-#include <myDefines.h>
+#include <MyDefines.h>
 #include <esp_log.h>
 #include "esp_now.h"
 #include <LittleFS.h>
 #include "WiFi.h"
 #include <LedHandler.h>
 #include <MessageHandler.h>
+#include <Version.h>
 #include <WebServer.h>
 
 // put function declarations here:
@@ -43,7 +44,7 @@ void setup()
     Serial.println("LittleFS mount failed");
     lfs_started = false;
   }
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
   if (esp_now_init() != ESP_OK)
 
   {

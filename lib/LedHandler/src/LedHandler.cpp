@@ -126,6 +126,10 @@ void LedHandler::ledTask()
                         vTaskDelete(animationTaskHandle);
                         animationTaskHandle = NULL;
                     }
+                    if (midiTaskHandle != NULL) {
+                        vTaskDelete(midiTaskHandle);
+                        midiTaskHandle = NULL;
+                    }
                 }
                 if (animation.animationType == MIDI && getCurrentAnimation() != MIDI) {
                     if (midiTaskHandle != NULL) {
@@ -148,6 +152,7 @@ void LedHandler::ledTask()
             if (midiTaskHandle == NULL || eTaskGetState(midiTaskHandle) == eDeleted) {
                 xTaskCreate(runMidiWrapper, "runMidi", 10000, this, 1, &midiTaskHandle); // Create the runMidi task
             }
+
         }           
         else if (getCurrentAnimation() == STROBE)
             {   

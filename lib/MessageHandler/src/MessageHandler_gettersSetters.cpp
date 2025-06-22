@@ -256,3 +256,112 @@ int MessageHandler::getNumDevices() {
     }
     return returnNum;
 }
+/*
+message_data MessageHandler::retrieveCommand(uint8_t * address) {
+    message_data returnCommand;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        for (int i = 0; i < NUM_CLIENTS; i++) {
+            if (memcmp(addressList[i].address, address, 6) == 0) {
+                returnCommand = addressList[i].nextCommand;
+                break;
+            }
+        }
+        xSemaphoreGive(configMutex);
+    }
+    return returnCommand;
+}
+
+void MessageHandler::setCommand(message_data command, uint8_t * address) {
+    message_data emptyCommand;
+    emptyCommand.messageType = MSG_WAIT_FOR_INSTRUCTIONS;
+
+
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        if (memcmp(command.targetAddress, broadcastAddress, 6) == 0) {
+            for (int i = 0; i < NUM_CLIENTS; i++) {
+                if (memcmp(addressList[i].address, address, 6) == 0) {
+                    addressList[i].nextCommand = command;
+                    xSemaphoreGive(configMutex);
+                }
+            }
+        }
+        for (int i = 0; i < NUM_CLIENTS; i++) {
+            if (memcmp(addressList[i].address, address, 6) == 0) {
+                addressList[i].nextCommand = command;
+                xSemaphoreGive(configMutex);
+            }
+            else if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
+                // If we reach an empty address, we can stop searching
+                break;
+            }
+            else {
+                addressList[i].nextCommand = emptyCommand; // Set the command for all other addresses
+                memcpy(addressList[i].nextCommand.targetAddress, addressList[i].address, 6); // Ensure the target address is set correctly
+             
+            }
+        }
+        xSemaphoreGive(configMutex);
+    }
+}
+*/
+message_data MessageHandler::createClapMessage(uint8_t * address) {
+    message_data clapMessage;
+    clapMessage.messageType = MSG_CLAP;
+    memcpy(clapMessage.targetAddress, address, 6);
+    message_clap clapPayload;
+    clapPayload.clapTime = micros() - ledInstance->getTimerOffset();
+    memcpy(&clapMessage.payload.clap, &clapPayload, sizeof(clapPayload));
+    WiFi.macAddress(clapMessage.senderAddress);
+    return clapMessage;
+}
+
+message_data MessageHandler::createConfigMessage(int boardId) {
+    message_data configMessage;
+    configMessage.messageType = MSG_CONFIG_DATA;
+    memcpy(configMessage.targetAddress, addressList[boardId].address, 6);
+    message_config_data configPayload;
+    configPayload.boardId = boardId;
+    configPayload.xPos = addressList[boardId].xPos;
+    configPayload.yPos = addressList[boardId].yPos;
+    memcpy(&configMessage.payload.configData, &configPayload, sizeof(configPayload));
+    WiFi.macAddress(configMessage.senderAddress);
+    return configMessage;
+}
+message_data MessageHandler::createUpdateVersionMessage(Version version) {
+    message_data updateMessage;
+    updateMessage.messageType = MSG_UPDATE_VERSION;
+    memcpy(updateMessage.targetAddress, broadcastAddress, 6);
+    message_update_version updatePayload;
+    updatePayload.version = version;
+    memcpy(&updateMessage.payload.updateVersion, &updatePayload, sizeof(updatePayload));
+    WiFi.macAddress(updateMessage.senderAddress);
+    return updateMessage;
+}
+
+void MessageHandler::setClap(float xPos, float yPos) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        clapIndex++;
+        if (clapIndex >= NUM_CLAPS) {
+            clapIndex = 0;
+        }
+        clapTable[clapIndex].xPos = xPos;
+        clapTable[clapIndex].yPos = yPos;
+        xSemaphoreGive(configMutex);
+    }
+}
+int MessageHandler::getClapIndex() {
+    int returnIndex;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnIndex = clapIndex;
+        xSemaphoreGive(configMutex);
+    }
+    return returnIndex;
+}
+clap_table MessageHandler::getClap(int index) {
+    clap_table returnClap;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnClap = clapTable[index];
+        xSemaphoreGive(configMutex);
+    }
+    return returnClap;
+}

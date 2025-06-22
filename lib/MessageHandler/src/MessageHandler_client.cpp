@@ -18,11 +18,13 @@ void MessageHandler::handleReceive() {
                 if (batteryPercentage < 5) {
                     message_data batteryLow;
                     ESP_LOGI("MSG", "Battery low, percentage: %f", batteryPercentage);
+                    /*
                     batteryLow.messageType = MSG_STATUS;
                     batteryLow.payload.status.batteryPercentage = getBatteryPercentage();
                     ESP_LOGI("MSG", "Battery percentage: %f", batteryLow.payload.status.batteryPercentage);
-                    memcpy(batteryLow.address, hostAddress, 6);
+                    memcpy(batteryLow.targetAddress, hostAddress, 6);
                     xQueueSend(sendQueue, &batteryLow, portMAX_DELAY);
+                    */
                     continue;
                 }
                 else {
@@ -36,6 +38,13 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
                 handleSystemStatus(incomingData);
             }
+            else if (incomingData.messageType == MSG_WAIT_FOR_INSTRUCTIONS) {
+                ESP_LOGI("MSG", "Do nothing");
+            }
+            else if (incomingData.messageType == MSG_SLEEP_WAKEUP) {
+                handleSleepWakeup(incomingData);
+            }
+
             else {
                 ESP_LOGI("MSG", "Unknown message type ");
             }
@@ -62,7 +71,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
             gotTimerMessage.messageType = MSG_GOT_TIMER;
             gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
             gotTimerMessage.payload.gotTimer.batteryPercentage = getBatteryPercentage();
-            memcpy(gotTimerMessage.address, hostAddress, 6);
+            memcpy(gotTimerMessage.targetAddress, hostAddress, 6);
             ESP_LOGI("MSG", "Delay average: %d", delayAverage);
             ESP_LOGI("MSG", "Battery percentage: %f", gotTimerMessage.payload.gotTimer.batteryPercentage);
             setTimeOffset(timerMessage.sendTime, timerMessage.receiveTime, delayAverage);
@@ -80,6 +89,9 @@ void MessageHandler::handleTimer(message_data incomingData) {
             ESP_LOGI("MSG", "...");
             ledInstance->pushToAnimationQueue(animation);
             ESP_LOGI("MSG", "Timer set. time offset: %lld", getTimeOffset());
+            startBatterySyncTask();
+            delayCounter = 0;
+            delayAverage = 0;
           }
     }
     else {
@@ -90,6 +102,28 @@ void MessageHandler::handleTimer(message_data incomingData) {
 
 }   
 
+void MessageHandler::goToSleep() {
+    message_animation animationMessage = ledInstance->createAnimation(OFF);
+    ledInstance->pushToAnimationQueue(animationMessage);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+
+}
+
+//parse message, set sleep / wakeup times, start task that runs until sleeptime 
+//ich geis done, turns off lights, after wakeup restarts and kills itself.
+// WHEN to go to sleep? NOW. there is no when Timestamp
+
+
+void MessageHandler::handleSleepWakeup(message_data incomingData) {
+    message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
+    message_animation animation;
+    animation.animationType = OFF;
+    ledInstance->pushToAnimationQueue(animation);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.sleepTime);
+    esp_light_sleep_start();
+    turnWifiOn();
+}
 
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     /*
@@ -124,7 +158,7 @@ void MessageHandler::announceAddressWrapper(void *pvParameters) {
 void MessageHandler::runAnnounceAddress() {
     message_data messageData;
     messageData.messageType = MSG_ADDRESS;
-    memcpy(messageData.address, hostAddress, 6);
+    memcpy(messageData.targetAddress, hostAddress, 6);
     WiFi.macAddress(messageData.payload.address.address);
     while (getAddressAnnounced() == false) {    
         ESP_LOGI("MSG", "Announcing address");    
@@ -140,13 +174,13 @@ void MessageHandler::handleSend() {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
             switch (messageData.messageType) {
                 case MSG_GOT_TIMER:
-                    esp_now_send(messageData.address, (uint8_t *) &messageData, sizeof(messageData));
+                    esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_ADDRESS:
-                    esp_now_send(messageData.address, (uint8_t *) &messageData, sizeof(messageData));
+                    esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_STATUS:
-                    esp_now_send(messageData.address, (uint8_t *) &messageData, sizeof(messageData));
+                    esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 default:
                     break;
@@ -155,21 +189,74 @@ void MessageHandler::handleSend() {
     }
 }
 void MessageHandler::startBatterySyncTask() {
-    xTaskCreatePinnedToCore(runTimerSyncWrapper, "runTimerSync", 10000, this, 2, NULL, 0);
+    xTaskCreatePinnedToCore(runBatterySyncWrapper, "runBatterySync", 10000, this, 2, NULL, 0);
+}
+
+void MessageHandler::startWiFiToggleTask() {
+    xTaskCreatePinnedToCore(runToggleWiFiTaskWrapper, "toggleWiFiTask", 10000, this, 2, NULL, 0);
+}
+void MessageHandler::runToggleWiFiTaskWrapper(void *pvParameters) {
+    MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
+    messageHandlerInstance->toggleWiFiTask();
 }
 void MessageHandler::runBatterySyncWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
     messageHandlerInstance->runBatterySync();
 }
 void MessageHandler::runBatterySync() {
-    message_status statusMessage;
-    statusMessage.messageType = MSG_STATUS;
-    statusMessage.batteryPercentage = random(0, 100);
-    esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
-    vTaskDelay(1000/portTICK_PERIOD_MS);
+    while (true) {
+        vTaskDelay(1000/portTICK_PERIOD_MS);
+        message_data statusMessage;
+        statusMessage.messageType = MSG_STATUS;
+        memcpy(statusMessage.targetAddress, hostAddress, 6);
+        statusMessage.payload.status.batteryPercentage = random(0.0, 100.0);
+        
+        esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
+    }
 }
 
+void MessageHandler::turnWifiOn() {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(); // Replace with your SSID and password
+    if (esp_now_init() != ESP_OK)
+    {
+      Serial.println("Error initializing ESP-NOW");
+      return;
+    }
+    esp_now_register_send_cb(onDataSent);
+    esp_now_register_recv_cb(onDataRecv);
+    addPeer(const_cast<uint8_t*>(hostAddress));
+    addPeer(const_cast<uint8_t*>(broadcastAddress));
+    WiFi.mode(WIFI_STA);
+    Serial.println("should initialize");
 
+}
+void MessageHandler::turnWifiOff() {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+ void MessageHandler::toggleWiFiTask() {
+    while (true) {
+        // Turn off Wi-Fi
+        /*
+        if (nextCommandReceived == true) {
+            ESP_LOGI("WiFi", "Turning off Wi-Fi...");
+            turnWifiOff();
+            vTaskDelay(pdMS_TO_TICKS(wifiSleepTime)); // Wait for 5 seconds (adjust as needed)
+            nextCommandReceived = false;
+            turnWifiOn();
+            message_data askCommandMessage;
+            askCommandMessage.messageType = MSG_ASK_COMMAND;
+            askCommandMessage.payload.askCommand.batteryPercentage = getBatteryPercentage();
+            askCommandMessage.payload.askCommand.perceivedTime = micros()-getTimeOffset();
+            memcpy(askCommandMessage.targetAddress, hostAddress, 6);
+            esp_now_send(hostAddress, (uint8_t *) &askCommandMessage, sizeof(askCommandMessage));
+        }*/
+        // Turn Wi-Fi back on      
+        // Wait for another 5 seconds (adjust as needed)
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
 
 
 #endif

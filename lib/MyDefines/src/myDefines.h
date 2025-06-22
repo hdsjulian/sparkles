@@ -1,4 +1,6 @@
 #include "Arduino.h"
+#include "WiFi.h"
+#include "Version.h"
 #if DEVICE_USED == 4
 #include "espnow.h"
 #else 
@@ -21,7 +23,7 @@
 #define MASTER 0
 #define CLIENT 1
 #define WEBSERVER 2
-const float version = 1.0;
+#define VERSION "1.0.0"
 
 #define V1 1
 #define V2 2
@@ -93,6 +95,14 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define MSG_ANIMATION 5
 #define MSG_SEND_CLAP_TIMES 6
 #define MSG_SYSTEM_STATUS 7
+#define MSG_ASK_COMMAND 8
+#define MSG_WAIT_FOR_INSTRUCTIONS 9
+#define MSG_SLEEP_WAKEUP 10
+#define MSG_SYNC 11
+#define MSG_CLAP 12
+#define MSG_CONFIG_DATA 13
+#define MSG_UPDATE_VERSION 14
+
 enum activeStatus {
   ACTIVE, 
   INACTIVE, 
@@ -103,14 +113,6 @@ enum activeStatus {
 
 };
 
-struct message_send_clap_times {
-  uint8_t messageType = MSG_SEND_CLAP_TIMES;
-  int clapCounter;
-  unsigned long long timeStamp[NUM_CLAPS]; //offsetted.
-  float xLoc = 0.0;
-  float yLoc = 0.0;
-  float zLoc = 0.0;
-};
 
 enum animationEnum {
     OFF,
@@ -136,12 +138,11 @@ struct midiNoteTable {
 struct client_address {
   uint8_t address[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   int id;
-  float xLoc;
-  float yLoc;
-  float zLoc;
+  float xPos;
+  float yPos;
+  float zPos;
   uint32_t timerOffset;
   int delay;
-  message_send_clap_times clapTimes;
   float distances[NUM_CLAPS];  
   activeStatus active = INACTIVE;
   float batteryPercentage;
@@ -150,13 +151,21 @@ struct client_address {
   unsigned long lastUpdateTime;
 } ;
 
+struct clap_table {
+  unsigned long long clapTime;
+  float xPos;
+  float yPos;
+};
 
 struct message_address{
-  uint8_t messageType = MSG_ADDRESS;
+  uint8_t messageType;
   uint8_t address[6];
-  float version = version;
-  message_address() : messageType(MSG_ADDRESS), address{0}, version(version) {}
-} ;
+  Version version;
+  message_address() : messageType(MSG_ADDRESS), address{0}, version() {}
+  message_address(const message_address& other) : messageType(other.messageType), version(other.version) {
+    if (this != &other) memcpy(address, other.address, sizeof(address));
+  }
+};
 
 struct animation_strobe {
   uint8_t frequency;
@@ -228,11 +237,28 @@ struct message_status {
   float batteryPercentage;
   message_status() : messageType(0), batteryPercentage(0.0) {}
 };
-     
+
+struct message_ask_command {
+  uint8_t messageType = MSG_ASK_COMMAND;
+  float batteryPercentage;
+  unsigned long long perceivedTime;
+  message_ask_command() : messageType(MSG_STATUS), batteryPercentage(0.0), perceivedTime(0) {}
+};
+
+
+
 struct message_system_status {
   uint8_t messageType = MSG_SYSTEM_STATUS;
   int numDevices;
   message_system_status() : messageType(MSG_SYSTEM_STATUS), numDevices(0) {}
+};
+
+struct message_sleep_wakeup {
+  uint8_t messageType = MSG_SLEEP_WAKEUP;
+  unsigned long long sleepTime;
+  unsigned long long duration; 
+  message_sleep_wakeup() : messageType(MSG_SLEEP_WAKEUP), sleepTime(0), duration(0) {}
+
 };
 struct message_timer {
   uint8_t messageType = MSG_TIMER;
@@ -245,26 +271,52 @@ struct message_timer {
   message_timer() : messageType(MSG_TIMER), counter(0), sendTime(0), receiveTime(0), lastDelay(0), reset(false), addressId(0) {}
 } ;
 
+struct message_clap {
+  uint8_t messageType = MSG_CLAP;
+  unsigned long long clapTime;
+  message_clap() : messageType(MSG_CLAP), clapTime(0) {}
+};
+struct message_config_data {
+  uint8_t messageType = MSG_CONFIG_DATA;
+  int boardId;
+  float xPos;
+  float yPos;
+  message_config_data() : messageType(MSG_CONFIG_DATA), boardId(0), xPos(0.0), yPos(0.0) {}
+};
+
+struct message_update_version {
+  uint8_t messageType;
+  Version version;
+  message_update_version() : messageType(MSG_UPDATE_VERSION), version(VERSION) {}
+  message_update_version(const message_update_version& other) : messageType(other.messageType), version(other.version) {
+  }
+};
 
 union message_payload { 
   struct message_address address;
   struct message_timer timer;
   struct message_animation animation;
-  struct message_send_clap_times clapTimes;
   struct message_got_timer gotTimer;
   struct message_status status;
   struct message_system_status systemStatus;
-
+  struct message_ask_command askCommand;
+  struct message_sleep_wakeup sleepWakeup;
+  struct message_clap clap;
+  struct message_config_data configData;
+  struct message_update_version updateVersion;
   message_payload() {}
   ~message_payload() {}
 };
 
 struct message_data {
   uint8_t messageType;
-  uint8_t address[6];
+  uint8_t targetAddress[6];
+  uint8_t senderAddress[6]; 
   message_payload payload;
-  message_data() : messageType(0), address{0}, payload() {}
+  message_data() : messageType(0), targetAddress{0}, payload() {WiFi.macAddress(senderAddress);}
 };
+
+
 
 
 #endif
