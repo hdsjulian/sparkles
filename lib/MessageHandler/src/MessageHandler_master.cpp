@@ -45,10 +45,12 @@ void MessageHandler::handleReceive() {
                 //ESP_LOGI("MSG", "Midi velocity: %d", animation->animationParams.midi.velocity);
                 if (incomingData.payload.address.version != version) {
                     ESP_LOGI("MSG", "Received address with lower version, ignoring");
-                    
+                    message_data updateVersionMessage = createUpdateVersionMessage(version);
+                    memcpy(updateVersionMessage.targetAddress, incomingData.senderAddress, 6);
+                    xQueueSend(sendQueue, &updateVersionMessage, portMAX_DELAY);
                     return;
                 }
-                else {
+                else if (!isOTAUpdating) {
                     message_address address = (message_address)incomingData.payload.address;
                     int index = addOrGetAddressId(address.address);
                     setCurrentTimerIndex(index);
@@ -160,8 +162,26 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
                 ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             }
         }
+        else if (instance.getRequestingOTAUpdate() == true) {
+            instance.setRequestingOTAUpdate(false);
+            ESP_LOGI("MSG", "Requesting OTA update sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        }
+        else {
+            ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        }
+        
     }
     else {
+        if (instance.getRequestingOTAUpdate() == true) {
+            instance.setRequestingOTAUpdate(false);
+            ESP_LOGI("MSG", "Requesting OTA update failed");
+            ESP_LOGI("MSG", "Address id cannot be reached: %d", instance.getOTAUpdateAddressId());
+            instance.setNextOTAAddress(true);
+        }
+
+        else {
+            ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        }
         ESP_LOGI("MSG", "Send failed");
     }
 }
@@ -195,4 +215,44 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     }
     pushToSendQueue(message);
 }
+void MessageHandler::startOTAUpdateTask() {
+    xTaskCreatePinnedToCore(runOTAUpdateTaskWrapper, "runOTAUpdate", 10000, this, 2, &otaUpdateHandle, 0);
+}
+void MessageHandler::runOTAUpdateTaskWrapper(void *pvParameters) {
+    MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
+    messageHandlerInstance->runOTAUpdateTask();
+}
+void MessageHandler::runOTAUpdateTask() {
+    setIsOTAUpdating(true);
+    setOTAUpdateAddressId(0);
+    message_data updateVersionMessage = createUpdateVersionMessage(version);
+    ESP_LOGI("MSG", "Running OTA update task - THIS SHOULD NOT BE WORKING YET");
+    while (isOTAUpdating) {
+        if (getOTAUpdateAddressId() < 0 || getOTAUpdateAddressId() >= NUM_DEVICES) {
+            ESP_LOGE("MSG", "Invalid OTA update address ID");
+            isOTAUpdating = false;
+            vTaskDelete(otaUpdateHandle);
+            return;
+        }
+        if (getNextOTAAddress() == true) {
+            setOTAUpdateAddressId(getOTAUpdateAddressId() + 1);
+            if (getOTAUpdateAddressId() >= NUM_DEVICES || memcmp(addressList[getOTAUpdateAddressId()].address, emptyAddress, 6) == 0) {
+                vTaskDelete(otaUpdateHandle);
+                return;
+            }
+            message_data updateVersionMessage;
+            updateVersionMessage = createUpdateVersionMessage(version);
+            memcpy(updateVersionMessage.targetAddress, OTAUpdateAddress, 6);
+            pushToSendQueue(updateVersionMessage);
+        }
+
+
+        // Here you would implement the actual OTA update logic
+        // For now, we just simulate a successful update
+        isOTAUpdating = false;
+        ESP_LOGI("MSG", "OTA update completed");
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+}
+
 #endif

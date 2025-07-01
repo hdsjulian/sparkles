@@ -1,0 +1,539 @@
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP-NOW DASHBOARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="all.css" >
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" type="text/css" href="sparkles.css">
+
+</head>
+<body>
+  <div class="topnav">
+    <h3>ESP-NOW DASHBOARD</h3>
+  </div>
+  <div class="hamburger" onclick="toggleMenu()">
+    <div></div>
+    <div></div>
+    <div></div>
+  </div>
+  <div class="nav-menu" id="navMenu">
+    <a href="addressList.html">Addresss List</a>
+    <a href="multiCalibration.html">Calibration</a>
+    <a href="settings.html">Settings</a>
+  </div>
+  <div class="content">
+
+    <div class="cards">
+      <div class="card deviceList">
+        <p>
+            <span class="reading">
+                <span id="settings" class="devicenum">Settings</span>
+            </span>
+        </p>
+      </div>
+      <div class="card deviceList">
+        <h4>
+            <i class="fas fa-bell"></i> 
+            STATUS
+        </h4>
+        <p>
+            <span class="reading">
+                <span id="status" class="devicenum">0</span>
+            </span>
+        </p>
+      </div>
+          
+      <div class="card card--50" id="calibrationCards1">
+        <p>
+            <span class="reading">
+                <span id="calibrate_left" class="devicenum"></span>
+            </span>
+        </p>
+      </div>
+      <div class="card card--50" id="calibrationCards2">
+        <p>
+            <span class="reading">
+                <span id="calibrate_right" class="devicenum">CALIBRATE</span>
+            </span>
+        </p>
+      </div>
+
+
+    </div>
+    </div>
+    <div id>
+
+    </div>
+
+
+  </div>
+<script>
+    function toggleMenu() {
+      var menu = document.getElementById('navMenu');
+      menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+    }
+
+  const CALIBRATION_NOT_HAPPENED = 0;
+  const CALIBRATION_IN_PROGRESS = 1;
+  const CALIBRATION_CLAP_CHECK = 2;
+  const CALIBRATION_ENDED = 3;
+  const CALIBRATION_IN_BETWEEN = 4;
+  var debug = 0;
+  var calibrationStatus = CALIBRATION_NOT_HAPPENED;
+  var eventListenerStatus = 0;
+  function debuglog(obj) {
+    if (debug > 0) {
+    console.log(obj);
+    }
+  }
+
+
+
+function clapCard(obj) {
+
+    debuglog(obj);
+    var existingPacket = document.getElementById("clapCard");
+  if (!existingPacket) {
+    var newCard = document.createElement("div");
+    newCard.className = "card";
+    newCard.id = "clapCard";
+    newCard.setAttribute("data-order", 1);
+    //newCard.innerHTML = "<span id='b"+obj.index+"'>Board ID "+obj.index+":</span>\n<span id='addr" + obj.index + "'></span><span id='del"+obj.index+"'></span><span id='dist"+obj.index+"'></span>";
+    newCard.innerHTML = `
+  <span id='clapid'>Clap Device</span>
+  <span id='clapaddr'></span>
+  <span id='clapdel'></span>
+  <span id='clapclaps'></span>
+`;
+  var cardsContainer = document.getElementById("boardCardContainer");
+    cardsContainer.appendChild(newCard);
+
+
+    //hier fehlt noch irgendwie die klarheit wo eigentlich der eventlistener hin muss. 
+  }
+  document.getElementById("clapaddr").textContent = "Address: "+decimalArrayToMacAddress(obj.address);
+  document.getElementById("clapdel").textContent = "Delay: "+obj.delay;
+  debuglog(obj.clapTimes.timeStamp);
+  document.getElementById("clapclaps").textContent = "TimeStamps: "+formatNonZeroFloats(obj.clapTimes.timeStamp);
+    
+}
+  
+
+  function formatNonZeroFloats(floatArray) {
+    // Filter out zero values and format the remaining values
+    const formattedArray = floatArray
+        .filter(value => value !== 0) // Filter out zero values
+        .map(value => value.toFixed(1)); // Format each value to one decimal place
+
+    return formattedArray;
+}
+  function decimalArrayToMacAddress(decimalArray) {
+    // Ensure the array has exactly 6 elements
+    if (decimalArray.length !== 6) {
+        throw new Error("Array must contain exactly 6 elements");
+    }
+
+    // Convert each decimal value to a 2-digit hexadecimal string
+    const hexArray = decimalArray.map(value => {
+        // Ensure the value is a number and within the valid range for MAC addresses
+        if (typeof value !== 'number' || value < 0 || value > 255) {
+            throw new Error("Each element must be a number between 0 and 255");
+        }
+        return value.toString(16).padStart(2, '0');
+    });
+
+    // Join the hexadecimal strings with colons
+    return hexArray.join(':');
+}
+
+
+
+  function statusUpdate(obj) {
+
+    document.getElementById('status').textContent = obj.status;
+
+  }
+  function calibrateUpdate(obj) {
+  
+    if (obj.status == "true") {
+    }
+    else {
+
+    }
+  }
+
+  function clapCheck(obj) {
+    console.log("clap Check");
+    console.log(obj);
+    if (obj.clapId > -1 && calibrationStatus ==CALIBRATION_CLAP_CHECK) {
+      textContent = `<span id='clapid'>Clap ID:${obj.clapId}</span>
+                    <span id='clapTimeStamp'>Timestamp: ${obj.timeStamp}</span>
+                      <div class='inputs'>
+                      <input type='text' id='CDxpos' placeholder="X position" value="-1">
+                      <input type='text' id='CDypos' placeholder="Y position" value="-1">
+                      <input type='text' id='CDzpos' placeholder = "Z position" value="-1">
+                      <input type='hidden' id='clapId' value='${obj.clapId}'>
+                      <button id='submitClap'>Confirm Clap</button>
+                    
+                    `;
+    }
+    document.getElementById("calibrate_right").innerHTML = textContent;
+
+  };
+
+  function calibrationUpdate() {
+    console.log("calibrationupdate "+calibrationStatus);
+    switch (eventListenerStatus) {
+      case 0: 
+        document.getElementById("calibrate_right").removeEventListener('click', handleCommandCalibrateClick);
+      break;
+      case 2: 
+        document.getElementById("calibrate_left").removeEventListener('click', cancelClap);
+        document.getElementById('submitClap').removeEventListener('click', submitConfirmClap);
+        break;
+      case 3:
+      document.getElementById("calibrate_right").removeEventListener('click', handleCommandCalibrateClick);
+     document.getElementById("calibrate_left").removeEventListener('click', handleEndCalibrationClick);
+      break;
+      case 4:
+      document.getElementById("calibrate_right").removeEventListener('click', handleCommandCalibrateClick);
+      document.getElementById("calibrate_right").removeEventListener('click', handleResetCalibration);
+      break;
+      case 5:
+      document.getElementById('calibrate_left').removeEventListener('click', handleResetCalibration);
+      document.getElementById('calibrate_right').removeEventListener('click', handleCommandCalculateClick);
+      break;
+
+
+
+    }
+   if (calibrationStatus == CALIBRATION_CLAP_CHECK) {
+
+      document.getElementById("calibrate_left" ).innerHTML = "CANCEL CLAP";
+      document.getElementById("submitClap").addEventListener('click', submitConfirmClap);
+      document.getElementById("calibrate_left").addEventListener('click', cancelClap);
+      eventListenerStatus = 2;
+ 
+   }
+   if (calibrationStatus == CALIBRATION_IN_PROGRESS) {
+    
+    document.getElementById("calibrate_right").innerHTML = "CANCEL (not set)";
+  
+
+   }
+   if (calibrationStatus == CALIBRATION_NOT_HAPPENED  ) {
+    document.getElementById("calibrate_right").innerHTML = "CALIBRATE";
+    document.getElementById("calibrate_left").innerHTML = "DELETE CALIBRATION";
+    document.getElementById("calibrate_right").addEventListener('click', handleCommandCalibrateClick);
+    document.getElementById("calibrate_right").addEventListener('click', handleResetCalibration);
+    eventListenerStatus = 4;
+   }
+   if (calibrationStatus == CALIBRATION_IN_BETWEEN)  { 
+    if (document.getElementById("submitClap")) {
+      document.getElementById("submitClap").remove();    
+    }
+    document.getElementById("calibrate_right").innerHTML = "NEXT CLAP";
+    document.getElementById("calibrate_left").innerHTML= "END CALIBRATION";
+    document.getElementById("calibrate_right").addEventListener('click', handleCommandCalibrateClick);
+    document.getElementById("calibrate_left").addEventListener('click', handleEndCalibrationClick);
+    eventListenerStatus = 3;
+  }
+    if (calibrationStatus == CALIBRATION_ENDED) {
+      console.log ("calling calibration ended");
+        document.getElementById('calibrate_right').textContent = "CALCULATE";
+        document.getElementById('calibrate_right').addEventListener('click', handleCommandCalculateClick);
+        document.getElementById('calibrate_left').textContent = "DELETE CALIBRATION";
+        document.getElementById('calibrate_left').addEventListener('click', handleResetCalibration);
+        eventListenerStatus = 5;
+      }
+  
+  };
+
+
+
+  if (debug == 0) {
+    if (!!window.EventSource) {
+    var sourceEvents = new EventSource('/events');
+
+    sourceEvents.addEventListener('open', function(e) {
+      console.log("Events Connected");
+    }, false);
+    sourceEvents.addEventListener('error', function(e) {
+      if (e.target.readyState != EventSource.OPEN) {
+        console.log("Events Disconnected");
+      }
+    }, false);
+
+    sourceEvents.addEventListener('message', function(e) {
+
+      console.log("message", e.data);
+    }, false);
+    
+    sourceEvents.addEventListener('new_readings', function(e) {
+      var obj = JSON.parse(e.data);
+      boardCards(obj);
+      
+    })
+    sourceEvents.addEventListener('calibrationStatus', function(e) {
+      var obj = JSON.parse(e.data);
+      calibratationStatus = obj.status;
+      calibrationUpdate();
+      //document.getElementById("cmd_calibrate").classList.add("active");
+      
+    })
+
+    sourceEvents.addEventListener('animateStatus', function(e) {
+      console.log("animatestatus");
+      console.log(e);
+      var obj = JSON.parse(e.data);
+      console.log(obj.status);
+      animateUpdate(obj);
+    })
+};  
+    sourceEvents.addEventListener('statusUpdate', function(e) {
+      console.log("statusUpdate");
+      console.log(e);
+      var obj = JSON.parse(e.data);
+      console.log(obj.status);
+      document.getElementById('status').textContent = obj.status;
+    });
+    sourceEvents.addEventListener('updateDeviceList', function(e) {
+      debuglog("update Device List");
+      debuglog(e);
+      var obj = JSON.parse(e.data);
+      debuglog(obj.status);
+      //document.getElementById('status').textContent = obj.status;
+      var obj = JSON.parse(e.data);
+      updateDeviceList(obj);
+  });
+  sourceEvents.addEventListener('clapCheck', function(e) {
+    console.log("clapCheck");
+    console.log(e);
+    var obj = JSON.parse(e.data);
+    calibrationStatus = obj.status;
+    clapCheck(obj);
+    calibrationUpdate();
+  });
+}
+
+else if (debug == 1) {
+  var boards = [];
+   boards[0] = {
+    index : 0,
+    address: "68:b6:b3:08:e0:60",
+    delay : 1001,
+    status: "MODE_WAIT_FOR_TIMER"
+  };
+  boards[1] = {
+    index : 1,
+    address: "78:b6:b3:08:e0:66",
+    delay : 0,
+    status: "MODE_WAIT_FOR_TIMER"
+  };
+
+  dingsdata={"clientAddresses":[{"address":[52,133,24,143,193,116],"id":0,"xLoc":0,"yLoc":0,"zLoc":0,"timerOffset":0,"delay":1,"clapTimes":{"messageType":6,"clapCounter":0,"timeStamp":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"distances":[1,2,3,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"active":"INACTIVE","batteryPercentage":0,"tries":0}],
+  "clapDevice":[{"address":[100,232,51,84,60,36],"id":0,"xLoc":0,"yLoc":0,"zLoc":0,"timerOffset":0,"delay":0,"clapTimes":{"messageType":6,"clapCounter":0,"timeStamp":[10,2.3,3.22,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"distances":[2,1.0,3.0,4.0,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"active":"INACTIVE","batteryPercentage":0,"tries":0}],
+  "hostDevice":[{"address":[52,133,24,143,193,116],"clapTimes":{"messageType":6,"clapCounter":0,"timeStamp":[10,2.3,3.2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"distances":[1,2,3,4]}]};
+  dingsdata["hostDevice"].forEach(function(obj) {
+    console.log(obj);
+  hostCard(obj);
+  });
+  dingsdata["clapDevice"].forEach(function(obj) {
+    console.log(obj);
+  clapCard(obj);
+  });
+  dingsdata["clientAddresses"].forEach(function(obj) {
+    console.log(obj);
+  boardCards(obj);
+  });
+
+
+  updatedStatus = {
+    statusId : 1,
+    status : "WAIT_FOR_TIMER"
+  };
+  statusUpdate(updatedStatus);
+  cc = {
+    clapId : 2, 
+    timeStamp: 42917135,
+  };
+  console.log("blub");
+ clapCheck(cc);
+    }
+
+
+function submitConfirmClap() {
+        console.log("clicked");
+        var xpos = document.getElementById("CDxpos").value;
+        var ypos = document.getElementById("CDypos").value;
+        var zpos = document.getElementById("CDzpos").value;
+        var clapId = document.getElementById("clapId").value;
+        console.log(xpos);
+        console.log(ypos);
+        console.log(zpos);
+        var fetchUrl = '/confirmClap?clapId='+clapId+'&xpos='+xpos+'&ypos='+ypos+'&zpos='+zpos;
+        console.log(fetchUrl);
+        fetchMe(fetchUrl, updateCalibrationStatus);
+    }
+  function cancelClap() {
+  // Display a confirmation dialog
+      var confirmAction = confirm("Are you sure you want to cancel the calibration?");
+      clapId = document.getElementById("clapId").value;
+      if (confirmAction) {
+        // User clicked OK, proceed with the fetch
+        var fetchUrl = '/cancelClap?clapId='+clapId;
+        fetchMe(fetchUrl, updateCalibrationStatus);
+      } else {
+        // User clicked Cancel, do not proceed
+        console.log("Calibration cancellation aborted.");
+      }
+      };
+function updateDeviceList(obj) {
+
+  hostCard(obj.hostDevice[0]);
+  clapCard(obj.clapDevice[0]);
+    obj.clientAddresses.forEach(function(obj) {
+      debuglog(obj);
+      boardCards(obj);
+    });
+  }
+
+function updateCalibrationStatus(obj) {
+    console.log("updateCalibrationStatus");
+    console.log(obj);
+    if (obj.status != calibrationStatus) {
+      console.log("calling calibration update");
+      calibrationStatus = obj.status;
+      calibrationUpdate();
+    }
+    else {
+      console.log("not calling calibration update");
+      console.log(obj.status);
+      console.log(calibrationStatus);
+    }
+    
+
+}
+
+function sendDeviceUpdateRequest(id) {
+  console.log("ok worked");
+    // Make a GET request to the /events endpoint using fetch
+    if (id != -1) {
+      var fetchUrl = '/updateDeviceList?id='+id;
+    }
+    else {
+      var fetchUrl = '/updateDeviceList';
+    }
+  console.log(fetchUrl);
+  console.log(id);
+
+  fetch(fetchUrl)
+        .then(response => {
+            // Check if the response is successful
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            // Parse the response as JSON
+            console.log("response ok");
+            
+        })
+        .then(data => {
+            // Handle the received data
+            console.log('Data received:', data);
+        })
+        .catch(error => {
+            // Handle errors
+            console.error('Fetch error:', error);
+        });
+
+}
+
+function fetchMe(fetchUrl, callback) {
+
+    fetch(fetchUrl)
+        .then(response => {
+            // Check if the response is successful
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            // Parse the response as JSON
+            console.log("response ok.");
+            return response.text()
+        })
+        .then(data => {
+            // Handle the received data
+            if (callback) {
+              console.log("callback "+fetchUrl);
+              console.log(data);
+              var obj = JSON.parse(data);
+              callback(obj);
+            }
+            console.log('Data received:', data);
+        })
+        .catch(error => {
+            // Handle errors
+            console.error('Fetch error:', error);
+        });
+}
+
+
+// Function to handle click on the t1 span element
+function handleUpdateDeviceClick(id) {
+  console.log("clicked");
+  //todo
+    sendDeviceUpdateRequest(id); // Trigger HTTP request when span is clicked
+}
+
+function handleCommandCalibrateClick() {
+  console.log("calibrate!");
+  var fetchUrl = '/commandCalibrate';
+  fetchMe(fetchUrl, updateCalibrationStatus);
+}
+function handleCommandCalculateClick() {
+  console.log("calculate!");
+  var fetchUrl = '/commandCalculate';
+  fetchMe(fetchUrl, updateCalibrationStatus);
+}
+
+function handleEndCalibrationClick() {
+  console.log("end calibration!");
+  var fetchUrl = '/endCalibration';
+  fetchMe(fetchUrl, updateCalibrationStatus);
+  //calibrationStatus = 0;
+
+}
+function handleResetCalibration() {
+  var confirmAction = confirm("Are you sure you want to reset the calibration?");
+      if (confirmAction) {
+        // User clicked OK, proceed with the fetch
+        var fetchUrl = '/resetCalibration';
+        fetchMe(fetchUrl, updateCalibrationStatus);
+      } else {
+        // User clicked Cancel, do not proceed
+        console.log("calibration resetted");
+      }
+  };
+function handleCommandAnimateClick() {
+  console.log("animate!");
+  var fetchUrl = '/commandAnimate';
+  fetchMe(fetchUrl);
+}
+
+
+// Add an event listener to the t1 span element
+document.getElementById('calibrate_right').addEventListener('click', handleCommandCalibrateClick);
+document.getElementById("settings").addEventListener('click', function() {
+    window.location.href = "settings.html";
+  });
+if (debug == 0) {
+document.addEventListener('DOMContentLoaded', function() {console.log("should update status"); fetchMe('/updateStatus', statusUpdate)})
+document.addEventListener('DOMContentLoaded', function() {fetchMe('/updateDeviceList', updateDeviceList)});
+document.addEventListener('DOMContentLoaded', function() {fetchMe('/updateCalibrationStatus', updateCalibrationStatus)});
+}
+
+
+
+</script>
+<script src="addressList.js"></script>
+</body>
+</html>

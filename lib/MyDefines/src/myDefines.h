@@ -42,6 +42,7 @@
 #define TIMER_ARRAY_COUNT 10
 #define WIFI_SSID "SPARKLES"
 #define WIFI_PASSWORD "sparklesAdmin"
+#define OTA_UPDATE_URL "http://192.168.4.1/update" // Update URL for OTA updates
 
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -281,28 +282,56 @@ struct message_update_version {
   }
 };
 
-union message_payload { 
-  struct message_address address;
-  struct message_timer timer;
-  struct message_animation animation;
-  struct message_got_timer gotTimer;
-  struct message_status status;
-  struct message_system_status systemStatus;
-  struct message_ask_command askCommand;
-  struct message_sleep_wakeup sleepWakeup;
-  struct message_clap clap;
-  struct message_config_data configData;
+union message_payload {
+  struct message_address        address;
+  struct message_timer          timer;
+  struct message_animation      animation;
+  struct message_got_timer      gotTimer;
+  struct message_status         status;
+  struct message_system_status  systemStatus;
+  struct message_ask_command    askCommand;
+  struct message_sleep_wakeup   sleepWakeup;
+  struct message_clap           clap;
+  struct message_config_data    configData;
   struct message_update_version updateVersion;
   message_payload() {}
-  ~message_payload() {}
+  message_payload(const message_payload& other) {
+      if (this != &other) memcpy(this, &other, sizeof(message_payload));
+  }
+  message_payload& operator=(const message_payload& other) {
+      if (this != &other)
+          memcpy(this, &other, sizeof(message_payload));
+      return *this;
+  }
+  ~message_payload() {
+  }
 };
 
 struct message_data {
-  uint8_t messageType;
-  uint8_t targetAddress[6];
-  uint8_t senderAddress[6]; 
+  uint8_t         messageType;
+  uint8_t         targetAddress[6];
+  uint8_t         senderAddress[6];
   message_payload payload;
-  message_data() : messageType(0), targetAddress{0}, payload() {}
+  message_data()
+      : messageType(0), targetAddress{0}, payload() {}
+  message_data(const message_data& other) {
+      if (this != &other) {
+          messageType = other.messageType;
+          memcpy(this->targetAddress, other.targetAddress, sizeof(this->targetAddress));
+          memcpy(this->senderAddress, other.senderAddress, sizeof(this->senderAddress));
+          payload = other.payload;
+      }
+  }
+  
+  message_data& operator=(const message_data& other) {
+      if (this != &other) {
+          messageType = other.messageType;
+          memcpy(this->targetAddress, other.targetAddress, sizeof(this->targetAddress));
+          memcpy(this->senderAddress, other.senderAddress, sizeof(this->senderAddress));
+          payload = other.payload;
+      }
+      return *this;
+  }
 };
 
 

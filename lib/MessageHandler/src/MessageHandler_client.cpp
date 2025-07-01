@@ -4,7 +4,7 @@
 #include "Arduino.h"
 #include "esp_now.h"
 #include "WiFi.h"
-
+#include "Ota.h"
 
 void MessageHandler::handleReceive() {
     message_data incomingData;
@@ -43,6 +43,16 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_SLEEP_WAKEUP) {
                 handleSleepWakeup(incomingData);
+            }
+            else if (incomingData.messageType == MSG_UPDATE_VERSION) {
+                message_update_version updateVersionMessage = incomingData.payload.updateVersion;
+                if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
+                    OTAHandler::getInstance().setup();
+                    OTAHandler::getInstance().performUpdate();
+                }
+                else {
+                    ESP_LOGI("MSG", "Received update version message with lower version, ignoring");
+                }
             }
 
             else {

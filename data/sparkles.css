@@ -105,6 +105,15 @@ html {
   .inputs .blue-button {
     background-color: #1b78e2;
   }
+  .inputs .red-button {
+    background-color: #e21b1b;
+  }
+  .inputs .half-button {
+    width: 48%; /* Make the button half the width of its container */
+    display: inline-block; /* Ensure buttons are displayed side by side */
+    margin: 0.5%; /* Add a small margin for spacing */
+    box-sizing: border-box; /* Include padding and border in the width */
+  }
   .nav-menu {
     display: none;
     flex-direction: column;
@@ -132,3 +141,4 @@ html {
       padding-left: 40px;
     }
   }
+

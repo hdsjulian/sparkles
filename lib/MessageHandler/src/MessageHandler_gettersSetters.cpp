@@ -365,3 +365,45 @@ clap_table MessageHandler::getClap(int index) {
     }
     return returnClap;
 }
+
+void MessageHandler::setIsOTAUpdating(bool isUpdating) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        isOTAUpdating = isUpdating;
+        xSemaphoreGive(configMutex);
+    }
+}
+bool MessageHandler::getIsOTAUpdating() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        bool returnIsUpdating = isOTAUpdating;
+        xSemaphoreGive(configMutex);
+        return returnIsUpdating;
+    }
+  }
+
+void MessageHandler::setRequestingOTAUpdate(bool request) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        requestingOTAUpdate = request;
+        xSemaphoreGive(configMutex);
+    }
+}
+bool MessageHandler::getRequestingOTAUpdate() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        bool returnRequesting = requestingOTAUpdate;
+        xSemaphoreGive(configMutex);
+        return returnRequesting;
+    }
+}
+
+void MessageHandler::setNextOTAAddress(bool next) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        nextOTAAddress = next;
+        xSemaphoreGive(configMutex);
+    }
+}
+bool MessageHandler::getNextOTAAddress() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        bool returnNext = nextOTAAddress;
+        xSemaphoreGive(configMutex);
+        return returnNext;
+    }
+}
