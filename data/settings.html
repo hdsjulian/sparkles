@@ -20,6 +20,7 @@
       <a href="addressList.html">Addresss List</a>
       <a href="multiCalibration.html">Calibration</a>
       <a href="settings.html">Settings</a>
+      <a href="animations.html">Animations</a>
     </div>
   </div>
   <div class="content">
@@ -27,7 +28,7 @@
       <div class="card deviceList">
         <p>
             <span class="reading">
-                <span id="addressList" class="devicenum">AddressList</span>
+                <span id="addressList" class="devicenum">Settings</span>
             </span>
         </p>
       </div>
@@ -56,147 +57,24 @@
         </p>
       </div>
 
-      <div class="card card--50">
-          <p>
-              <span class="reading">
-                  <span id="cmd_animate1" class="devicenum">Colors</span>
-                  <div class='inputs'>
-                    <div class="input-group">
-                      <label for="red1">Min Red:</label>
-                      <input type='text' id='minRed' value="" placeholder='Red:255'>
-                  </div>
-                  <div class="input-group">
-                      <label for="green1">Min Green:</label>
-                      <input type='text' id='minGreen' value="" placeholder='Green:255'>
-                  </div>
-                  <div class="input-group">
-                      <label for="blue1">Min Blue:</label>
-                      <input type='text' id='minBlue' value="" placeholder='Blue:255'>
-                  </div>
-                  <div class="input-group">
-                    <label for="maxred">Max Red:</label>
-                    <input type='text' id='maxRed' value="5.0" >
-                  </div>
-                  <div class="input-group">
-                    <label for="maxgreen">Max Green:</label>
-                    <input type='text' id='maxGreen' value="10" placeholder='Repetitions: 20'>
-                  </div>
-                  <div class="input-group">
-                    <label for="maxblue">Max Blue:</label>
-                    <input type='text' id='maxBlue' value="10" placeholder='Repetitions: 20'>
-                  </div>
-                  <div class="input-group">
-                    <label for="maxgreen">Min Anireps :</label>
-                    <input type='text' id='minAniReps' value="10" placeholder='Repetitions: 20'>
-                  </div>
-                  <div class="input-group">
-                    <label for="maxblue">Max Anireps:</label>
-                    <input type='text' id='maxAniReps' value="10" placeholder='Repetitions: 20'>
-                  </div>
-                  </div>
-              </span>
-          </p>
-        </div>
         <div class="card card--50">
           <p>
               <span class="reading">
-                  <span id="cmd_animate2" class="devicenum">Candle</span>
-                  <div class='inputs'>
-                    <!-- Speed -->
-                    <div class="input-group">
-                      <label for="minSpeed">Min Speed:</label>
-                      <input type='text' id='minSpeed' value="" placeholder='Speed: 1000ms'>
-                    </div>
-                    <div class="input-group">
-                      <label for="maxSpeed">Max Speed:</label>
-                      <input type='text' id='maxSpeed' value="" placeholder='Speed: 1000ms'>
-                    </div>
-
-                    <!-- Pause -->
-                    <div class="input-group">
-                      <label for="minPause">Min Pause:</label>
-                      <input type='text' id='minPause' value="" placeholder='Pause: 1000ms'>
-                    </div>
-                    <div class="input-group">
-                      <label for="maxPause">Max Pause:</label>
-                      <input type='text' id='maxPause' value="" placeholder='Pause: 1000ms'>
-                    </div>
-
-                    <!-- Reps -->
-                    <div class="input-group">
-                      <label for="minReps">Min Reps:</label>
-                      <input type='text' id='minReps' value="" placeholder='Repetitions: 20'>
-                    </div>
-                    <div class="input-group">
-                      <label for="maxReps">Max Reps:</label>
-                      <input type='text' id='maxReps' value="" placeholder='Repetitions: 20'>
-                    </div>
-
-                    <!-- Spread -->
-                    <div class="input-group">
-                      <label for="minSpread">Min Spread:</label>
-                      <input type='text' id='minSpread' value="" placeholder='Repetitions: 20'>
-                    </div>
-                    <div class="input-group">
-                      <label for="maxSpread">Max Spread:</label>
-                      <input type='text' id='maxSpread' value="" placeholder='Repetitions: 20'>
-                    </div>
-                  <button id='submit_animation_1'>Submit</button>
-                  </div>
-              </span>
-          </p>
-        </div>
-        <div class="card card--50">
-          <p>
-              <span class="reading">
-                  <span id="cmd_animate2" class="devicenum">Colors</span>
+                  <span id="cmd_goodnight" class="devicenum">GO TO SLEEP</span>
                   <div class='inputs'>
                     <div class="input-group">
-                      <label for="red1">Red:</label>
-                      <input type='text' id='red2' value="125" placeholder='Red:255'>
+                      <label for="hours">Hours:</label>
+                      <input type='text' id='hours_goodnight' value="4" placeholder=''>
                   </div>
                   <div class="input-group">
-                      <label for="green1">Green:</label>
-                      <input type='text' id='green2' value="125" placeholder='Green:255'>
+                      <label for="pause_1">Minutes:</label>
+                      <input type='text' id='minutes_goodnight' value="30" placeholder='Pause: 1000ms'>
                   </div>
                   <div class="input-group">
-                      <label for="blue1">Blue:</label>
-                      <input type='text' id='blue2' value="125" placeholder='Blue:255'>
+                      <label for="reps_1">Seconds:</label>
+                      <input type='text' id='seconds_goodnight' value="00" placeholder='Repetitions: 20'>
                   </div>
-                  <div class="input-group">
-                    <label for="exponent_1">Exponent:</label>
-                    <input type='text' id='exponent_2' value="5.0" >
-                  </div>
-                  <div class="input-group">
-                    <label for="anireps_1">AniReps:</label>
-                    <input type='text' id='anireps_2' value="10" placeholder='Repetitions: 20'>
-                  </div>
-                  </div>
-              </span>
-          </p>
-        </div>
-        <div class="card card--50">
-          <p>
-              <span class="reading">
-                  <span id="cmd_animate2" class="devicenum">Spatial</span>
-                  <div class='inputs'>
-                    <div class="input-group">
-                      <label for="speed_1">Speed:</label>
-                      <input type='text' id='speed_2' value="1000" placeholder='Speed: 1000ms'>
-                  </div>
-                  <div class="input-group">
-                      <label for="pause_1">Pause:</label>
-                      <input type='text' id='pause_2' value="1000" placeholder='Pause: 1000ms'>
-                  </div>
-                  <div class="input-group">
-                      <label for="reps_1">Reps:</label>
-                      <input type='text' id='reps_2' value="20" placeholder='Repetitions: 20'>
-                  </div>
-                  <div class="input-group">
-                    <label for="spread_1">Meters/Second:</label>
-                    <input type='text' id='spread_2' value="1000" placeholder='Repetitions: 20'>
-                  </div>
-                  <button id='submit_animation_2'>Submit</button>
+                  <button id='submit_goodnight'>Submit</button>
                   </div>
               </span>
           </p>
@@ -223,28 +101,6 @@
               </span>
           </p>
         </div>
-        <div class="card card--50">
-          <p>
-              <span class="reading">
-                  <span id="cmd_goodnight" class="devicenum">GO TO SLEEP</span>
-                  <div class='inputs'>
-                    <div class="input-group">
-                      <label for="hours">Hours:</label>
-                      <input type='text' id='hours_goodnight' value="4" placeholder=''>
-                  </div>
-                  <div class="input-group">
-                      <label for="pause_1">Minutes:</label>
-                      <input type='text' id='minutes_goodnight' value="30" placeholder='Pause: 1000ms'>
-                  </div>
-                  <div class="input-group">
-                      <label for="reps_1">Seconds:</label>
-                      <input type='text' id='seconds_goodnight' value="00" placeholder='Repetitions: 20'>
-                  </div>
-                  <button id='submit_goodnight'>Submit</button>
-                  </div>
-              </span>
-          </p>
-        </div>
         <div class="card deviceList">
           <p>
               <span class="reading">
@@ -261,7 +117,7 @@
         <div class="card deviceList">
           <p>
               <span class="reading">
-                  <span id="neutral" class="devicenum">Set everything to Neutral</span>
+                  <span id="lightsOff" class="devicenum">All lights off</span>
               </span>
           </p>
         </div>

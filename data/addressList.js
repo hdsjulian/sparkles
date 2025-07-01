@@ -1,52 +1,18 @@
 'use strict';
-import {toggleMenu, createNewCard} from "./sparkles.js";
+import {toggleMenu, boardCards} from "./sparkles.js";
 
 // Create or update board cards
 
-
-function boardCards(obj) {
-  let existingCard = document.getElementById("boardCard" + obj.id);
-  
-  if (!existingCard) {
-    createNewCard(obj);
-  }
-  
-  // Update card status
-  if (obj.status === "active") {
-    document.getElementById("boardCard" + obj.id).classList.add("active");
-    document.getElementById("boardCard" + obj.id).classList.remove("inactive");
-  } else {
-    document.getElementById("boardCard" + obj.id).classList.remove("active");
-    document.getElementById("boardCard" + obj.id).classList.add("inactive");
-  }
-  
-  // Update card information
-  document.getElementById("addr" + obj.id).textContent = "Address: " + obj.address;
-  document.getElementById("del" + obj.id).textContent = "Delay: " + obj.delay;
-  document.getElementById("dist" + obj.id).textContent = "Distance: " + obj.distance;
-  document.getElementById("battery" + obj.id).textContent = "Battery: " + obj.battery;
-};
+toggleMenu();
 
 
-function sortCards(obj, cardsContainer) {
-  let inserted = false;   
-  for (let i = 0; i < cardsContainer.children.length; i++) {
-      const child = cardsContainer.children[i];
-      const childId = child.id?.replace("boardCard", "");
-      
-      if (childId && parseInt(childId) > obj.id) {
-        cardsContainer.insertBefore(newCard, child);
-          inserted = true;
-          break;
-      }
-  return inserted;
-}
-};
+
+
 
 // Update calibration button text
 function syncUpdate(obj) {
   document.getElementById('cmd_sync_all').textContent = 
-    obj.status === "true" ? "SYNCING" : "SYNC";
+    obj.status ==="true" ? "SYNCING" : "SYNC";
 }
 
 // Update animation button text

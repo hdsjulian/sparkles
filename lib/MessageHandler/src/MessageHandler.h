@@ -11,7 +11,10 @@ class MessageHandler
 {
 public:
     static constexpr uint8_t emptyAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
+    uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
+    bool isOTAUpdating = false;
+    bool nextOTAAddress = false;
+    bool requestingOTAUpdate = false;
     //singleton
     static MessageHandler& getInstance() {
         static MessageHandler instance; // Guaranteed to be destroyed and instantiated on first use
@@ -59,11 +62,19 @@ public:
     void setCommand(message_data command, uint8_t * address);
     message_data createClapMessage(uint8_t * address);
     message_data createConfigMessage(int boardId);
-    message_data createUpdateVersionMessage();
+    message_data createUpdateVersionMessage(Version version);
     void setBoardPosition(int boardId, float xPos, float yPos);
     void setClap(float xPos, float yPos);
     int getClapIndex();
     clap_table getClap(int index);
+    void setIsOTAUpdating(bool isUpdating);
+    bool getIsOTAUpdating();
+    void setOTAUpdateAddressId(int id);
+    int getOTAUpdateAddressId();
+    void setRequestingOTAUpdate(bool request);
+    bool getRequestingOTAUpdate();
+    void setNextOTAAddress(bool next);
+    bool getNextOTAAddress();
 
 
     //tasks
@@ -72,6 +83,7 @@ public:
     void startWiFiToggleTask();
     void startAllTimerSyncTask();
     void startClapTask();
+    void startOTAUpdateTask();
     void handleSleepWakeup(message_data incomingData);
     void handleReceive();
     void handleSend();
@@ -80,6 +92,7 @@ public:
     void runBatterySync();
     void toggleWiFiTask();
     void runClapTask();
+    void runOTAUpdateTask();
     int addPeer(uint8_t * address);
     bool addressAnnounced = false;
     void sendAnimation(message_animation animationMessage, int addressId);
@@ -117,11 +130,11 @@ private:
     unsigned long long msgReceiveTime;
     const uint8_t *incomingData;
     client_address addressList[NUM_CLIENTS];
-    SemaphoreHandle_t configMutex;
-    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTaskHandle;
+    SemaphoreHandle_t configMutex, updateOTAMutex;
+    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
-    QueueHandle_t receiveQueue, sendQueue;
+    QueueHandle_t receiveQueue, sendQueue ;
     LedHandler* ledInstance = nullptr;
     int delays[10];
     int timerCounter = 0;
@@ -154,6 +167,7 @@ private:
     static void runBatterySyncWrapper(void *pvParameters);
     static void runToggleWiFiTaskWrapper(void *pvParameters);
     static void runClapTaskWrapper(void *pvParameters);    
+    static void runOTAUpdateTaskWrapper(void *pvParameters);
     // Member Functions
     int getLastSendTime();
     void setLastSendTime(int time);
