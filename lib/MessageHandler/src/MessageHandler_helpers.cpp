@@ -197,3 +197,33 @@ void MessageHandler::setBoardPosition(int boardId, float xPos, float yPos) {
     message_data configMessage = createConfigMessage(boardId);
     pushToSendQueue(configMessage);
 }
+
+
+
+void MessageHandler::startCalibrationClient() {
+    ledInstance->stopAnimationTask();
+}
+
+void MessageHandler::resetCalibration() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        clapIndex = 0;
+        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            addressList[i].xPos = 0.0f;
+            addressList[i].yPos = 0.0f;
+            memset(addressList[i].distances, 0, sizeof(float) * NUM_CLAPS);
+        }
+        xSemaphoreGive(configMutex);
+    }
+}
+
+void MessageHandler::sendSleepWakeupMessage(unsigned long sleepDuration) {
+    message_data sleepWakeupMessage;
+    sleepWakeupMessage.messageType = MSG_SLEEP_WAKEUP;
+    memcpy(sleepWakeupMessage.targetAddress, broadcastAddress, 6);
+    message_sleep_wakeup payload;
+    payload.duration = sleepDuration;
+    memcpy(&sleepWakeupMessage.payload.sleepWakeup, &payload, sizeof(payload));
+    WiFi.macAddress(sleepWakeupMessage.senderAddress);
+    pushToSendQueue(sleepWakeupMessage);
+}

@@ -65,7 +65,40 @@ void WebServer::configRoutes() {
     server.on("/commandBlink", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandBlink(request);
     });
-
+    server.on("/commandStartCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      // This is a placeholder for the calibration command
+      // You can implement the calibration logic here
+      this->commandStartCalibration(request);
+      request->send(200, "text/html", "Calibration command received");
+    });
+    server.on("/commandOTAUpdate", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandOTAUpdate(request);
+      request->send(200, "text/html", "OTA Update command received");
+    });
+    server.on("/commandCancelCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandCancelCalibration(request);
+      request->send(200, "text/html", "Cancel Calibration command received");
+    });
+    server.on("/commandResetCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandResetCalibration(request);  
+      request->send(200, "text/html", "Reset Calibration command received");
+    });
+    server.on("/commandContinueCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandContinueCalibration(request);
+      request->send(200, "text/html", "Continue Calibration command received");
+    });
+    server.on("/commandEndCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandEndCalibration(request);
+      request->send(200, "text/html", "End Calibration command received");
+    });
+    server.on("setSleepTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->setSleepTime(request);
+      request->send(200, "text/html", "Goodnight command received");
+    });
+    server.on("/setWakeupTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->setWakeupTime(request);
+      request->send(200, "text/html", "Good morning command received");
+    });
     //get all addresses
     server.on("/getAddressList", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getAddressList(request);
@@ -169,6 +202,8 @@ void WebServer::updateAddress(int id) {
   events.send(jsonString.c_str(), "update_board");
   ESP_LOGI("WEB", "Address Update: %s", jsonString.c_str());
 }
+
+
 String WebServer::jsonFromAddress(int id) {
   client_address address = messageHandlerInstance->getItemFromAddressList(id);
   String jsonString = "";
@@ -212,5 +247,80 @@ void WebServer::commandBlink(AsyncWebServerRequest *request) {
   animation.animationParams.blink.startTime = micros()+1000000;
   messageHandlerInstance->sendAnimation(animation, index);
   request->send(200, "text/html", "OK");
+}
+
+
+void WebServer::updateAddressList() {
+  for (int i = 0; i < NUM_DEVICES; i++) {
+    if (memcmp(messageHandlerInstance->getItemFromAddressList(i).address, messageHandlerInstance->emptyAddress, 6) == 0) {
+      break;
+    }
+    updateAddress(i);
+  }
+}
+
+void WebServer::setCalculationDone(bool done) {
+  PdParamsChanged = done;
+  String jsonString = "{\"calculationStatus\":";
+  jsonString += String(done ? "5" : "4");
+  jsonString += "}";
+  if (done) {
+    events.send(jsonString.c_str(), "calculation_done");
+  }
+}
+
+void WebServer::commandStartCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->startCalibrationMaster();
+  request->send(200, "text/html", "Calibration started");
+}
+void WebServer::commandOTAUpdate(AsyncWebServerRequest *request) {
+  messageHandlerInstance->startOTAUpdateTask();
+  request->send(200, "text/html", "OTA Update started");
+}
+void WebServer::commandCancelCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->cancelCalibration();
+  request->send(200, "text/html", "Calibration cancelled");
+}
+
+void WebServer::commandResetCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->resetCalibration();
+  request->send(200, "text/html", "Calibration reset");
+}
+void WebServer::commandContinueCalibration(AsyncWebServerRequest *request) {
+  int clapId = request->getParam("clapId")->value().toInt();
+  float xPos = request->getParam("x")->value().toFloat();
+  float yPos = request->getParam("y")->value().toFloat();
+  messageHandlerInstance->continueCalibration(xPos, yPos);
+  request->send(200, "text/html", "Calibration continued");
+}
+void WebServer::commandEndCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->endCalibration();
+  request->send(200, "text/html", "Calibration ended");
+}
+void WebServer::clapReceived(int clapId, unsigned long long clapTime) {
+    String jsonString = "{";
+    jsonString += "\"event\":\"clap\",";
+    jsonString += "\"clapId\":";
+    jsonString += String(clapId);
+    jsonString += ",\"clapTime\":";
+    jsonString += String(clapTime);
+    jsonString += "}";
+    ESP_LOGI("WEB", "Clap received: %s", jsonString.c_str());
+    events.send(jsonString.c_str(), "clap_received");
+}
+
+void WebServer::setSleepTime(AsyncWebServerRequest *request) {
+  int hours = request->getParam("hours")->value().toInt();
+  int minutes = request->getParam("minutes")->value().toInt();
+  int seconds = request->getParam("seconds")->value().toInt();
+  // Set the time to the specified hours and minutes
+  messageHandlerInstance->setSleepTime(hours, minutes, seconds);
+}
+void WebServer::setWakeupTime(AsyncWebServerRequest *request) {
+  int hours = request->getParam("hours")->value().toInt();
+  int minutes = request->getParam("minutes")->value().toInt();
+  int seconds = request->getParam("seconds")->value().toInt();
+  // Set the time to the specified hours and minutes
+  messageHandlerInstance->setWakeupTime(hours, minutes, seconds);
 }
 #endif

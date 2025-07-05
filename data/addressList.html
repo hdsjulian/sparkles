@@ -10,7 +10,7 @@
 <body>
   <div class="topnav">
     <h3>ESP-NOW DASHBOARD</h3>
-    <div class="hamburger" onclick="toggleMenu()">
+    <div class="hamburger" id="hamburgerMenu">
       <div></div>
       <div></div>
       <div></div>
@@ -23,7 +23,7 @@
   </div>
   
   <div class="content">
-    <div class="cards">
+    <div class="cards" id="functionCards">
       <div class="card deviceList">
         <p>
           <span class="reading">
@@ -53,9 +53,12 @@
           </span>
         </p>
       </div>
+      
+    </div>
+    <div class="cards" id="boardCards">
     </div>
   </div>
 
-  <script src="addressList.js"></script>
+  <script type="module" src="addressList.js"></script>
 </body>
 </html>

@@ -33,7 +33,7 @@
 //magic numbers
 #define OCTAVE 12
 #define OCTAVESONKEYBOARD 8
-
+#define ADMIN_PRESENT_TIMEOUT 60000
 
 
 //config variables
@@ -103,6 +103,18 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define MSG_CLAP 12
 #define MSG_CONFIG_DATA 13
 #define MSG_UPDATE_VERSION 14
+#define MSG_COMMAND 15
+
+#define CMD_START_CALIBRATION 1
+#define CMD_CONTINUE_CALIBRATION 2
+#define CMD_STOP_CALIBRATION 3
+#define CMD_END_CALIBRATION 4
+#define CMD_ASK_ADMIN_PRESENT 5
+#define CMD_SET_ADMIN_PRESENT 6 
+#define CMD_SET_ADMIN_NOT_PRESENT 7
+
+
+
 
 enum activeStatus {
   ACTIVE, 
@@ -161,7 +173,7 @@ struct clap_table {
 struct message_address{
   uint8_t address[6];
   Version version;
-  message_address() : address{0}, version() {}
+  message_address() : address{0}, version(VERSION) {}
   message_address(const message_address& other) : version(other.version) {
     if (this != &other) memcpy(address, other.address, sizeof(address));
   }
@@ -204,7 +216,8 @@ struct animation_midi {
   uint8_t note;
   uint8_t velocity;
   uint8_t octaveDistance;
-  animation_midi() : note(0), velocity(0), octaveDistance(0) {}
+  uint8_t offset; // Offset to adjust the MIDI note to the correct LED position
+  animation_midi() : note(0), velocity(0), octaveDistance(0), offset(0) {}
 };
 
 union animation_params {
@@ -242,16 +255,14 @@ struct message_ask_command {
 };
 
 
-
 struct message_system_status {
   int numDevices;
   message_system_status() :  numDevices(0) {}
 };
 
 struct message_sleep_wakeup {
-  unsigned long long sleepTime;
   unsigned long long duration; 
-  message_sleep_wakeup() : sleepTime(0), duration(0) {}
+  message_sleep_wakeup() : duration(0) {}
 
 };
 struct message_timer {
@@ -282,6 +293,15 @@ struct message_update_version {
   }
 };
 
+struct message_command {
+  uint8_t commandType;
+  message_command() : commandType(0) {}
+  message_command(uint8_t cmdType) : commandType(cmdType) {}
+  message_command(const message_command& other) : commandType(other.commandType) {
+}
+};
+
+
 union message_payload {
   struct message_address        address;
   struct message_timer          timer;
@@ -294,6 +314,7 @@ union message_payload {
   struct message_clap           clap;
   struct message_config_data    configData;
   struct message_update_version updateVersion;
+  struct message_command        command;
   message_payload() {}
   message_payload(const message_payload& other) {
       if (this != &other) memcpy(this, &other, sizeof(message_payload));
@@ -321,7 +342,7 @@ struct message_data {
           memcpy(this->senderAddress, other.senderAddress, sizeof(this->senderAddress));
           payload = other.payload;
       }
-  }
+  };
   
   message_data& operator=(const message_data& other) {
       if (this != &other) {
