@@ -2,13 +2,16 @@
 
 void LedHandler::addToMidiTable(midiNoteTable midiNoteTableArray[OCTAVESONKEYBOARD], message_animation animation, int position)
 {
-    if (animation.animationParams.midi.note % OCTAVE != getMidiNoteFromPosition(position) % OCTAVE)
+    if (animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE)
     {
         return;
     }
 
     int note = animation.animationParams.midi.note;
     int velocity = animation.animationParams.midi.velocity;
+    if (animation.animationParams.midi.note % 12 == 1) { // C# is 1 in the chromatic scale
+        velocity = static_cast<int>(velocity * 0.8f);
+    }
     int octave = (note / OCTAVE) - 1;
     if (xSemaphoreTake(midiNoteTableMutex, portMAX_DELAY) == pdTRUE) {
         if (midiNoteTableArray[octave].velocity < velocity)

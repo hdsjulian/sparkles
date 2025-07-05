@@ -44,11 +44,12 @@ void MessageHandler::handleReceive() {
                 //ESP_LOGI("MSG", "Midi note: %d", animation->animationParams.midi.note);
                 //ESP_LOGI("MSG", "Midi velocity: %d", animation->animationParams.midi.velocity);
                 if (incomingData.payload.address.version != version) {
-                    ESP_LOGI("MSG", "Received address with lower version, ignoring");
+                    ESP_LOGI("MSG", "Received address with lower version, ignoring. Version: %d, Current Version: %d", incomingData.payload.address.version, version);
+                    ESP_LOGI("MSG", "This version is %s vs other version is %s", version.toString().c_str(), incomingData.payload.address.version.toString().c_str());
                     message_data updateVersionMessage = createUpdateVersionMessage(version);
                     memcpy(updateVersionMessage.targetAddress, incomingData.senderAddress, 6);
                     xQueueSend(sendQueue, &updateVersionMessage, portMAX_DELAY);
-                    return;
+                    continue;
                 }
                 else if (!isOTAUpdating) {
                     message_address address = (message_address)incomingData.payload.address;
@@ -64,6 +65,7 @@ void MessageHandler::handleReceive() {
                 timerSyncHandle = NULL;
                 addressList[timerIndex].active = ACTIVE;
                 addressList[timerIndex].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
+                ESP_LOGI("MSG", "Received got timer message");
                 ESP_LOGI("MSG", "Battery Percentage %.2f",incomingData.payload.gotTimer.batteryPercentage );
                 addressList[timerIndex].lastUpdateTime = millis();
                 setCurrentTimerIndex(-1);
@@ -78,11 +80,13 @@ void MessageHandler::handleReceive() {
                 ESP_LOGI("MSG", "Received status message");
                 ESP_LOGI("MSG", "Battery Percentage %.2f",incomingData.payload.status.batteryPercentage );
                 for (int i = 0; i < NUM_DEVICES; i++) {
+                    ESP_LOGI("MSG", "Checking address %d", i);
                     ESP_LOGI("MSG", "Address %d: %02x:%02x:%02x:%02x:%02x:%02x", i, addressList[i].address[0], addressList[i].address[1], addressList[i].address[2], addressList[i].address[3], addressList[i].address[4], addressList[i].address[5]);
                     ESP_LOGI("MSG", "Incoming address: %02x:%02x:%02x:%02x:%02x:%02x", incomingData.senderAddress[0], incomingData.senderAddress[1], incomingData.senderAddress[2], incomingData.senderAddress[3], incomingData.senderAddress[4], incomingData.senderAddress[5]);
                     if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
                         addressList[i].batteryPercentage = incomingData.payload.status.batteryPercentage;
                         addressList[i].lastUpdateTime = millis();
+                        
                         WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
                         ESP_LOGI("MSG", "Updating address %d", i);
                         webServerInstance.updateAddress(i);      
@@ -107,24 +111,41 @@ void MessageHandler::handleReceive() {
                 ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
                 int clapIndex = getClapIndex();
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
-                    clapTable[getClapIndex()].clapTime = incomingData.payload.clap.clapTime;
+                    setLastClapTime(incomingData.payload.clap.clapTime);
+                    WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
+                    webServerInstance.clapReceived(clapIndex, incomingData.payload.clap.clapTime);
                 }
                 else {
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
-                            addressList[i].distances[clapIndex] = convertMicrosToMeters(clapTable[clapIndex].clapTime - incomingData.payload.clap.clapTime);
+                            addressList[i].distances[clapIndex] = convertMicrosToMeters(getLastClapTime() - incomingData.payload.clap.clapTime);
                             break;
                         }
                     }
                 }
             }
-            else if (incomingData.messageType == MSG_SLEEP_WAKEUP) {
-                //handleSleepWakeup(incomingData);
-            }
+
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
                 ESP_LOGI("MSG", "Received system status message");
                 ESP_LOGI("MSG", "Number of devices: %d", incomingData.payload.systemStatus.numDevices);
             }
+
+            else if (incomingData.messageType == MSG_COMMAND && incomingData.payload.command.commandType == CMD_ASK_ADMIN_PRESENT) {
+
+                if (getAdminPresent() + 60000 > millis()) {
+                    ESP_LOGI("MSG", "Received ask admin present message");
+                    message_data commandMessage = createCommandMessage(CMD_SET_ADMIN_PRESENT);
+                    memcpy(commandMessage.targetAddress, incomingData.senderAddress, 6);
+                    pushToSendQueue(commandMessage);
+                }
+                else {
+                    message_data commandMessage = createCommandMessage(CMD_SET_ADMIN_NOT_PRESENT);
+                    memcpy(commandMessage.targetAddress, incomingData.senderAddress, 6);
+                    pushToSendQueue(commandMessage);
+                    ESP_LOGI("MSG", "Admin hasn't been present for a while");
+                }
+
+             }
             else {
                 ESP_LOGI("MSG", "Unknown message type ");
             }
@@ -232,13 +253,13 @@ void MessageHandler::runOTAUpdateTask() {
             ESP_LOGE("MSG", "Invalid OTA update address ID");
             isOTAUpdating = false;
             vTaskDelete(otaUpdateHandle);
-            return;
+            
         }
         if (getNextOTAAddress() == true) {
             setOTAUpdateAddressId(getOTAUpdateAddressId() + 1);
             if (getOTAUpdateAddressId() >= NUM_DEVICES || memcmp(addressList[getOTAUpdateAddressId()].address, emptyAddress, 6) == 0) {
                 vTaskDelete(otaUpdateHandle);
-                return;
+                
             }
             message_data updateVersionMessage;
             updateVersionMessage = createUpdateVersionMessage(version);
@@ -254,5 +275,144 @@ void MessageHandler::runOTAUpdateTask() {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
+
+void MessageHandler::startCalculatePositionsTask() {
+    xTaskCreatePinnedToCore(calculatePositionsTaskWrapper, "calculatePositions", 10000, this, 2, &calculatePositionsHandle, 0);
+}
+void MessageHandler::calculatePositionsTaskWrapper(void *pvParameters) {
+    MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
+    messageHandlerInstance->runCalculatePositionsTask();
+}
+void MessageHandler::runCalculatePositionsTask() {
+    ESP_LOGI("MSG", "Running calculate positions task");
+    while (true) {
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
+                continue;
+            }
+            ESP_LOGI("MSG", "Calculating position for device %d", i);
+
+            // Prepare matrices for least squares
+            int validClaps = 0;
+            float A[NUM_CLAPS][2] = {0}; // Coefficients matrix
+            float b[NUM_CLAPS] = {0};    // Constants vector
+
+            // Reference point (first clap)
+            float x1 = 0, y1 = 0, d1 = 0;
+            bool referenceSet = false;
+
+            for (int j = 0; j < NUM_CLAPS; j++) {
+                if (clapTable[j].clapTime == 0) {
+                    continue; // Skip if clap time is not set
+                }
+
+                float xj = clapTable[j].xPos;
+                float yj = clapTable[j].yPos;
+                float dj = addressList[i].distances[j];
+
+                if (!referenceSet) {
+                    // Set the first clap as the reference point
+                    x1 = xj;
+                    y1 = yj;
+                    d1 = dj;
+                    referenceSet = true;
+                    continue;
+                }
+
+                // Fill the A matrix and b vector
+                A[validClaps][0] = 2 * (xj - x1);
+                A[validClaps][1] = 2 * (yj - y1);
+                b[validClaps] = d1 * d1 - dj * dj - x1 * x1 - y1 * y1 + xj * xj + yj * yj;
+
+                validClaps++;
+            }
+
+            // Ensure we have at least 3 valid claps for trilateration
+            if (validClaps < 2) {
+                ESP_LOGW("MSG", "Not enough claps for trilateration for device %d", i);
+                continue;
+            }
+
+            // Solve the system using least squares
+            float AtA[2][2] = {0}; // A^T * A
+            float Atb[2] = {0};    // A^T * b
+
+            for (int row = 0; row < validClaps; row++) {
+                AtA[0][0] += A[row][0] * A[row][0];
+                AtA[0][1] += A[row][0] * A[row][1];
+                AtA[1][0] += A[row][1] * A[row][0];
+                AtA[1][1] += A[row][1] * A[row][1];
+
+                Atb[0] += A[row][0] * b[row];
+                Atb[1] += A[row][1] * b[row];
+            }
+
+            // Calculate the determinant of AtA
+            float det = AtA[0][0] * AtA[1][1] - AtA[0][1] * AtA[1][0];
+            if (det == 0) {
+                ESP_LOGE("MSG", "Trilateration failed: Determinant is zero");
+                continue;
+            }
+
+            // Invert AtA
+            float invAtA[2][2] = {
+                {AtA[1][1] / det, -AtA[0][1] / det},
+                {-AtA[1][0] / det, AtA[0][0] / det}
+            };
+
+            // Calculate the position (x, y)
+            float x = invAtA[0][0] * Atb[0] + invAtA[0][1] * Atb[1];
+            float y = invAtA[1][0] * Atb[0] + invAtA[1][1] * Atb[1];
+
+            // Store the calculated position
+            addressList[i].xPos = x;
+            addressList[i].yPos = y;
+
+            ESP_LOGI("MSG", "Device %d position calculated: X=%.2f, Y=%.2f", i, x, y);
+        }
+
+        // Delay before recalculating
+        WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
+        webServerInstance.setCalculationDone(true);
+        webServerInstance.updateAddressList();
+        vTaskDelete(calculatePositionsHandle);
+    }
+}
+
+void MessageHandler::endCalibration() {
+    message_data endMessage = createCommandMessage(CMD_END_CALIBRATION, true);
+    pushToSendQueue(endMessage);
+    WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
+    startCalculatePositionsTask();
+}
+
+void MessageHandler::startCalibrationMaster() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        ESP_LOGI("MSG", "Starting calibration as master");
+        clapIndex = 0;
+        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
+        message_data startMessage = createCommandMessage(CMD_START_CALIBRATION, true);
+        pushToSendQueue(startMessage);
+        xSemaphoreGive(configMutex);
+    }
+}
+void MessageHandler::cancelCalibration() {
+    ESP_LOGI("MSG", "Cancelling calibration");
+    setLastClapTime(0);
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
+            continue;
+        }
+        addressList[i].distances[clapIndex] = 0;
+    }
+}
+void MessageHandler::continueCalibration(float xPos, float yPos) {
+    ESP_LOGI("MSG", "Continuing calibration");
+    setClap(xPos, yPos);
+    clapIndex++;
+    message_data continueMessage = createCommandMessage(CMD_CONTINUE_CALIBRATION, true);
+    pushToSendQueue(continueMessage);
+}
+
 
 #endif

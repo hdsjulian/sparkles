@@ -39,6 +39,8 @@ public:
     int getNumDevices();
     message_animation createAnimation(animationEnum animationType);
     message_animation createFlash(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness);
+    void stopAnimationTask();
+    void turnOff();
 
 private:
     LedHandler();

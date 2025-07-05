@@ -63,7 +63,10 @@ function setupEventSource() {
     sourceEvents.addEventListener('update_board', (e) => {
       const obj = JSON.parse(e.data);
       console.log("Update board event received");
+      console.log(document.getElementById("boardCard" + obj.id));
       boardCards(obj);
+      console.log(document.getElementById("boardCard" + obj.id));
+    
     });
   }
 }
@@ -125,7 +128,7 @@ function handleCommandAnimateClick() {
 document.addEventListener('DOMContentLoaded', () => {
   // Add event listeners
   document.getElementById('t1').addEventListener('click', () => handleUpdateDeviceClick(-1));
-  document.getElementById('cmd_sync').addEventListener('click', handleCommandSyncClick);
+  document.getElementById('cmd_sync_all').addEventListener('click', handleCommandSyncClick);
   document.getElementById('cmd_animate').addEventListener('click', handleCommandAnimateClick);
   document.getElementById('settings').addEventListener('click', () => {
     window.location.href = "settings.html";
@@ -135,3 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventSource();
   handleUpdateDeviceClick(-1);
 });
+
+document.getElementById('hamburgerMenu').addEventListener('click', toggleMenu);
+

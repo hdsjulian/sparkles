@@ -319,7 +319,7 @@ void LedHandler::runMidi()
                 continue;
             }
             //ESP_LOGI("LED", "Decay factor: %f at %d", midiDecayFactor, micros());
-            if (midiDecayFactor <= 1)
+            if (midiDecayFactor <= 1.0)
             {
                 localMidiNoteTableArray[i].velocity = 0;
                 localMidiNoteTableArray[i].note = 0;

@@ -44,6 +44,32 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_SLEEP_WAKEUP) {
                 handleSleepWakeup(incomingData);
             }
+            else if (incomingData.messageType == MSG_COMMAND) {
+                message_command commandMessage = (message_command)incomingData.payload.command;
+                ESP_LOGI("MSG", "Received command message with type: %d", commandMessage.commandType);
+                if (commandMessage.commandType == CMD_START_CALIBRATION) {
+                    ESP_LOGI("MSG", "Starting calibration");
+                    startCalibrationClient();
+                }
+                if (commandMessage.commandType == CMD_SET_ADMIN_NOT_PRESENT) {
+                    setAdminPresent(false);
+                }
+                if (commandMessage.commandType == CMD_SET_ADMIN_PRESENT) {
+                    setAdminPresent(true);
+                    ESP_LOGI("MSG", "Admin present, not going to sleep");
+                }
+
+                
+            }
+            else if (incomingData.messageType == MSG_CLAP) {
+                message_clap clapMessage = incomingData.payload.clap;
+                startClapTask();
+            }
+            else if (incomingData.messageType == MSG_CONFIG_DATA) {
+                message_config_data configData = incomingData.payload.configData;
+                ESP_LOGI("MSG", "Received config data for board ID: %d", configData.boardId);
+                setBoardPosition(configData.boardId, configData.xPos, configData.yPos);
+            }
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
                 message_update_version updateVersionMessage = incomingData.payload.updateVersion;
                 if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
@@ -75,6 +101,8 @@ void MessageHandler::handleTimer(message_data incomingData) {
         if (delayCounter < TIMER_ARRAY_COUNT) {
             delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);    
             delayCounter++;    
+            ESP_LOGI("MSG", "Delay average: %d, Delay Counter %d", delayAverage, delayCounter);
+
         }
         else {
             message_data gotTimerMessage;
@@ -126,11 +154,10 @@ void MessageHandler::goToSleep() {
 
 void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
-    message_animation animation;
-    animation.animationType = OFF;
-    ledInstance->pushToAnimationQueue(animation);
+    message_animation animationMessage = ledInstance->createAnimation(OFF);
+    ledInstance->pushToAnimationQueue(animationMessage);
     vTaskDelay(1000/portTICK_PERIOD_MS);
-    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.sleepTime);
+    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration); // Convert seconds to microseconds
     esp_light_sleep_start();
     turnWifiOn();
 }
@@ -169,9 +196,14 @@ void MessageHandler::runAnnounceAddress() {
     message_data messageData;
     messageData.messageType = MSG_ADDRESS;
     memcpy(messageData.targetAddress, hostAddress, 6);
+    ESP_LOGI("MSG", "Announcing address with version: %s", version.toString().c_str());
+    messageData.payload.address.version = version;
+    ESP_LOGI("MSG", "Version is now : %s", version.toString().c_str());
     WiFi.macAddress(messageData.payload.address.address);
     while (getAddressAnnounced() == false) {    
-        ESP_LOGI("MSG", "Announcing address");    
+        ESP_LOGI("MSG", "Announcing address");  
+        ESP_LOGI("MSG", "Version is now : %s", version.toString().c_str());
+  
         xQueueSend(sendQueue, &messageData, portMAX_DELAY);
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
@@ -215,13 +247,42 @@ void MessageHandler::runBatterySyncWrapper(void *pvParameters) {
 }
 void MessageHandler::runBatterySync() {
     while (true) {
-        vTaskDelay(1000/portTICK_PERIOD_MS);
-        message_data statusMessage;
-        statusMessage.messageType = MSG_STATUS;
-        memcpy(statusMessage.targetAddress, hostAddress, 6);
-        statusMessage.payload.status.batteryPercentage = random(0.0, 100.0);
-        
+        float batteryPercentage = getBatteryPercentage(); // Use your actual battery reading function
+        if (batteryPercentage < 10.0 && false) {
+            if (getBatteryLow() == false) {
+                setBatteryLow(true);
+                ledInstance->turnOff();
+                message_data statusMessage = createStatusMessage();
+                esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
+                vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for 1 second before checking again
+            }   
+            message_data askAdminPresentMessage = createCommandMessage(CMD_ASK_ADMIN_PRESENT);
+            memcpy(askAdminPresentMessage.targetAddress, hostAddress, 6);
+            esp_now_send(hostAddress, (uint8_t *) &askAdminPresentMessage, sizeof(askAdminPresentMessage));
+            vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for 1
+            if (getAdminPresent()) {
+                ESP_LOGI("MSG", "Admin present, not going to sleep");
+                setAdminPresent(0);
+                ledInstance->createFlash(micros(), 200, 100, 0, 255, 255); // Skip the sleep if admin is present
+                vTaskDelay(60000 / portTICK_PERIOD_MS); // Wait for 1 minute before checking again
+            }
+            else {
+                turnWifiOff();
+                //go to sleep for 5 minutes
+                esp_sleep_enable_timer_wakeup(5 * 60 * 1000000); //
+                esp_light_sleep_start();
+                turnWifiOn();
+            }
+
+        }
+        else {
+        setBatteryLow(false);
+        message_data statusMessage = createStatusMessage();
         esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
+        vTaskDelay(30 * 60 * 1000 / portTICK_PERIOD_MS); // 30 minutes
+
+        }
+
     }
 }
 
@@ -239,7 +300,6 @@ void MessageHandler::turnWifiOn() {
     addPeer(const_cast<uint8_t*>(broadcastAddress));
     WiFi.mode(WIFI_STA);
     Serial.println("should initialize");
-
 }
 void MessageHandler::turnWifiOff() {
     WiFi.disconnect(true);

@@ -14,14 +14,13 @@ void MessageHandler::runClapTask() {
     double data;
     while (true) {
         data = (double)analogRead(audioPin)/2048-1;
-        peakdetection.add(data);
+        peakDetection.add(data);
         int peak = peakDetection.getPeak(); 
-        if (peak == -1 and millis() > lastClap+1000) {
-            Serial.println("Happened "+String(peakDetection.ago)+" microseconds ago");
-            Serial.println("avg at clap "+String(peakDetection.avgatclap));
-            Serial.println("data: "+String(data));
-            ledInstance->pushToAnimationQueue(ledInstance->createFlash(millis(), 300, 2, 0, 255, 255));
-            message_data clapMessage = createClapMessage(hostAddress);
+        if (peak == -1) {
+            ESP_LOGI("CLAP", "Peak Detected at %i", micros());
+            message_animation animation = ledInstance->createFlash(millis(), 300, 2, 0, 255, 255);
+            ledInstance->pushToAnimationQueue(animation);
+            message_data clapMessage = createClapMessage(true);
             pushToSendQueue(clapMessage);
             vTaskDelete(NULL);
           }

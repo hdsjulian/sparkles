@@ -79,27 +79,27 @@ document.getElementById("triggerSync").addEventListener('click', function() {
       }, 1000);
 });
 
-document.getElementById('submit_goodnight').addEventListener('click', function() {
-  var hours = document.getElementById('hours_goodnight').value;
-  var minutes = document.getElementById('minutes_goodnight').value;
-  var seconds = document.getElementById('seconds_goodnight').value;
-  var fetchUrl = `/goodNight?hours=${encodeURIComponent(hours)}&minutes=${encodeURIComponent(minutes)}&seconds=${encodeURIComponent(seconds)}`;
+document.getElementById('submit_sleepTime').addEventListener('click', function() {
+  var hours = document.getElementById('hours_sleepTime').value;
+  var minutes = document.getElementById('minutes_sleepTime').value;
+  var seconds = document.getElementById('seconds_sleepTime').value;
+  var fetchUrl = `/setSleepTime?hours=${encodeURIComponent(hours)}&minutes=${encodeURIComponent(minutes)}&seconds=${encodeURIComponent(seconds)}`;
   console.log(fetchUrl);
     fetchMe(fetchUrl);
-    var clickButton = document.getElementById("cmd_goodnight");
+    var clickButton = document.getElementById("cmd_sleepTime");
   clickButton.classList.add("active");
   setTimeout(function() {
         clickButton.classList.remove('active');
       }, 1000);
 });
-document.getElementById('submit_goodmorning').addEventListener('click', function() {
-  var hours = document.getElementById('hours_goodmorning').value;
-  var minutes = document.getElementById('minutes_goodmorning').value;
-  var seconds = document.getElementById('seconds_goodmorning').value;
-  var fetchUrl = `/goodMorning?hours=${encodeURIComponent(hours)}&minutes=${encodeURIComponent(minutes)}&seconds=${encodeURIComponent(seconds)}`;
+document.getElementById('submit_wakeupTime').addEventListener('click', function() {
+  var hours = document.getElementById('hours_wakeupTime').value;
+  var minutes = document.getElementById('minutes_wakeupTime').value;
+  var seconds = document.getElementById('seconds_wakeupTime').value;
+  var fetchUrl = `/setWakeupTime?hours=${encodeURIComponent(hours)}&minutes=${encodeURIComponent(minutes)}&seconds=${encodeURIComponent(seconds)}`;
   console.log(fetchUrl);
     fetchMe(fetchUrl);
-    var clickButton = document.getElementById("cmd_goodmorning");
+    var clickButton = document.getElementById("cmd_wakeupTime");
   clickButton.classList.add("active");
   setTimeout(function() {
         clickButton.classList.remove('active');

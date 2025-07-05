@@ -41,10 +41,22 @@ class WebServer {
         void commandSync(AsyncWebServerRequest *request);
         void commandSyncAll(AsyncWebServerRequest *request);
         void commandBlink(AsyncWebServerRequest *request);
+        void commandStartCalibration(AsyncWebServerRequest *request);
+        void commandOTAUpdate(AsyncWebServerRequest *request);
+        void commandCancelCalibration(AsyncWebServerRequest *request);
+        void commandResetCalibration(AsyncWebServerRequest *request);
+        void commandContinueCalibration(AsyncWebServerRequest *request);
+        void commandEndCalibration(AsyncWebServerRequest *request);
+        void setSleepTime(AsyncWebServerRequest *request);
+        void setWakeupTime(AsyncWebServerRequest *request);
+        void clapReceived(int clapId, unsigned long long clapTime);
         void getAddressList(AsyncWebServerRequest *request);
         void serveOnNotFound(AsyncWebServerRequest *request);
-        String jsonFromAddress(int id);
+        void updateAddressList();
+        void setCalculationDone(bool done);
         void updateAddress(int id);
+        String jsonFromAddress(int id);
+
 
 };
 #endif

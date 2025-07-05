@@ -64,3 +64,22 @@ message_animation LedHandler::createFlash(unsigned long long startTime, unsigned
 
     return animation;
 }
+
+void LedHandler::stopAnimationTask() {
+    if (animationTaskHandle != NULL) {
+        vTaskDelete(animationTaskHandle);
+        animationTaskHandle = NULL;
+    }
+    setCurrentAnimation(OFF);
+    ESP_LOGI("LED", "Animation task stopped");
+}
+
+void LedHandler::turnOff() {
+    ledsOff();
+    setCurrentAnimation(OFF);
+    if (animationTaskHandle != NULL) {
+        vTaskDelete(animationTaskHandle);
+        animationTaskHandle = NULL;
+    }
+    ESP_LOGI("LED", "LEDs turned off and animation task stopped");
+}

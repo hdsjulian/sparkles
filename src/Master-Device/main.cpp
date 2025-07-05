@@ -24,7 +24,9 @@ ESP_LOGI("Received", "Data at %d", micros());
 
 }
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {}
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
+
+}
 unsigned long lastTick = 0;
 int tickCount = 0;
 void setup()
@@ -71,5 +73,13 @@ void loop()
     ESP_LOGI("", "Tick %s", msgHandler.stringAddress(address, true).c_str());
     Serial.println("Blub");
   }
+  if (millis() > msgHandler.getSleepTime() && msgHandler.getSleepTime() > 0 && msgHandler.getSleepDuration() > 0) {
+    ESP_LOGI("Sleep", "Going to sleep");
+    msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for the message to be sent
+    esp_sleep_enable_timer_wakeup(msgHandler.getSleepDuration() - 2000); // Sleep for 24 hours
+    esp_light_sleep_start();
+
+  };
   // put your main code here, to run repeatedly:
 }

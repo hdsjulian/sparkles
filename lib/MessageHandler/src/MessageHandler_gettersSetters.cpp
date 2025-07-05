@@ -304,10 +304,14 @@ void MessageHandler::setCommand(message_data command, uint8_t * address) {
     }
 }
 */
-message_data MessageHandler::createClapMessage(uint8_t * address) {
+message_data MessageHandler::createClapMessage(bool isHost) {
     message_data clapMessage;
     clapMessage.messageType = MSG_CLAP;
-    memcpy(clapMessage.targetAddress, address, 6);
+    if (!isHost) {
+        memcpy(clapMessage.targetAddress, broadcastAddress, 6);
+    } else {
+        memcpy(clapMessage.targetAddress, clapDeviceAddress, 6);
+    }
     message_clap clapPayload;
     clapPayload.clapTime = micros() - ledInstance->getTimerOffset();
     memcpy(&clapMessage.payload.clap, &clapPayload, sizeof(clapPayload));
@@ -338,14 +342,39 @@ message_data MessageHandler::createUpdateVersionMessage(Version version) {
     return updateMessage;
 }
 
+
+message_data MessageHandler::createCommandMessage(int commandType, bool isBroadcast ) {
+    message_data commandMessage;
+    commandMessage.messageType = MSG_COMMAND;
+    if (isBroadcast) {
+        memcpy(commandMessage.targetAddress, broadcastAddress, 6);
+    } else {
+        memcpy(commandMessage.targetAddress, clapDeviceAddress, 6);
+    }
+    commandMessage.payload.command.commandType = commandType;
+    WiFi.macAddress(commandMessage.senderAddress);
+    return commandMessage;
+}
+
+message_data MessageHandler::createStatusMessage() {
+    message_data statusMessage;
+    statusMessage.messageType = MSG_STATUS;
+    memcpy(statusMessage.targetAddress, broadcastAddress, 6);
+    message_status statusPayload;
+    statusPayload.batteryPercentage = getBatteryPercentage();
+    memcpy(&statusMessage.payload.status, &statusPayload, sizeof(statusPayload));
+    WiFi.macAddress(statusMessage.senderAddress);
+    return statusMessage;
+}
+
 void MessageHandler::setClap(float xPos, float yPos) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        clapIndex++;
         if (clapIndex >= NUM_CLAPS) {
             clapIndex = 0;
         }
         clapTable[clapIndex].xPos = xPos;
         clapTable[clapIndex].yPos = yPos;
+        clapTable[clapIndex].clapTime = lastClapTime; // Use the last clap time
         xSemaphoreGive(configMutex);
     }
 }
@@ -357,6 +386,8 @@ int MessageHandler::getClapIndex() {
     }
     return returnIndex;
 }
+
+
 clap_table MessageHandler::getClap(int index) {
     clap_table returnClap;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
@@ -378,6 +409,7 @@ bool MessageHandler::getIsOTAUpdating() {
         xSemaphoreGive(configMutex);
         return returnIsUpdating;
     }
+    return false;
   }
 
 void MessageHandler::setRequestingOTAUpdate(bool request) {
@@ -392,6 +424,7 @@ bool MessageHandler::getRequestingOTAUpdate() {
         xSemaphoreGive(configMutex);
         return returnRequesting;
     }
+    return false;
 }
 
 void MessageHandler::setNextOTAAddress(bool next) {
@@ -406,4 +439,131 @@ bool MessageHandler::getNextOTAAddress() {
         xSemaphoreGive(configMutex);
         return returnNext;
     }
+    return false;
+}
+
+void MessageHandler::setLastClapTime(unsigned long long time) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        lastClapTime = time;
+        xSemaphoreGive(configMutex);
+    }
+}
+unsigned long long MessageHandler::getLastClapTime() {
+    unsigned long long returnTime;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnTime = lastClapTime;
+    }
+    xSemaphoreGive(configMutex);
+    return returnTime;
+}
+
+int MessageHandler::getOTAUpdateAddressId() {
+    int returnId;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnId = otaUpdateAddressId;
+        xSemaphoreGive(configMutex);
+    }
+    return returnId;
+}
+
+void MessageHandler::setOTAUpdateAddressId(int id) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        otaUpdateAddressId = id;
+        xSemaphoreGive(configMutex);
+    }
+}
+
+void MessageHandler::setSleepTime(int hours, int minutes, int seconds) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        sleepTimeHours = hours;
+        sleepTimeMinutes = minutes;
+        sleepTimeSeconds = seconds;
+        xSemaphoreGive(configMutex);
+    }
+}
+void MessageHandler::setWakeupTime(int hours, int minutes, int seconds) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        wakeupTimeHours = hours;
+        wakeupTimeMinutes = minutes;
+        wakeupTimeSeconds = seconds;
+        xSemaphoreGive(configMutex);
+    }
+}
+
+
+unsigned long MessageHandler::getSleepTime() {
+    unsigned long sleepTime;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        if (sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) {
+            sleepTime = 0; // No sleep time set
+            xSemaphoreGive(configMutex);
+            return sleepTime;
+        }
+        unsigned long currentMillis = millis();
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        time_t now = tv.tv_sec;
+        struct tm *currentTime = localtime(&now);
+        int currentSeconds = currentTime->tm_hour * 3600 + currentTime->tm_min * 60 + currentTime->tm_sec;
+        int targetSeconds = sleepTimeHours * 3600 + sleepTimeMinutes * 60 + sleepTimeSeconds;
+        int secondsUntilSleep = targetSeconds - currentSeconds;
+        if (secondsUntilSleep <= 0) {
+            secondsUntilSleep += 24 * 3600;
+        }
+        sleepTime = secondsUntilSleep * 1000UL - (tv.tv_usec / 1000);
+        xSemaphoreGive(configMutex);
+    }
+    return sleepTime;
+}
+
+unsigned long MessageHandler::getSleepDuration() {
+    unsigned long duration = 0;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        if (sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) {
+            xSemaphoreGive(configMutex);
+            return 0; // No sleep time set
+        }
+        int sleepSeconds = sleepTimeHours * 3600 + sleepTimeMinutes * 60 + sleepTimeSeconds;
+        int wakeupSeconds = wakeupTimeHours * 3600 + wakeupTimeMinutes * 60 + wakeupTimeSeconds;
+        int durationSeconds = wakeupSeconds - sleepSeconds;
+        if (durationSeconds <= 0) {
+            // Wakeup is on the next day
+            durationSeconds += 24 * 3600;
+        }
+        duration = durationSeconds * 1000UL;
+        xSemaphoreGive(configMutex);
+    }
+    return duration;
+}
+
+unsigned long MessageHandler::getAdminPresent() {
+    unsigned long returnTime;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnTime = lastAdminPresent;
+        xSemaphoreGive(configMutex);
+    }
+    return returnTime;
+}
+
+void MessageHandler::setAdminPresent(unsigned long time) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        lastAdminPresent = time;
+        xSemaphoreGive(configMutex);
+    }
+}
+
+
+void MessageHandler::setBatteryLow(bool low) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        isBatteryLow = low;
+        xSemaphoreGive(configMutex);
+    }
+}
+bool MessageHandler::getBatteryLow() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        bool returnLow = isBatteryLow;
+        xSemaphoreGive(configMutex);
+        return returnLow;
+    }
+    return false;
 }
