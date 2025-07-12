@@ -8,6 +8,9 @@
 #include <MessageHandler.h>
 #include <Version.h>
 #include <WebServer.h>
+#include "esp_sleep.h"
+#include "driver/rtc_io.h"
+#include "soc/rtc.h"
 
 // put function declarations here:
 
@@ -29,6 +32,8 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
 }
 unsigned long lastTick = 0;
 int tickCount = 0;
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -46,6 +51,11 @@ void setup()
     Serial.println("LittleFS mount failed");
     lfs_started = false;
   }
+
+  rtc_clk_32k_enable(true);
+  rtc_clk_32k_bootstrap(10);
+
+  rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
   WiFi.mode(WIFI_AP_STA);
   if (esp_now_init() != ESP_OK)
 
@@ -71,14 +81,50 @@ void loop()
     WiFi.macAddress(address);
     lastTick = millis();
     ESP_LOGI("", "Tick %s", msgHandler.stringAddress(address, true).c_str());
-    Serial.println("Blub");
+    struct tm timeinfo;
+    
+    if (getLocalTime(&timeinfo)) {
+        ESP_LOGI("", "Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    } else {
+        ESP_LOGI("", "Failed to obtain time");
+    }
+    if (!msgHandler.isInSleepPhase()) {
+        ESP_LOGI("Sleep", "Not in sleep phase");
+        unsigned long sleepTime = msgHandler.getSleepTime();
+        vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for the message to be sent
+        if (sleepTime > 0) {
+            ESP_LOGI("Sleep", "Next sleep time in %lu ms", sleepTime);
+        } else {
+            ESP_LOGI("Sleep", "No sleep time set"); 
+        }
+    }
   }
-  if (millis() > msgHandler.getSleepTime() && msgHandler.getSleepTime() > 0 && msgHandler.getSleepDuration() > 0) {
-    ESP_LOGI("Sleep", "Going to sleep");
+
+  if (msgHandler.isInSleepPhase()) {
+    ESP_LOGI("Sleep", "Going to sleep for %lu ms", msgHandler.getSleepDuration());
+    esp_sleep_enable_timer_wakeup((unsigned long)((msgHandler.getSleepDuration()-1)*1000));
     msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for the message to be sent
-    esp_sleep_enable_timer_wakeup(msgHandler.getSleepDuration() - 2000); // Sleep for 24 hours
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+        ESP_LOGI("", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    } else {
+        ESP_LOGI("", "Failed to obtain time");
+    }
+    ESP_LOGI("Sleep", "Time in micros: %llu", micros());
+    msgHandler.turnWifiOff();
+    msgHandler.recordTimeOfDayBeforeSleep();
     esp_light_sleep_start();
+    msgHandler.setTimeOfDayAfterSleep();
+    msgHandler.turnWifiOn();
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
+    msgHandler.setAddressListInactive();
+    msgHandler.startAllTimerSyncTask();
+    
+   // msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
+
+   // esp_sleep_enable_timer_wakeup(msgHandler.getSleepDuration() - 2000); // Sleep for 24 hours
+   // esp_light_sleep_start();
+    // Get the RTC slow clock source
 
   };
   // put your main code here, to run repeatedly:

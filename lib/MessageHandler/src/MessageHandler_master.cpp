@@ -6,6 +6,21 @@
 #include "WiFi.h"
 
 
+void MessageHandler::turnWifiOn() {
+    WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
+    webServerInstance.setWifi();
+    if (esp_now_init() != ESP_OK)
+    {
+      Serial.println("Error initializing ESP-NOW");
+      return;
+    }
+    esp_now_register_send_cb(onDataSent);
+    esp_now_register_recv_cb(onDataRecv);
+    addPeer(const_cast<uint8_t*>(hostAddress));
+    addPeer(const_cast<uint8_t*>(broadcastAddress));
+    Serial.println("should initialize");
+}
+
 
 void MessageHandler::handleAddressStruct() {
     if (!readStructsFromFile(addressList, NUM_DEVICES,  "/clientAddress")) {
@@ -35,8 +50,17 @@ void MessageHandler::handleReceive() {
 
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
-            ESP_LOGI("MSG", "Received from queue");
+            ESP_LOGI("MSG", "Received from queue %d", incomingData.messageType);
             if (incomingData.messageType == MSG_ADDRESS) {
+                if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
+                    ESP_LOGI("MSG", "Received address from clap device, ignoring");
+                    if (clapSyncHandle != NULL) {
+                        vTaskDelete(clapSyncHandle);
+                        clapSyncHandle = NULL;
+                    }
+                    startClapSyncTask();
+                    continue;
+                }
                 vTaskDelay(1000/portTICK_PERIOD_MS);
                 //ESP_LOGI("MSG", "Received animation message");
                 //ESP_LOGI("MSG", "Animation type: %d", incomingData[1]);
@@ -59,14 +83,13 @@ void MessageHandler::handleReceive() {
                 }
             }
             else if (incomingData.messageType == MSG_GOT_TIMER) {
+                ESP_LOGI("MSG", "Received got timer message");
                 int timerIndex = getCurrentTimerIndex();
-                vTaskDelete(timerSyncHandle);
+                //vTaskDelete(timerSyncHandle);
                 removePeer(addressList[getCurrentTimerIndex()].address);
-                timerSyncHandle = NULL;
+                //timerSyncHandle = NULL;
                 addressList[timerIndex].active = ACTIVE;
                 addressList[timerIndex].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
-                ESP_LOGI("MSG", "Received got timer message");
-                ESP_LOGI("MSG", "Battery Percentage %.2f",incomingData.payload.gotTimer.batteryPercentage );
                 addressList[timerIndex].lastUpdateTime = millis();
                 setCurrentTimerIndex(-1);
                 setSettingTimer(false);
@@ -111,14 +134,17 @@ void MessageHandler::handleReceive() {
                 ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
                 int clapIndex = getClapIndex();
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
-                    setLastClapTime(incomingData.payload.clap.clapTime);
+                    ESP_LOGI("MSG", "Received clap from clap device, setting clap time");
+                    setLastClapTime(incomingData.payload.clap.clapTime - getClapDeviceDelay());
                     WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
                     webServerInstance.clapReceived(clapIndex, incomingData.payload.clap.clapTime);
                 }
                 else {
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
+                            ESP_LOGI("MSG", "Received clap from address %d", i);
                             addressList[i].distances[clapIndex] = convertMicrosToMeters(getLastClapTime() - incomingData.payload.clap.clapTime);
+                            ESP_LOGI("MSG", "Distance: %.2f", addressList[i].distances[clapIndex]);
                             break;
                         }
                     }
@@ -155,17 +181,25 @@ void MessageHandler::handleReceive() {
 
 void MessageHandler::handleSend() {
     message_data messageData;
-
     while(true) {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
+            if (memcmp(messageData.targetAddress, broadcastAddress, 6) != 0) {
+                addPeer(messageData.targetAddress);
+            }
+
             switch (messageData.messageType) {
                 case MSG_ADDRESS:
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 default:
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
+                    ESP_LOGI("MSG", "Sending message of type %d to %02x:%02x:%02x:%02x:%02x:%02x", messageData.messageType, messageData.targetAddress[0], messageData.targetAddress[1], messageData.targetAddress[2], messageData.targetAddress[3], messageData.targetAddress[4], messageData.targetAddress[5]);
+                    ESP_LOGI("MSG", "Message tyepe: %d", messageData.messageType);
                     break;
             }        
+            if (memcmp(messageData.targetAddress, broadcastAddress, 6) != 0) {
+                removePeer(messageData.targetAddress);
+            }
         }
     }
 }
@@ -182,6 +216,9 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
             else {
                 ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             }
+        }
+        else if (instance.getSettingClapSync() == true) {
+            instance.setLastDelay(micros() - instance.getLastSendTime());
         }
         else if (instance.getRequestingOTAUpdate() == true) {
             instance.setRequestingOTAUpdate(false);
@@ -210,6 +247,8 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     //ALPHA
     MessageHandler& instance = getInstance();
+    ESP_LOGI("MSG", "Received message of type %d from %02x:%02x:%02x:%02x:%02x:%02x", incomingData[0], mac->src_addr[0], mac->src_addr[1], mac->src_addr[2], mac->src_addr[3], mac->src_addr[4], mac->src_addr[5]);
+
     instance.pushToRecvQueue(mac, incomingData, len);
 }
 
@@ -234,6 +273,11 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     else {
         memcpy(&message.targetAddress, addressList[addressId].address, sizeof(addressList[addressId].address));
     }
+    ESP_LOGI("MSG", "Sending animation message to %02x:%02x:%02x:%02x:%02x:%02x", message.targetAddress[0], message.targetAddress[1], message.targetAddress[2], message.targetAddress[3], message.targetAddress[4], message.targetAddress[5]);
+    ESP_LOGI("MSG", "Animation type: %d", animationMessage.animationType);
+    ESP_LOGI("MSG", "Animation params: %d", animationMessage.animationParams.blink.repetitions);
+    ESP_LOGI("MSG", "Animation timeStamp: %lu", animationMessage.timeStamp);
+    //ESP_LOGI("MSG", "Animation params: %d",
     pushToSendQueue(message);
 }
 void MessageHandler::startOTAUpdateTask() {
@@ -414,5 +458,11 @@ void MessageHandler::continueCalibration(float xPos, float yPos) {
     pushToSendQueue(continueMessage);
 }
 
+void MessageHandler::commandCalibrate(int boardId) {
+    ESP_LOGI("MSG", "Sending calibration command to board ID: %d", boardId);
+    message_data commandMessage = createCommandMessage(CMD_START_CALIBRATION, false);
+    memcpy(commandMessage.targetAddress, addressList[boardId].address, sizeof(addressList[boardId].address));
+    pushToSendQueue(commandMessage);
+}
 
 #endif

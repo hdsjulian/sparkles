@@ -7,6 +7,9 @@
 #include <LedHandler.h>
 #include <MessageHandler.h>
 #include <Version.h>
+#include "esp_sleep.h"
+#include "driver/rtc_io.h"
+#include "soc/rtc.h"
 // put function declarations here:
 
 
@@ -30,6 +33,7 @@ void setup()
 {
   Serial.begin(115200);
   esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("LED", ESP_LOG_NONE);
   unsigned long long startTime = millis();
   while (!Serial)
   {
@@ -43,6 +47,11 @@ void setup()
     Serial.println("LittleFS mount failed");
     lfs_started = false;
   }
+
+  //rtc_clk_32k_enable(true);
+  //rtc_clk_32k_bootstrap(10);
+
+  //rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
   WiFi.mode(WIFI_STA);
   ESP_LOGI("", "Setup1");
   if (esp_now_init() != ESP_OK)
@@ -65,8 +74,12 @@ void loop()
   {
     //ledInstance.runBlink();
     lastTick = millis();
-    ESP_LOGI("", "Tick");
-    Serial.println("Blub");
+    uint8_t address[6];
+    WiFi.macAddress(address);
+    ESP_LOGI("", "Tick %s", msgHandler.stringAddress(address, true).c_str());
+    ESP_LOGI("", "Current Time %llu", micros());
+
+
   }
   // put your main code here, to run repeatedly:
 }

@@ -11,13 +11,16 @@ void MessageHandler::handleReceive() {
     while (true) {
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
-                handleTimer(incomingData);            
+                //handleTimer(incomingData);            
             
             if (incomingData.messageType == MSG_ANIMATION) {
+                ESP_LOGI("MSG", "Received animation message");
+                ESP_LOGI("MSG", "Animation type: %d", incomingData.payload.animation.animationType);
+                
                 float batteryPercentage = getBatteryPercentage();
-                if (batteryPercentage < 5) {
+                if (batteryPercentage < BATTERY_LOW_THRESHOLD) {
                     message_data batteryLow;
-                    ESP_LOGI("MSG", "Battery low, percentage: %f", batteryPercentage);
+                    //ESP_LOGI("MSG", "Battery low, percentage: %f", batteryPercentage);
                     /*
                     batteryLow.messageType = MSG_STATUS;
                     batteryLow.payload.status.batteryPercentage = getBatteryPercentage();
@@ -29,6 +32,12 @@ void MessageHandler::handleReceive() {
                 }
                 else {
                     message_animation animation = (message_animation)incomingData.payload.animation;
+                    ESP_LOGI("MSG", "Received animation message");
+                    ESP_LOGI("MSG", "Animation Type: %d", animation.animationType);
+                    ESP_LOGI("MSG", "Start Time: %llu", animation.animationParams.blink.startTime);
+                    ESP_LOGI("MSG", "Now: %llu", micros());
+                    ESP_LOGI("MSG", "Now plus offset: %llu", micros() + ledInstance->getTimerOffset());
+                    ESP_LOGI("MSG", "Animation starting in %llu ms", (animation.animationParams.blink.startTime - (micros() + ledInstance->getTimerOffset())) / 1000);
                     ledInstance->pushToAnimationQueue(animation);
                 }
             }
@@ -58,12 +67,17 @@ void MessageHandler::handleReceive() {
                     setAdminPresent(true);
                     ESP_LOGI("MSG", "Admin present, not going to sleep");
                 }
+                if (commandMessage.commandType == CMD_MESSAGE) {
+                    ESP_LOGI("MSG", "Received message command");
+                }
 
                 
             }
             else if (incomingData.messageType == MSG_CLAP) {
                 message_clap clapMessage = incomingData.payload.clap;
-                startClapTask();
+                ESP_LOGI("MSG", "Received clap message");
+                setHasClapHappened(true);
+                
             }
             else if (incomingData.messageType == MSG_CONFIG_DATA) {
                 message_config_data configData = incomingData.payload.configData;
@@ -97,35 +111,34 @@ void MessageHandler::handleTimer(message_data incomingData) {
     }
     unsigned long long timeDiff = timerMessage.receiveTime-getLastReceiveTime();
     unsigned long long timerFrequencyMicros = TIMER_FREQUENCY*1000;
-    if (timeDiffAbs(timeDiff, timerFrequencyMicros) < 1000 and timerMessage.lastDelay < 4000) {
+    if (timeDiffAbs(timeDiff, timerFrequencyMicros) < 2500 and timerMessage.lastDelay < 6000) {
         if (delayCounter < TIMER_ARRAY_COUNT) {
             delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);    
-            delayCounter++;    
-            ESP_LOGI("MSG", "Delay average: %d, Delay Counter %d", delayAverage, delayCounter);
-
+            delayCounter++;
+            unsigned long long offset;
+            if (timerMessage.receiveTime < timerMessage.sendTime) {
+               offset = timerMessage.sendTime-timerMessage.receiveTime - timerMessage.lastDelay/2;
+                offsetMultiplier = -1;
+            }
+            else {
+                offset = timerMessage.receiveTime-timerMessage.sendTime -timerMessage.lastDelay/2;
+                offsetMultiplier = 1;
+            }
         }
         else {
             message_data gotTimerMessage;
+            unsigned long long now = micros();
+            setTimeOffset(timerMessage.sendTime, timerMessage.receiveTime, delayAverage);
             gotTimerMessage.messageType = MSG_GOT_TIMER;
             gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
             gotTimerMessage.payload.gotTimer.batteryPercentage = getBatteryPercentage();
+            gotTimerMessage.payload.gotTimer.perceivedTime = now - getTimeOffset();
             memcpy(gotTimerMessage.targetAddress, hostAddress, 6);
-            ESP_LOGI("MSG", "Delay average: %d", delayAverage);
-            ESP_LOGI("MSG", "Battery percentage: %f", gotTimerMessage.payload.gotTimer.batteryPercentage);
-            setTimeOffset(timerMessage.sendTime, timerMessage.receiveTime, delayAverage);
+
+            ESP_LOGI("MSG", "Sending got timer message with perceived time: %llu, delay average: %d, battery percentage: %f", gotTimerMessage.payload.gotTimer.perceivedTime, gotTimerMessage.payload.gotTimer.delayAverage, gotTimerMessage.payload.gotTimer.batteryPercentage);
             xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
             setTimerSet(true);
-            message_animation animation;
-            animation.animationType = BLINK;
-            animation.animationParams.blink.duration = 300;
-            animation.animationParams.blink.startTime = micros();
-            animation.animationParams.blink.repetitions = 3;
-            animation.animationParams.blink.hue = 100;
-            animation.animationParams.blink.saturation = 255;
-            animation.animationParams.blink.brightness = 127;
-            ESP_LOGI("MSG", "Animation Type: %d", animation.animationType);
-            ESP_LOGI("MSG", "...");
-            ledInstance->pushToAnimationQueue(animation);
+            ledInstance->blink(micros(), 300, 3, 100, 255, 127);
             ESP_LOGI("MSG", "Timer set. time offset: %lld", getTimeOffset());
             startBatterySyncTask();
             delayCounter = 0;
@@ -133,7 +146,13 @@ void MessageHandler::handleTimer(message_data incomingData) {
           }
     }
     else {
-        ESP_LOGI("MSG", "Time diff too large %lld or delay too large  %d", timeDiff, timerMessage.lastDelay);
+        //ESP_LOGI("MSG", "Time diff too large %lld or delay too large  %d", timeDiff, timerMessage.lastDelay);
+        if (timerMessage.lastDelay > 4000) {
+            //ESP_LOGI("MSG", "Last delay too large, %d", timerMessage.lastDelay);       
+         }
+        else {
+            //ESP_LOGI("MSG", "Time diff too large: %lld", timeDiff);
+        }
     }
     setLastReceiveTime(timerMessage.receiveTime);
 
@@ -157,15 +176,22 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
     vTaskDelay(1000/portTICK_PERIOD_MS);
-    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration); // Convert seconds to microseconds
+    ESP_LOGI("MSG", "Going to sleep for %llu seconds", sleepWakeupMessage.duration);
+    turnWifiOff();
+    esp_sleep_enable_timer_wakeup((unsigned long)sleepWakeupMessage.duration*1000); // Convert seconds to microseconds
     esp_light_sleep_start();
     turnWifiOn();
+    ledInstance->resetLedTask();
+    ledInstance->blink(micros(), 150, 2, 160, 255, 127);
+    ESP_LOGI("MSG", "Woke up from sleep, current time: %llu", micros());
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    ESP_LOGI("MSG", "Should be back up");
 }
 
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    /*
+    
     if (status == ESP_NOW_SEND_SUCCESS) {
-        if (memcmp(mac_addr, this, 6) == 0) {
+        if (memcmp(mac_addr, broadcastAddress, 6) == 0) {
             ESP_LOGI("MSG", "Broadcast message sent");
         }
         else {
@@ -174,15 +200,18 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
     }
     else {
         ESP_LOGI("MSG", "Send failed");
-    }*/
+    }
 }
 
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-    MessageHandler& instance = getInstance();
+    unsigned long long receiveTime = micros();
     if (incomingData[0] == MSG_TIMER) {
         message_data* messageData = (message_data*)incomingData;
-        messageData->payload.timer.receiveTime = micros();
+        messageData->payload.timer.receiveTime = receiveTime;
     }
+    MessageHandler& instance = getInstance();
+
+    ESP_LOGI("MSG", "Received message of type %d from %02x:%02x:%02x:%02x:%02x:%02x", incomingData[0], mac->src_addr[0], mac->src_addr[1], mac->src_addr[2], mac->src_addr[3], mac->src_addr[4], mac->src_addr[5]);
     instance.pushToRecvQueue(mac, incomingData, len);
 }
 
@@ -216,6 +245,8 @@ void MessageHandler::handleSend() {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
             switch (messageData.messageType) {
                 case MSG_GOT_TIMER:
+                    ESP_LOGI("MSG", "Sending got timer message");
+                    messageData.payload.gotTimer.perceivedTime = micros() - getTimeOffset();
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_ADDRESS:
@@ -298,13 +329,9 @@ void MessageHandler::turnWifiOn() {
     esp_now_register_recv_cb(onDataRecv);
     addPeer(const_cast<uint8_t*>(hostAddress));
     addPeer(const_cast<uint8_t*>(broadcastAddress));
-    WiFi.mode(WIFI_STA);
     Serial.println("should initialize");
 }
-void MessageHandler::turnWifiOff() {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-}
+
  void MessageHandler::toggleWiFiTask() {
     while (true) {
         // Turn off Wi-Fi

@@ -3,7 +3,7 @@ import {toggleMenu, boardCards} from "./sparkles.js";
 
 // Create or update board cards
 
-toggleMenu();
+//toggleMenu();
 
 
 
@@ -113,11 +113,13 @@ function handleUpdateDeviceClick(id) {
 
 function handleCommandSyncClick() {
   //TODO: don't do anything if already syncing
-  fetchData('/commandSync');
+  fetchData('/commandSyncAll');
+  console.log("Syncing all devices");
 }
 
-function handleCommandSyncAllClick() {
-  fetchData('/commandSyncAll');
+function handleCommandBlinkAllClick() {
+  console.log("Blinking all devices");
+  fetchData('/commandBlinkAll');
 }
 
 function handleCommandAnimateClick() {
@@ -130,6 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('t1').addEventListener('click', () => handleUpdateDeviceClick(-1));
   document.getElementById('cmd_sync_all').addEventListener('click', handleCommandSyncClick);
   document.getElementById('cmd_animate').addEventListener('click', handleCommandAnimateClick);
+  document.getElementById('cmd_blink_all').addEventListener('click', handleCommandBlinkAllClick);
   document.getElementById('settings').addEventListener('click', () => {
     window.location.href = "settings.html";
   });

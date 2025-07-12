@@ -45,7 +45,8 @@ export function boardCards(obj, mode = MODE_STANDARD) {
       const distElem = document.getElementById("dist" + obj.id);
       if (distElem) distElem.textContent = "Distances: " + formatNonZeroFloats(obj.distances);
     }
-      
+    let numDevices = document.getElementById("boardCards").children.length;
+    document.getElementById("t1").textContent = numDevices;
 
   };
 
@@ -97,6 +98,8 @@ const placeholderZText = (obj.zpos === undefined || obj.zpos === null || obj.zpo
         <button id='submit_${obj.id}'>Submit</button>
         <button id='update_${obj.id}' class='blue-button'>Update Device</button>
         <button id='blink_${obj.id}' class='blue-button'>Blink</button>
+        <button id='message_${obj.id}' class='blue-button'>Message</button>
+        <button id='calibrate_${obj.id}' class='blue-button'>Calibrate</button>
       </div>`;
     let inserted = sortCards(obj, cardsContainer, newCard);
     if (!inserted) {
@@ -112,6 +115,16 @@ const placeholderZText = (obj.zpos === undefined || obj.zpos === null || obj.zpo
       });
     document.getElementById('update_' + obj.id).addEventListener('click', () => {
         handleUpdateDeviceClick(String(obj.id));
+      });
+      document.getElementById('message_' + obj.id).addEventListener('click', () => {
+        const fetchUrl = `/commandMessage?boardId=${obj.id}`;
+        fetchData(fetchUrl);
+        console.log("Message command sent for board ID: " + obj.id);
+      });
+      document.getElementById('calibrate_' + obj.id).addEventListener('click', () => {
+        const fetchUrl = `/commandCalibrate?boardId=${obj.id}`;
+        fetchData(fetchUrl);
+        console.log("Calibration command sent for board ID: " + obj.id);
       });
     document.getElementById('submit_' + obj.id).addEventListener('click', () => {
         const input1 = document.getElementById('xpos_' + obj.id).value;

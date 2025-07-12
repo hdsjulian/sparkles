@@ -1,5 +1,5 @@
 #include <LedHandler.h>
-void LedHandler::setTimerOffset(unsigned long long newOffset) {
+void LedHandler::setTimerOffset(long long newOffset) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         timerOffset = newOffset;
         xSemaphoreGive(configMutex);
@@ -7,8 +7,8 @@ void LedHandler::setTimerOffset(unsigned long long newOffset) {
 }
 
 // Thread-safe getter for offset
-unsigned long long LedHandler::getTimerOffset() {
-    int currentOffset;
+long long LedHandler::getTimerOffset() {
+    long long currentOffset;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         currentOffset = timerOffset;
         xSemaphoreGive(configMutex);

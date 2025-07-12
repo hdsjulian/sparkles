@@ -46,7 +46,24 @@ bool MessageHandler::getSettingTimer() {
     return returnSettingTimer;
 }
 
-void MessageHandler::setLastSendTime(int time) {
+void MessageHandler::setSettingClapSync(bool set) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        settingClapSync = set;
+        xSemaphoreGive(configMutex);
+    }
+}
+
+bool MessageHandler::getSettingClapSync() {
+    bool returnSettingClapSync;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnSettingClapSync = settingClapSync;
+        xSemaphoreGive(configMutex);
+    }
+    return returnSettingClapSync;
+}
+
+
+void MessageHandler::setLastSendTime(unsigned long long time) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         lastSendTime = time;
         xSemaphoreGive(configMutex);
@@ -89,7 +106,7 @@ void MessageHandler::setItemFromAddressList(int index, client_address item) {
         xSemaphoreGive(configMutex);
     }
 }
-void MessageHandler::setMsgReceiveTime(int time) {
+void MessageHandler::setMsgReceiveTime(unsigned long long time) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         msgReceiveTime = time;
         xSemaphoreGive(configMutex);
@@ -132,16 +149,10 @@ int MessageHandler::addOrGetAddressId(uint8_t * address) {
     return -1;
 }
 
-void MessageHandler::setTimeOffset(unsigned long long sendTime, unsigned long long receiveTime, int delay) {
+void MessageHandler::setTimeOffset(unsigned long long masterTime, unsigned long long clientTime, int delay) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        if (receiveTime < sendTime) {
-            timeOffset = sendTime-receiveTime - delay/2;
-            offsetMultiplier = -1;
-        }
-        else {
-            timeOffset = receiveTime-sendTime - delay/2;
-            offsetMultiplier = 1;
-        }
+        timeOffset = (long long)masterTime + delay - (long long)clientTime;
+        ESP_LOGI("MSG", "Setting time offset: %lld", timeOffset);
         xSemaphoreGive(configMutex);
     }
     ledInstance->setTimerOffset(timeOffset);
@@ -478,6 +489,7 @@ void MessageHandler::setSleepTime(int hours, int minutes, int seconds) {
         sleepTimeHours = hours;
         sleepTimeMinutes = minutes;
         sleepTimeSeconds = seconds;
+        ESP_LOGI("Sleep", "Setting sleep time to %02d:%02d:%02d", sleepTimeHours, sleepTimeMinutes, sleepTimeSeconds);
         xSemaphoreGive(configMutex);
     }
 }
@@ -486,6 +498,7 @@ void MessageHandler::setWakeupTime(int hours, int minutes, int seconds) {
         wakeupTimeHours = hours;
         wakeupTimeMinutes = minutes;
         wakeupTimeSeconds = seconds;
+        ESP_LOGI("Sleep", "Setting wakeup time to %02d:%02d:%02d", wakeupTimeHours, wakeupTimeMinutes, wakeupTimeSeconds);
         xSemaphoreGive(configMutex);
     }
 }
@@ -498,6 +511,9 @@ unsigned long MessageHandler::getSleepTime() {
             sleepTime = 0; // No sleep time set
             xSemaphoreGive(configMutex);
             return sleepTime;
+        }
+        else {
+            ESP_LOGI("Sleep Time", "Sleep time hours %d, minutes %d, seconds %d", sleepTimeHours,sleepTimeMinutes, sleepTimeSeconds);
         }
         unsigned long currentMillis = millis();
         struct timeval tv;
@@ -516,26 +532,53 @@ unsigned long MessageHandler::getSleepTime() {
     return sleepTime;
 }
 
+bool MessageHandler::isInSleepPhase() {
+    bool inSleep = false;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        if ((sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) ||
+            (wakeupTimeHours == 0 && wakeupTimeMinutes == 0 && wakeupTimeSeconds == 0)) {
+            // No sleep/wakeup time set
+            xSemaphoreGive(configMutex);
+            return false;
+        }
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        time_t now = tv.tv_sec;
+        struct tm *currentTime = localtime(&now);
+        int currentSeconds = currentTime->tm_hour * 3600 + currentTime->tm_min * 60 + currentTime->tm_sec;
+        int sleepSeconds = sleepTimeHours * 3600 + sleepTimeMinutes * 60 + sleepTimeSeconds-1;
+        int wakeupSeconds = wakeupTimeHours * 3600 + wakeupTimeMinutes * 60 + wakeupTimeSeconds-1;
+        if (sleepSeconds < wakeupSeconds) {
+            // Sleep and wakeup are on the same day
+            inSleep = (currentSeconds >= sleepSeconds) && (currentSeconds < wakeupSeconds);
+        } else {
+            // Sleep starts before midnight, wakeup is after midnight
+            inSleep = (currentSeconds >= sleepSeconds) || (currentSeconds < wakeupSeconds);
+        }
+        xSemaphoreGive(configMutex);
+    }
+    return inSleep;
+}
+
 unsigned long MessageHandler::getSleepDuration() {
     unsigned long duration = 0;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        if (sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) {
+        if (wakeupTimeHours == 0 && wakeupTimeMinutes == 0 && wakeupTimeSeconds == 0) {
             xSemaphoreGive(configMutex);
-            return 0; // No sleep time set
+            return 0; // No wakeup time set
         }
-        int sleepSeconds = sleepTimeHours * 3600 + sleepTimeMinutes * 60 + sleepTimeSeconds;
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        time_t now = tv.tv_sec;
+        struct tm *currentTime = localtime(&now);
+        int currentSeconds = currentTime->tm_hour * 3600 + currentTime->tm_min * 60 + currentTime->tm_sec;
         int wakeupSeconds = wakeupTimeHours * 3600 + wakeupTimeMinutes * 60 + wakeupTimeSeconds;
-        int durationSeconds = wakeupSeconds - sleepSeconds;
-        if (durationSeconds <= 0) {
-            // Wakeup is on the next day
-            durationSeconds += 24 * 3600;
-        }
-        duration = durationSeconds * 1000UL;
+        int durationSeconds = (wakeupSeconds - currentSeconds + 24 * 3600) % (24 * 3600);
+        duration = durationSeconds * 1000UL - (tv.tv_usec / 1000);
         xSemaphoreGive(configMutex);
     }
     return duration;
 }
-
 unsigned long MessageHandler::getAdminPresent() {
     unsigned long returnTime;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
@@ -566,4 +609,59 @@ bool MessageHandler::getBatteryLow() {
         return returnLow;
     }
     return false;
+}
+
+void MessageHandler::recordTimeOfDayBeforeSleep() {
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+        beforeSleepTimeinfo = timeinfo;
+        beforeSleepSecondsOfDay = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
+        beforeSleepMillis = millis();
+    }
+}
+
+
+void MessageHandler::setTimeOfDayAfterSleep() {
+    unsigned long long afterSleepMillis = millis();
+    unsigned long elapsedMillis = afterSleepMillis - beforeSleepMillis;
+    int elapsedSeconds = elapsedMillis / 1000;
+    int afterSleepSecondsOfDay = (beforeSleepSecondsOfDay + elapsedSeconds) % (24 * 3600);
+
+    struct tm newTimeinfo = beforeSleepTimeinfo;
+    newTimeinfo.tm_hour = afterSleepSecondsOfDay / 3600;
+    newTimeinfo.tm_min = (afterSleepSecondsOfDay % 3600) / 60;
+    newTimeinfo.tm_sec = afterSleepSecondsOfDay % 60;
+
+    time_t newTime = mktime(&newTimeinfo);
+    struct timeval tv = { .tv_sec = newTime, .tv_usec = 0 };
+    settimeofday(&tv, nullptr);
+}
+void MessageHandler::setHasClapHappened(bool hasClapHappened) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        this->hasClapHappened = hasClapHappened;
+        xSemaphoreGive(configMutex);
+    }
+}
+bool MessageHandler::getHasClapHappened() {
+    bool returnHasClapHappened;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnHasClapHappened = hasClapHappened;
+        xSemaphoreGive(configMutex);
+    }
+    return returnHasClapHappened;
+}
+
+void MessageHandler::setClapDeviceDelay(int delay) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        clapDeviceDelay = delay;
+        xSemaphoreGive(configMutex);
+    }
+}
+int MessageHandler::getClapDeviceDelay() {
+    int returnDelay;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnDelay = clapDeviceDelay;
+        xSemaphoreGive(configMutex);
+    }
+    return returnDelay;
 }

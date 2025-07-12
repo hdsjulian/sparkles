@@ -80,6 +80,10 @@ int MessageHandler::addPeer(uint8_t * address) {
 }
 
 void MessageHandler::removePeer(uint8_t address[6]) {
+    if (!esp_now_is_peer_exist(address)) {
+        ESP_LOGI("peer", "peer does not exist");
+        return;
+    }
     if (esp_now_del_peer(address) != ESP_OK) {
         ESP_LOGI("peer", "coudln't delete peer");
     }
@@ -202,6 +206,7 @@ void MessageHandler::setBoardPosition(int boardId, float xPos, float yPos) {
 
 void MessageHandler::startCalibrationClient() {
     ledInstance->stopAnimationTask();
+    startClapTask();
 }
 
 void MessageHandler::resetCalibration() {
@@ -226,4 +231,10 @@ void MessageHandler::sendSleepWakeupMessage(unsigned long sleepDuration) {
     memcpy(&sleepWakeupMessage.payload.sleepWakeup, &payload, sizeof(payload));
     WiFi.macAddress(sleepWakeupMessage.senderAddress);
     pushToSendQueue(sleepWakeupMessage);
+}
+
+void MessageHandler::turnWifiOff() {
+    esp_now_deinit();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
 }

@@ -23,6 +23,8 @@
 #define MASTER 0
 #define CLIENT 1
 #define WEBSERVER 2
+#define CLAP_DEVICE 3
+#define RASPI_DEVICE 4
 #define VERSION "1.0.0"
 
 #define V1 1
@@ -43,6 +45,7 @@
 #define WIFI_SSID "SPARKLES"
 #define WIFI_PASSWORD "sparklesAdmin"
 #define OTA_UPDATE_URL "http://192.168.4.1/update" // Update URL for OTA updates
+#define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
 
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -112,6 +115,7 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define CMD_ASK_ADMIN_PRESENT 5
 #define CMD_SET_ADMIN_PRESENT 6 
 #define CMD_SET_ADMIN_NOT_PRESENT 7
+#define CMD_MESSAGE 8
 
 
 
@@ -139,7 +143,8 @@ enum animationEnum {
     LED_ON,
     CONCENTRIC, 
     STROBE, 
-    MIDI
+    MIDI, 
+    BACKGROUND_SHIMMER
 };
 struct midiNoteTable {
   int velocity;
@@ -154,7 +159,7 @@ struct client_address {
   float xPos;
   float yPos;
   float zPos;
-  uint32_t timerOffset;
+  long long timerOffset;
   int delay;
   float distances[NUM_CLAPS];  
   activeStatus active = INACTIVE;
@@ -220,11 +225,19 @@ struct animation_midi {
   animation_midi() : note(0), velocity(0), octaveDistance(0), offset(0) {}
 };
 
+struct animation_background_shimmer {
+  int hue;
+  int saturation;
+  int value;
+  animation_background_shimmer() : hue(0), saturation(0), value(0) {}
+};
+
 union animation_params {
   struct animation_strobe strobe;
   struct animation_midi midi;
   struct animation_blink blink;
   struct animation_sync_async_blink syncAsyncBlink;
+  struct animation_background_shimmer backgroundShimmer;
   animation_params() {}
   ~animation_params() {}
 };
@@ -240,7 +253,8 @@ struct message_animation {
 struct message_got_timer{
   int delayAverage;
   float batteryPercentage;
-  message_got_timer() :  delayAverage(0) {}
+  unsigned long long perceivedTime;
+  message_got_timer() : delayAverage(0), batteryPercentage(0.0), perceivedTime(0) {}
 };
 
 struct message_status {
