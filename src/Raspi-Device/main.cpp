@@ -6,10 +6,7 @@
 #define MIDI_MODE 1
 #define FREQUENCY 2
 #define INPUT_MODE FREQUENCY
-#define RX_PIN 18
-#define TX_PIN 17
-#define RX0_PIN 44
-#define TX0_PIN 43
+
 #define LEDPIN LED_BUILTIN
 message_data messageData;
 
@@ -114,7 +111,7 @@ void outputMidi(float pitch, float rms) {
 
 void setup() {
   Serial.begin(115200); // Native USB CDC or UART0 (GPIO 43/44)
-  Serial1.begin(115200, SERIAL_8N1, RX_PIN, TX_PIN); // UART1 on GPIO 17/18
+  //Serial1.begin(115200, SERIAL_8N1, RX_PIN, TX_PIN); // UART1 on GPIO 17/18
 
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -135,14 +132,35 @@ void setup() {
     messageData.payload.animation.animationType = MIDI;
     }
     lastTick = millis();
+    digitalWrite(LEDPIN, HIGH); // Ensure LED is off at startup
+    delay(3000);
+    digitalWrite(LEDPIN, LOW); // Turn off LED after 3 seconds
 }
 
 void loop() {
 
  
   if (Serial.available()) {
-    ESP_LOGV("MYTAG", "Serial data available, reading line.");
     String line = Serial.readStringUntil('\n');
+    Serial.printf("Received line: %s\n", line.c_str());
+    ESP_LOGV("MYTAG", "Serial data available, reading line.");
+    digitalWrite(LEDPIN, HIGH); // Turn on LED to indicate data received
+    delay(1000);
+    digitalWrite(LEDPIN, LOW);
+  }
+}
+/*    else if (millis() - lastTick > 1000) {
+    ESP_LOGV("MYTAG", "No serial data available.");
+   
+    lastTick = millis();
+    }
+    */
+  
+  /*  String line = Serial.readStringUntil('\n');
+    ESP_LOGV("MYTAG", "Received line: %s", line.c_str());
+    digitalWrite(LEDPIN, HIGH); // Turn on LED to indicate data received
+    delay(1000);
+    digitalWrite(LEDPIN, LOW); // Turn off LED after 1 second
     line.trim();
     if (line.length() == 0) return;
 
@@ -165,7 +183,6 @@ void loop() {
       }  
     }
     }
-    else {
-        ESP_LOGV("MYTAG", "No Serial data available, checking Serial.");
-    }
-}
+
+}*/
+
