@@ -1,11 +1,12 @@
 'use strict';
 import {toggleMenu} from "./sparkles.js";
 
-toggleMenu();
+//toggleMenu();
 function setTime() {
   var d = new Date();
   var n = d.toLocaleTimeString();
   document.getElementById("setClock").textContent = "Set System Time to: "+n;
+  console.log("setClock called");
 }  
 function sendTime() {
 var d = new Date();
@@ -19,7 +20,9 @@ var fetchUrl = '/setTime?year=' + year + '&month=' + month + '&day=' + day + '&h
 fetchMe(fetchUrl);
 }
 setInterval(setTime, 1000);
+
 document.getElementById("setClock").addEventListener('click', function() {
+  console.log("setClock called");
   sendTime();
   var setClockButton = document.getElementById("setClock");
   setClockButton.classList.add("active");

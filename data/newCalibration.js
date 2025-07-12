@@ -1,14 +1,6 @@
 
 
 calibrationStatus = 1;
-data = {
-  status: calibrationStatus,
-  distance: 5.3, // Example distance
-  clapId: '12345' // Example clap ID
-};
-updateCalibrationCard(data);
-data.status = 3;
-updateCalibrationCard(data);
 
   function updateCalibrationCard(data) {
     console.log("Updating calibration card with data:", data);

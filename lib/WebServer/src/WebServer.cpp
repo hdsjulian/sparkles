@@ -25,6 +25,9 @@ void WebServer::setup(MessageHandler &globalMessageHandler) {
 
 void WebServer::setWifi() {
   WiFi.mode(WIFI_AP_STA);
+  ESP_LOGI("WEB", "Setting up WiFi in AP mode");
+  ESP_LOGI("WEB", "SSID: %s", WIFI_SSID);
+  ESP_LOGI("WEB", "Password: %s", WIFI_PASSWORD);
   WiFi.softAP(WIFI_SSID, WIFI_PASSWORD);  
 }
 
@@ -65,6 +68,9 @@ void WebServer::configRoutes() {
     server.on("/commandBlink", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandBlink(request);
     });
+    server.on("/commandBlinkAll", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandBlinkAll(request);
+    });
     server.on("/commandStartCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
       // This is a placeholder for the calibration command
       // You can implement the calibration logic here
@@ -91,7 +97,15 @@ void WebServer::configRoutes() {
       this->commandEndCalibration(request);
       request->send(200, "text/html", "End Calibration command received");
     });
-    server.on("setSleepTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
+    server.on("/commandMessage", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandMessage(request);
+      request->send(200, "text/html", "Message command received");
+    });
+    server.on("/commandCalibrate", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandCalibrate(request);
+      request->send(200, "text/html", "Calibration command received");
+    });
+    server.on("/setSleepTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setSleepTime(request);
       request->send(200, "text/html", "Goodnight command received");
     });
@@ -129,6 +143,7 @@ void WebServer::commandAnimate(AsyncWebServerRequest *request) {
     int brightness = request->getParam("brightness")->value().toInt();
     animation.animationParams.strobe.brightness = brightness/255.0f;
   }
+
   jsonString = "{\"status\" : \"true\"}";
   request->send(200, "text/html", "{\"status\" : \"true\"}");
   }
@@ -136,6 +151,7 @@ void WebServer::commandAnimate(AsyncWebServerRequest *request) {
 
 void WebServer::commandSyncAll(AsyncWebServerRequest *request) {
     messageHandlerInstance->startAllTimerSyncTask();
+    ESP_LOGI("WEB", "Syncing all devices");
     request->send(200, "text/html", "OK");
 }
 
@@ -223,6 +239,16 @@ String WebServer::jsonFromAddress(int id) {
     jsonString += String(address.batteryPercentage);
     jsonString += "\", \"distance\":\"";
     jsonString += String(address.distanceFromCenter);
+    jsonString += "\", \"xpos\":\"";
+    jsonString += String(address.xPos);
+    jsonString += "\", \"ypos\":\"";
+    jsonString += String(address.yPos);
+    jsonString += "\", \"lastUpdateTime\":\"";
+    jsonString += String(address.lastUpdateTime);
+    jsonString += "\", \"timerOffset\":\"";
+    jsonString += String(address.timerOffset);
+    jsonString += "\", \"delay\":\"";
+    jsonString += String(address.delay);
     jsonString += "\"}";
     return jsonString;
 }
@@ -236,7 +262,11 @@ void WebServer::commandSync(AsyncWebServerRequest *request) {
 
 
 void WebServer::commandBlink(AsyncWebServerRequest *request) {
-  int index = request->getParam("index")->value().toInt();
+  if (!request->hasParam("boardId")) {
+    request->send(400, "text/plain", "Missing parameter: boardId");
+    return;
+  }
+  int boardId = request->getParam("boardId")->value().toInt();
   message_animation animation;
   animation.animationType = BLINK;
   animation.animationParams.blink.brightness = 255;
@@ -245,10 +275,22 @@ void WebServer::commandBlink(AsyncWebServerRequest *request) {
   animation.animationParams.blink.hue = 0;
   animation.animationParams.blink.saturation = 0;
   animation.animationParams.blink.startTime = micros()+1000000;
-  messageHandlerInstance->sendAnimation(animation, index);
+  messageHandlerInstance->sendAnimation(animation, boardId);
   request->send(200, "text/html", "OK");
 }
 
+void WebServer::commandBlinkAll(AsyncWebServerRequest *request) {
+  message_animation animation;
+  animation.animationType = BLINK;
+  animation.animationParams.blink.brightness = 255;
+  animation.animationParams.blink.duration = 500;
+  animation.animationParams.blink.repetitions = 3;
+  animation.animationParams.blink.hue = 0;
+  animation.animationParams.blink.saturation = 0;
+  animation.animationParams.blink.startTime = micros()+1000000;
+  messageHandlerInstance->sendAnimation(animation,-1);
+  request->send(200, "text/html", "OK");
+}
 
 void WebServer::updateAddressList() {
   for (int i = 0; i < NUM_DEVICES; i++) {
@@ -286,6 +328,16 @@ void WebServer::commandResetCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->resetCalibration();
   request->send(200, "text/html", "Calibration reset");
 }
+
+void WebServer::commandCalibrate(AsyncWebServerRequest *request) {
+  if (!request->hasParam("boardId")) {
+    request->send(400, "text/plain", "Missing parameter: boardId");
+    return;
+  }
+  int boardId = request->getParam("boardId")->value().toInt();
+  messageHandlerInstance->commandCalibrate(boardId);
+  request->send(200, "text/html", "Calibration command received");
+}
 void WebServer::commandContinueCalibration(AsyncWebServerRequest *request) {
   int clapId = request->getParam("clapId")->value().toInt();
   float xPos = request->getParam("x")->value().toFloat();
@@ -322,5 +374,17 @@ void WebServer::setWakeupTime(AsyncWebServerRequest *request) {
   int seconds = request->getParam("seconds")->value().toInt();
   // Set the time to the specified hours and minutes
   messageHandlerInstance->setWakeupTime(hours, minutes, seconds);
+}
+
+void WebServer::commandMessage(AsyncWebServerRequest *request) {
+  if (!request->hasParam("boardId")) {
+    request->send(400, "text/plain", "Missing parameter: boardId");
+    return;
+  }
+  int boardId = request->getParam("boardId")->value().toInt();
+  message_data commandMessage = messageHandlerInstance->createCommandMessage(CMD_MESSAGE, false);
+  memcpy(commandMessage.targetAddress, messageHandlerInstance->getItemFromAddressList(boardId).address, 6);
+  messageHandlerInstance->pushToSendQueue(commandMessage);
+  request->send(200, "text/html", "OK");
 }
 #endif

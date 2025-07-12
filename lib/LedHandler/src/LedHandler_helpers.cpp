@@ -54,7 +54,7 @@ message_animation LedHandler::createAnimation(animationEnum animationType ) {
 
 message_animation LedHandler::createFlash(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness) {
     message_animation animation;
-    animation.animationType = FLASH;
+    animation.animationType = BLINK;
     animation.animationParams.blink.startTime = startTime;
     animation.animationParams.blink.duration = duration;
     animation.animationParams.blink.repetitions = repetitions;
@@ -82,4 +82,10 @@ void LedHandler::turnOff() {
         animationTaskHandle = NULL;
     }
     ESP_LOGI("LED", "LEDs turned off and animation task stopped");
+}
+
+void LedHandler::blink(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness) {
+    message_animation animation = createFlash(startTime, duration, repetitions, hue, saturation, brightness);
+    pushToAnimationQueue(animation);
+    //ESP_LOGI("LED", "Blinking with hue: %d, saturation: %d, brightness: %d", hue, saturation, brightness);
 }

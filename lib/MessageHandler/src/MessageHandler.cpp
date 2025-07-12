@@ -15,8 +15,8 @@ MessageHandler::MessageHandler() {
 
 void MessageHandler::setup(LedHandler &globalLedInstance) {
     ledInstance = &globalLedInstance;
-    xTaskCreatePinnedToCore(handleReceiveWrapper, "handleReceive", 10000, this, 2, NULL, 0);
-    xTaskCreatePinnedToCore(handleSendWrapper, "handleSend", 10000, this, 2, NULL, 0);
+    xTaskCreatePinnedToCore(handleReceiveWrapper, "handleReceive", 10000, this, 10, &handleReceiveHandle, 0);
+    xTaskCreatePinnedToCore(handleSendWrapper, "handleSend", 10000, this, 10, &handleSendHandle, 0);
     addPeer(const_cast<uint8_t*>(broadcastAddress));
     version= VERSION;
     #if (DEVICE_MODE == MASTER) 
@@ -24,7 +24,7 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
     #endif
     #if (DEVICE_MODE == CLIENT)
         addPeer(const_cast<uint8_t*>(hostAddress));
-        xTaskCreatePinnedToCore(announceAddressWrapper, "runAnnounceAddress", 10000, this, 2, &announceTaskHandle, 0);
+        xTaskCreatePinnedToCore(announceAddressWrapper, "runAnnounceAddress", 10000, this, 2, &announceTaskHandle, 1);
     #endif
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
@@ -44,13 +44,11 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
 
 
 void MessageHandler::pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
-    ESP_LOGI("MSG", "Pushing to receive queue len: %d, sizeof: %d", len, sizeof(message_data));
     if (len != sizeof(message_data)) return;
     message_data *msg = (message_data *)incomingData;
      if (msg->messageType == MSG_TIMER) {
         msg->payload.timer.receiveTime = micros();
      }
-    ESP_LOGI("MSG", "Received message type: %d", msg->messageType);
 
     if (xQueueSend(receiveQueue, msg, portMAX_DELAY) != pdTRUE) {
         ESP_LOGE("MSG", "Failed to send data to receive queue");

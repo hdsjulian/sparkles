@@ -41,12 +41,15 @@ class WebServer {
         void commandSync(AsyncWebServerRequest *request);
         void commandSyncAll(AsyncWebServerRequest *request);
         void commandBlink(AsyncWebServerRequest *request);
+        void commandBlinkAll(AsyncWebServerRequest *request);
         void commandStartCalibration(AsyncWebServerRequest *request);
         void commandOTAUpdate(AsyncWebServerRequest *request);
         void commandCancelCalibration(AsyncWebServerRequest *request);
         void commandResetCalibration(AsyncWebServerRequest *request);
         void commandContinueCalibration(AsyncWebServerRequest *request);
         void commandEndCalibration(AsyncWebServerRequest *request);
+        void commandMessage(AsyncWebServerRequest *request);
+        void commandCalibrate(AsyncWebServerRequest *request);
         void setSleepTime(AsyncWebServerRequest *request);
         void setWakeupTime(AsyncWebServerRequest *request);
         void clapReceived(int clapId, unsigned long long clapTime);

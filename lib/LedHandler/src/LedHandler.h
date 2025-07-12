@@ -22,8 +22,8 @@ public:
     void addToMidiTable(midiNoteTable midiNoteTableArray[OCTAVESONKEYBOARD], message_animation animation, int position);
     void pushToAnimationQueue(message_animation& animation);
     static void runBlinkOld();
-    void setTimerOffset(unsigned long long newOffset);
-    unsigned long long getTimerOffset();
+    void setTimerOffset(long long newOffset);
+    long long getTimerOffset();
     void setMidiNoteTable(int index, midiNoteTable note);
     midiNoteTable getMidiNoteTable(int index);
     void getMidiNoteTableArray(midiNoteTable* buffer, size_t size);
@@ -39,9 +39,10 @@ public:
     int getNumDevices();
     message_animation createAnimation(animationEnum animationType);
     message_animation createFlash(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness);
+    void blink(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness);
     void stopAnimationTask();
     void turnOff();
-
+    void resetLedTask();    
 private:
     LedHandler();
     LedHandler(const LedHandler&) = delete;
@@ -51,11 +52,14 @@ private:
     static void runBlinkWrapper(void *pvParameters);
     static void runStrobeWrapper(void *pvParameters);
     static void runSyncAsyncBlinkWrapper(void *pvParameters);
+    static void runBackgroundShimmerWrapper(void *pvParameters);
     void ledTask();
     void runMidi();
     void runBlink();
     void runStrobe();
     void runSyncAsyncBlink();
+    void runBackgroundShimmer();
+    
     static void ledsOff();
     static constexpr float midiHue = 25.0f / 360.0f;
     static constexpr float midiSat = 0.84;
@@ -74,7 +78,7 @@ private:
     TickType_t microsToTicks(unsigned long long micros);
     void handleQueue(message_animation& animation, message_animation& animationData, int currentPosition);
     int numDevices;
-    int timerOffset;
+    long long timerOffset;
     int mode;
     int position;
     SemaphoreHandle_t configMutex;
