@@ -116,7 +116,7 @@ void loop()
     esp_light_sleep_start();
     msgHandler.setTimeOfDayAfterSleep();
     msgHandler.turnWifiOn();
-    vTaskDelay(10000 / portTICK_PERIOD_MS);
+    vTaskDelay(1800000 / portTICK_PERIOD_MS);
     msgHandler.setAddressListInactive();
     msgHandler.startAllTimerSyncTask();
     

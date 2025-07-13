@@ -78,6 +78,7 @@ void loop()
     WiFi.macAddress(address);
     ESP_LOGI("", "Tick %s", msgHandler.stringAddress(address, true).c_str());
     ESP_LOGI("", "Current Time %llu", micros());
+    ESP_LOGI("", "Version: %s", VERSION);
 
 
   }

@@ -87,6 +87,9 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
                 message_update_version updateVersionMessage = incomingData.payload.updateVersion;
                 if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
+                    ledInstance->blink(micros(), 100, 5, 200, 255, 127);
+                    vTaskDelete(announceTaskHandle);
+                    announceTaskHandle = NULL;
                     OTAHandler::getInstance().setup();
                     OTAHandler::getInstance().performUpdate();
                 }
@@ -189,7 +192,7 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
 }
 
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    
+    ESP_LOGI("MSG", "OnDataSent called with status: %d", status);
     if (status == ESP_NOW_SEND_SUCCESS) {
         if (memcmp(mac_addr, broadcastAddress, 6) == 0) {
             ESP_LOGI("MSG", "Broadcast message sent");
@@ -243,6 +246,9 @@ void MessageHandler::handleSend() {
     message_data messageData;
     while(true) {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
+            esp_err_t err = esp_now_register_send_cb(onDataSent);
+            addPeer(messageData.targetAddress);
+            ESP_LOGI("ESP-NOW", "Send callback registration result: %d", err);
             switch (messageData.messageType) {
                 case MSG_GOT_TIMER:
                     ESP_LOGI("MSG", "Sending got timer message");
@@ -250,9 +256,15 @@ void MessageHandler::handleSend() {
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_ADDRESS:
+                    ESP_LOGI("MSG", "Sending address message to %02x:%02x:%02x:%02x:%02x:%02x", messageData.targetAddress[0], messageData.targetAddress[1], messageData.targetAddress[2], messageData.targetAddress[3], messageData.targetAddress[4], messageData.targetAddress[5]);
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_STATUS:
+                    ESP_LOGI("MSG", "Sending status message");
+                    esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
+                    break;
+                case MSG_CLAP:
+                    ESP_LOGI("MSG", "Sending clap message");
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 default:

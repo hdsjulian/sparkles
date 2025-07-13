@@ -22,15 +22,17 @@ void MessageHandler::runClapTask() {
         int peak = peakDetection.getPeak(); 
         double filtered = peakDetection.getFilt(); 
         
-        if (peak == -1 && (getHasClapHappened() == true || millis() - lastClapTime > 1000)) {
+        if (peak == -1 && (getHasClapHappened() == true || millis() - lastClapTime > 4000)) {
             lastClapTime = millis();
             ESP_LOGI("CLAP", "Peak Detected at %lu", millis());
             message_animation animation = ledInstance->createFlash(millis(), 300, 2, 0, 255, 255);
             ledInstance->pushToAnimationQueue(animation);
             message_data clapMessage = createClapMessage(true);
+            memcpy(clapMessage.targetAddress, hostAddress, 6);
             pushToSendQueue(clapMessage);
             setHasClapHappened(false);
             vTaskDelete(NULL);
+            ESP_LOGI("CLAP", "Clap task finished");
         } 
         taskYIELD(); 
           
