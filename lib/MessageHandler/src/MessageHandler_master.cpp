@@ -47,7 +47,7 @@ void MessageHandler::handleReceive() {
     message_data incomingData;
     
     while (true) {
-
+ 
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
             ESP_LOGI("MSG", "Received from queue %d", incomingData.messageType);
@@ -69,9 +69,11 @@ void MessageHandler::handleReceive() {
                 //ESP_LOGI("MSG", "Midi velocity: %d", animation->animationParams.midi.velocity);
                 if (incomingData.payload.address.version != version) {
                     ESP_LOGI("MSG", "Received address with lower version, ignoring. Version: %d, Current Version: %d", incomingData.payload.address.version, version);
+                    ESP_LOGI("MSG", "Address: %02x:%02x:%02x:%02x:%02x:%02x", incomingData.senderAddress[0], incomingData.senderAddress[1], incomingData.senderAddress[2], incomingData.senderAddress[3], incomingData.senderAddress[4], incomingData.senderAddress[5]);
                     ESP_LOGI("MSG", "This version is %s vs other version is %s", version.toString().c_str(), incomingData.payload.address.version.toString().c_str());
                     message_data updateVersionMessage = createUpdateVersionMessage(version);
-                    memcpy(updateVersionMessage.targetAddress, incomingData.senderAddress, 6);
+                    memcpy(updateVersionMessage.targetAddress, incomingData.payload.address.address, 6);
+                    ESP_LOGI("MSG", "Sending update version message to %02x:%02x:%02x:%02x:%02x:%02x", incomingData.payload.address.address[0], incomingData.payload.address.address[1], incomingData.payload.address.address[2], incomingData.payload.address.address[3], incomingData.payload.address.address[4], incomingData.payload.address.address[5]);
                     xQueueSend(sendQueue, &updateVersionMessage, portMAX_DELAY);
                     continue;
                 }
@@ -131,24 +133,27 @@ void MessageHandler::handleReceive() {
 
             else if (incomingData.messageType == MSG_CLAP) {
                 ESP_LOGI("MSG", "Received clap message");
-                ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
                 int clapIndex = getClapIndex();
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
                     ESP_LOGI("MSG", "Received clap from clap device, setting clap time");
                     setLastClapTime(incomingData.payload.clap.clapTime - getClapDeviceDelay());
                     WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
                     webServerInstance.clapReceived(clapIndex, incomingData.payload.clap.clapTime);
+                    ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
+
                 }
                 else {
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
                             ESP_LOGI("MSG", "Received clap from address %d", i);
+                            ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
                             addressList[i].distances[clapIndex] = convertMicrosToMeters(getLastClapTime() - incomingData.payload.clap.clapTime);
                             ESP_LOGI("MSG", "Distance: %.2f", addressList[i].distances[clapIndex]);
                             break;
                         }
                     }
                 }
+                
             }
 
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
@@ -184,11 +189,13 @@ void MessageHandler::handleSend() {
     while(true) {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
             if (memcmp(messageData.targetAddress, broadcastAddress, 6) != 0) {
+                ESP_LOGI("MSG", "Adding Peer %02x:%02x:%02x:%02x:%02x:%02x", messageData.targetAddress[0], messageData.targetAddress[1], messageData.targetAddress[2], messageData.targetAddress[3], messageData.targetAddress[4], messageData.targetAddress[5]);
                 addPeer(messageData.targetAddress);
             }
-
+            WiFi.macAddress(messageData.senderAddress);
             switch (messageData.messageType) {
                 case MSG_ADDRESS:
+                    
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 default:

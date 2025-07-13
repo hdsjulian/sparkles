@@ -23,7 +23,7 @@ bool startUp = true;
 static void clapTask(void *pvParameters) {
     ESP_LOGI("CLAP", "Clap task started");
     // Simulate clap detection
-    delay(5000); // Simulate some processing time
+    delay(3000); // Simulate some processing time
     message_data clapMessage;
     clapMessage.messageType = MSG_CLAP;
     memcpy(clapMessage.targetAddress, hostAddress, 6);
@@ -44,6 +44,7 @@ static void handleReceive(void *pvParameters) {
                 startUp = false;
                 switch (incomingData.payload.command.commandType) {
                     case CMD_START_CALIBRATION:
+                    ESP_LOGI("MSG", "Starting calibration");
                         xTaskCreatePinnedToCore(clapTask, "clapTask", 10000, NULL, 10, NULL, 1);
                         break;
                     case CMD_CONTINUE_CALIBRATION:

@@ -34,7 +34,7 @@ void OTAHandler::performUpdate() {
         ESP_LOGI("OTA", "Update URL not set. Please call setup() first.");
         return;
     }
-
+    connectToWiFi(); // Ensure WiFi is connected
     ESP_LOGI("OTA", "Starting OTA update from URL: %s", updateUrl);
 
     HTTPClient http;

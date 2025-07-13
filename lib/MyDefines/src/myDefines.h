@@ -25,7 +25,11 @@
 #define WEBSERVER 2
 #define CLAP_DEVICE 3
 #define RASPI_DEVICE 4
-#define VERSION "1.0.0"
+#if DEVICE_MODE != CLIENT
+  #define VERSION "1.0.1"
+#elif DEVICE_MODE == CLIENT
+  #define VERSION "1.0.1"
+#endif
 
 #define V1 1
 #define V2 2
@@ -44,7 +48,7 @@
 #define TIMER_ARRAY_COUNT 10
 #define WIFI_SSID "SPARKLES"
 #define WIFI_PASSWORD "sparklesAdmin"
-#define OTA_UPDATE_URL "http://192.168.4.1/update" // Update URL for OTA updates
+#define OTA_UPDATE_URL "http://192.168.4.1/firmware_client.bin" // Update URL for OTA updates
 #define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
 
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
