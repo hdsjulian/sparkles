@@ -45,6 +45,19 @@ String MessageHandler::stringAddress(const uint8_t * mac_addr, bool debug){
     if (memcmp(mac_addr, hostAddress, 6) == 0) {
         macStr += "HOST ADDRESS";
     }
+    else if (memcmp(mac_addr, clapDeviceAddress, 6) == 0) {
+        macStr += "CLAP DEVICE ADDRESS";
+    }
+    else if (memcmp(mac_addr, midiDeviceAddress, 6) == 0) {
+        macStr += "BROADCAST ADDRESS";
+    }
+    else if (memcmp(mac_addr, raspiDeviceAddress, 6) == 0) {
+        macStr += "RASPI DEVICE ADDRESS";
+    }
+
+    else {
+        macStr += "ADDRESS: ";
+    }
     String separator = debug ? ", 0x" : ":";
     macStr += String(mac_addr[0], HEX);
     macStr += separator;
@@ -162,8 +175,9 @@ float MessageHandler::getBatteryPercentage() {
     analogReadResolution(12);
     analogSetPinAttenuation(BATTERY_PIN, ADC_11db);  
     int adcValue = analogRead(BATTERY_PIN); // Read the ADC value
-    float voltage = adcValue * (4.2 / 3220.0);
+    float voltage = adcValue * (4.2 / 2550.0);
     float percentage;
+
     if (voltage >= 4.2) {
         percentage = 100.0;
     } else if (voltage >= 3.8 && voltage < 4.2) {
@@ -181,6 +195,7 @@ float MessageHandler::getBatteryPercentage() {
 
 void MessageHandler::handleSystemStatus(message_data incomingData) {
     message_system_status systemStatus = incomingData.payload.systemStatus;
+    ESP_LOGI("System Status", "Number of devices: %d", systemStatus.numDevices);
     setNumDevices(systemStatus.numDevices);
 }
 
@@ -220,6 +235,11 @@ void MessageHandler::resetCalibration() {
         }
         xSemaphoreGive(configMutex);
     }
+}
+
+void MessageHandler::testCalibration() {
+        message_data commandMessage = createCommandMessage(CMD_TEST_CALIBRATION, true);
+        pushToSendQueue(commandMessage);
 }
 
 void MessageHandler::sendSleepWakeupMessage(unsigned long sleepDuration) {

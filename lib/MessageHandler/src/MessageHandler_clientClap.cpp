@@ -14,6 +14,7 @@ void MessageHandler::runClapTask() {
     peakDetection.begin(48, 10, 0.5);  
     double data;
     unsigned long lastClapTime = millis();
+    unsigned long lastPing = millis();
     ESP_LOGI("CLAP", "Started at %lu", lastClapTime);
     ESP_LOGI("CLAP", "Has clap happened: %d", getHasClapHappened());
     while (true) {
@@ -21,19 +22,33 @@ void MessageHandler::runClapTask() {
         peakDetection.add(data); 
         int peak = peakDetection.getPeak(); 
         double filtered = peakDetection.getFilt(); 
-        
-        if (peak == -1 && (getHasClapHappened() == true || millis() - lastClapTime > 4000)) {
+        if ((peak == -1 || (millis() - lastClapTime > CLAP_TIMEOUT)) && (getHasClapHappened() == true || (getCalibrationTest() == true && millis() - lastClapTime > 1000 ) )) {            
+            ESP_LOGI("CLAP" , "Clap happened? %d", (int)getHasClapHappened());
+            message_data clapMessage = createClapMessage(true);
             lastClapTime = millis();
-            ESP_LOGI("CLAP", "Peak Detected at %lu", millis());
+            //
             message_animation animation = ledInstance->createFlash(millis(), 300, 2, 0, 255, 255);
             ledInstance->pushToAnimationQueue(animation);
-            message_data clapMessage = createClapMessage(true);
+            
+            if (millis() - lastClapTime > CLAP_TIMEOUT) {
+                ESP_LOGI("CLAP", "No clap detected, resetting hasClapHappened");
+                clapMessage.payload.clap.clapHappened = false;
+            }            
+            else {
+                ESP_LOGI("CLAP", "Clap detected with peak: %d, filtered: %.2f", peak, filtered);
+                clapMessage.payload.clap.clapHappened = true;
+            }            
             memcpy(clapMessage.targetAddress, hostAddress, 6);
             pushToSendQueue(clapMessage);
             setHasClapHappened(false);
             vTaskDelete(NULL);
             ESP_LOGI("CLAP", "Clap task finished");
         } 
+        if (millis() - lastPing > 1000) {
+            ESP_LOGI("CLAP", "Has Clap Happened: %d", getHasClapHappened());    
+            ESP_LOGI("CLAP", "Last Clap Time: %lu", lastClapTime);
+            lastPing = millis();
+        }
         taskYIELD(); 
           
     }

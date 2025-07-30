@@ -10,6 +10,7 @@
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "soc/rtc.h"
+#include <Ota.h>
 // put function declarations here:
 
 
@@ -63,7 +64,7 @@ void setup()
   ledInstance.setup();
   msgHandler.setup(ledInstance);
   ESP_LOGI("", "Setup");
-
+  ledInstance.blink(millis(), 100, 2, 160, 255, 255);
 
   // put your setup code here, to run once:
 }
@@ -72,12 +73,12 @@ void loop()
 {
   if (lastTick + 10000 < millis())
   {
-    //ledInstance.runBlink();
     lastTick = millis();
     uint8_t address[6];
     WiFi.macAddress(address);
     ESP_LOGI("", "Tick %s", msgHandler.stringAddress(address, true).c_str());
     ESP_LOGI("", "Current Time %llu", micros());
+    ESP_LOGI("", "Battery: %.2f%%", msgHandler.getBatteryPercentage());
     ESP_LOGI("", "Version: %s", VERSION);
 
 

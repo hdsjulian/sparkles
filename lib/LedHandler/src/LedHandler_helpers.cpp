@@ -61,8 +61,25 @@ message_animation LedHandler::createFlash(unsigned long long startTime, unsigned
     animation.animationParams.blink.hue = hue;
     animation.animationParams.blink.saturation = saturation;
     animation.animationParams.blink.brightness = brightness;
-
     return animation;
+}
+
+message_animation LedHandler::createSyncAsyncBlinkRandom() {
+    message_animation animation;
+    animation.animationType = SYNC_ASYNC_BLINK;
+    animation_sync_async_blink sabAnimation;
+    sabAnimation.blinkDuration = random(syncAsyncMinDuration, syncAsyncMaxDuration);
+    sabAnimation.pause = random(syncAsyncMinPause, syncAsyncMaxPause);
+    sabAnimation.repetitions = random(syncAsyncMinReps, syncAsyncMaxReps);
+    sabAnimation.spreadTime = random(syncAsyncMinSpread, syncAsyncMaxSpread); 
+    sabAnimation.fraction = random (4, 8);
+    sabAnimation.animationReps = random(syncAsyncMinAniReps, syncAsyncMaxAniReps);
+    sabAnimation.hue = random(0, 40);
+    sabAnimation.saturation = random(20, 127);
+    sabAnimation.brightness = random(80, 180);
+    animation.animationParams.syncAsyncBlink = sabAnimation;
+    return animation;
+
 }
 
 void LedHandler::stopAnimationTask() {
@@ -88,4 +105,16 @@ void LedHandler::blink(unsigned long long startTime, unsigned long long duration
     message_animation animation = createFlash(startTime, duration, repetitions, hue, saturation, brightness);
     pushToAnimationQueue(animation);
     //ESP_LOGI("LED", "Blinking with hue: %d, saturation: %d, brightness: %d", hue, saturation, brightness);
+}
+
+TickType_t LedHandler::getNextAnimationTicks() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        TickType_t nextTicks = microsToTicks((unsigned long long)microsUntilEnd);
+        xSemaphoreGive(configMutex);
+        return nextTicks;
+    }
+    else {
+        ESP_LOGI("LED", "Failed to get next animation ticks");
+        return 0;
+    }
 }

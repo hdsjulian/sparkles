@@ -16,8 +16,11 @@ public:
     bool isOTAUpdating = false;
     bool nextOTAAddress = false;
     bool requestingOTAUpdate = false;
+    bool calibrationTest = false;
     int otaUpdateAddressId = -1;
     bool hasClapHappened = false;
+    unsigned long long offsetSum = 0;
+    int offsetCount = 0;
     
 
     //singleton
@@ -52,7 +55,7 @@ public:
     void setLastDelay(int delay);
     unsigned long long getLastReceiveTime();
     void setLastReceiveTime(unsigned long long time);
-    void setTimeOffset(unsigned long long sendTime, unsigned long long receiveTime, int delay);
+    void setTimeOffset(long long offsetAvg);
     long long getTimeOffset();
     bool getTimerReset();
     void setTimerReset(bool set);
@@ -62,6 +65,7 @@ public:
     int getTimerCounter();
     void setTimerCounter(int counter);
     void setUnavailable(int index);
+    void setAvailable(int index);
     activeStatus getActiveStatus(int index);
     float getBatteryPercentage();
     void setNumDevices(int num);
@@ -71,11 +75,16 @@ public:
     message_data retrieveCommand(uint8_t * address);
     void setCommand(message_data command, uint8_t * address);
     void setAddressListInactive();
+    message_midi_params getMidiParams();
+    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode);
+    bool getCalibrationTest();
+    void setCalibrationTest(bool test);
     message_data createClapMessage(bool isHost = false);
     message_data createConfigMessage(int boardId);
     message_data createUpdateVersionMessage(Version version);
     message_data createCommandMessage(int commandType, bool isBroadcast = false);
     message_data createStatusMessage();
+    message_data createMidiParamsMessage(message_midi_params params);
     
 
     void setBoardPosition(int boardId, float xPos, float yPos);
@@ -101,7 +110,8 @@ public:
     bool getHasClapHappened();
     void setClapDeviceDelay(int delay);
     int getClapDeviceDelay();
-    
+    unsigned long long getLastMidiTime();
+    void setLastMidiTime(unsigned long long timeStamp);
     unsigned long getSleepTime();
     bool isInSleepPhase();
     unsigned long setNextSleepMillis();
@@ -119,6 +129,7 @@ public:
     void startCalculatePositionsTask();
     void startAnnounceAddressTask();
     void startClapSyncTask();
+    void startAnimationLoopTask();
     void handleSleepWakeup(message_data incomingData);
     void handleReceive();
     void handleSend();
@@ -130,6 +141,7 @@ public:
     void runOTAUpdateTask();
     void runCalculatePositionsTask();
     void runClapSync();
+    void runAnimationLoop();
     int addPeer(uint8_t * address);
     bool addressAnnounced = false;
     void sendAnimation(message_animation animationMessage, int addressId);
@@ -152,14 +164,28 @@ public:
     void startCalibrationClient();
     void cancelCalibration();
     void resetCalibration();
+    void continueDistanceCalibration();
+    void endDistacneCalibration();
+    void startDistanceCalibrationMaster();
+    void startDistanceCalibrationClient();
+    void endDistanceCalibration();
+    void calculateDistances();
+    void cancelDistanceCalibration();
+    void resetDistanceCalibration();
+    void testCalibration();
     void sendSleepWakeupMessage(unsigned long sleepDuration);
     void commandCalibrate(int boardId);
 private:
     // Static Constants
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc1, 0x48};
+    //kiste 1-3
+    //static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xbf, 0xb8};
+    //kiste 2
+    static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc0, 0x60};
+    
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
-
+    uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
+    uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8F, 0xBF, 0xF4};
     // Static Members
     static MessageHandler* instance;
 
@@ -174,8 +200,9 @@ private:
     unsigned long long msgReceiveTime;
     const uint8_t *incomingData;
     client_address addressList[NUM_CLIENTS];
+    message_midi_params midiParams;
     SemaphoreHandle_t configMutex, updateOTAMutex;
-    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle;
+    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle, animationLoopHandle ;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;
@@ -190,6 +217,7 @@ private:
     bool settingClapSync = false;
     bool timerReset = false;
     int lastTimerArrived = 0;
+    unsigned long long lastMidiTime = 0;
     long long timeOffset = 0;
     unsigned long long lastReceiveTime = 0;
     int offsetMultiplier = 1;
@@ -225,8 +253,9 @@ private:
     static void runOTAUpdateTaskWrapper(void *pvParameters);
     static void calculatePositionsTaskWrapper(void *pvParameters);
     static void runClapSyncWrapper(void *pvParameters);
+    static void runAnimationLoopWrapper(void *pvParameters);
     // Member Functions
-    int getLastSendTime();
+    unsigned long long getLastSendTime();
     void setLastSendTime(unsigned long long time);
     void setMsgReceiveTime(unsigned long long time);
     unsigned long long getMsgReceiveTime();

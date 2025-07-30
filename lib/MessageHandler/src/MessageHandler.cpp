@@ -16,7 +16,7 @@ MessageHandler::MessageHandler() {
 void MessageHandler::setup(LedHandler &globalLedInstance) {
     ledInstance = &globalLedInstance;
     xTaskCreatePinnedToCore(handleReceiveWrapper, "handleReceive", 10000, this, 10, &handleReceiveHandle, 0);
-    xTaskCreatePinnedToCore(handleSendWrapper, "handleSend", 10000, this, 10, &handleSendHandle, 0);
+    xTaskCreatePinnedToCore(handleSendWrapper, "handleSegnd", 10000, this, 10, &handleSendHandle, 0);
     addPeer(const_cast<uint8_t*>(broadcastAddress));
     version= VERSION;
     #if (DEVICE_MODE == MASTER) 
@@ -31,6 +31,7 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
     #if (DEVICE_MODE == MASTER)
         ESP_LOGI("MSG", "Master setup");
         handleAddressStruct();
+        startAllTimerSyncTask();
          // using const char*
     #endif
     #if (DEVICE_MODE == CLIENT)

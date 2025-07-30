@@ -2,31 +2,35 @@
 
 void LedHandler::addToMidiTable(midiNoteTable midiNoteTableArray[OCTAVESONKEYBOARD], message_animation animation, int position)
 {
+
     if (animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE)
-    {
+    {   
+
         return;
     }
 
     int note = animation.animationParams.midi.note;
     int velocity = animation.animationParams.midi.velocity;
+
     if (animation.animationParams.midi.note % 12 == 1) { // C# is 1 in the chromatic scale
         velocity = static_cast<int>(velocity * 0.8f);
     }
     int octave = (note / OCTAVE) - 1;
     if (xSemaphoreTake(midiNoteTableMutex, portMAX_DELAY) == pdTRUE) {
-        if (midiNoteTableArray[octave].velocity < velocity)
-        {
-            midiNoteTableArray[octave].velocity = velocity;
-            midiNoteTableArray[octave].note = note;
-            midiNoteTableArray[octave].startTime = velocity == 0 ? 0 : micros();
-            //ESP_LOGI("LED", "Added: Note: %d, Velocity: %d, Octave: %d", note, velocity, octave);
-            //ESP_LOGI("LED", "Start time: %llu", midiNoteTableArray[octave].startTime);
-        }
-        else if (velocity == 0)
-        {
-            midiNoteTableArray[octave].velocity = 0;
-            midiNoteTableArray[octave].note = 0;
-            midiNoteTableArray[octave].startTime = 0;
+        if (velocity > 0) {
+            // Always update if new note or startTime is zero, or if velocity is higher
+            if (midiNoteTableArray[octave].note != note || midiNoteTableArray[octave].startTime == 0 || midiNoteTableArray[octave].velocity < velocity) {
+                midiNoteTableArray[octave].velocity = velocity;
+                midiNoteTableArray[octave].note = note;
+                midiNoteTableArray[octave].startTime = micros();
+            }
+        } else {
+            // Only clear entry if sustain is not active
+            if (!getSustain()) {
+                midiNoteTableArray[octave].velocity = 0;
+                midiNoteTableArray[octave].note = 0;
+                midiNoteTableArray[octave].startTime = 0;
+            }
         }
         xSemaphoreGive(midiNoteTableMutex);
     }
@@ -98,13 +102,19 @@ midiNoteTable LedHandler::getMidiNoteTable(int index) {
     return tableElement;
 }
 
-void LedHandler::getMidiNoteTableArray(midiNoteTable* buffer, size_t size) {
+void LedHandler::getMidiNoteTableArray(midiNoteTable* buffer, size_t size, int instrument) {
+    midiNoteTable localArray[OCTAVESONKEYBOARD];
     if (size < sizeof(midiNoteTableArray)) {
         // Handle error: buffer is too small
         return;
     }
     if (xSemaphoreTake(midiNoteTableMutex, portMAX_DELAY) == pdTRUE) {
-        memcpy(buffer, midiNoteTableArray, sizeof(midiNoteTableArray));
+        if (instrument == INSTRUMENT_KEYBOARD) {
+            memcpy(buffer, midiNoteTableArray, sizeof(midiNoteTableArray));
+        } else if (instrument == INSTRUMENT_MIC) {
+            memcpy(buffer, micNoteTableArray, sizeof(micNoteTableArray));
+        } 
+
         xSemaphoreGive(midiNoteTableMutex);
     }
 }

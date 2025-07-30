@@ -38,6 +38,12 @@ void setup()
 {
   Serial.begin(115200);
   esp_log_level_set("*", ESP_LOG_INFO);
+  esp_log_level_set("MSG", ESP_LOG_NONE);
+  esp_log_level_set("LED", ESP_LOG_NONE);
+  esp_log_level_set("Sleep", ESP_LOG_NONE);
+  esp_log_level_set("TIMER", ESP_LOG_NONE);
+  esp_log_level_set("CLAP", ESP_LOG_INFO);
+  esp_log_level_set("Tick", ESP_LOG_INFO);
   unsigned long long startTime = millis();
   while (!Serial)
   {
@@ -52,10 +58,10 @@ void setup()
     lfs_started = false;
   }
 
-  rtc_clk_32k_enable(true);
-  rtc_clk_32k_bootstrap(10);
+  //rtc_clk_32k_enable(true);
+  //rtc_clk_32k_bootstrap(10);
 
-  rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
+  //rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
   WiFi.mode(WIFI_AP_STA);
   if (esp_now_init() != ESP_OK)
 
@@ -80,24 +86,34 @@ void loop()
     uint8_t address[6];
     WiFi.macAddress(address);
     lastTick = millis();
-    ESP_LOGI("", "Tick %s", msgHandler.stringAddress(address, true).c_str());
+    ESP_LOGI("TICK", "Tick %s", msgHandler.stringAddress(address, true).c_str());
+    unsigned long long now = micros();
+    //ESP_LOGI("TICK", "Now is %llu", now);
+    esp_log_level_t level = esp_log_level_get("Sleep");
+    //ESP_LOGI("TICK", "Sleep log level: %d", level);
+    Serial.println(micros());
     struct tm timeinfo;
-    
     if (getLocalTime(&timeinfo)) {
-        ESP_LOGI("", "Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        //ESP_LOGI("", "Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     } else {
-        ESP_LOGI("", "Failed to obtain time");
+        //ESP_LOGI("", "Failed to obtain time");
     }
     if (!msgHandler.isInSleepPhase()) {
-        ESP_LOGI("Sleep", "Not in sleep phase");
+        //ESP_LOGI("Sleep", "Not in sleep phase");
         unsigned long sleepTime = msgHandler.getSleepTime();
         vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for the message to be sent
         if (sleepTime > 0) {
-            ESP_LOGI("Sleep", "Next sleep time in %lu ms", sleepTime);
+            //ESP_LOGI("Sleep", "Next sleep time in %lu ms", sleepTime);
         } else {
-            ESP_LOGI("Sleep", "No sleep time set"); 
+            //ESP_LOGI("Sleep", "No sleep time set"); 
         }
     }
+    // If lastMidiTime is more than 1 minute ago, start animation loop task
+    if (millis() - msgHandler.getLastMidiTime() > 60000 && msgHandler.getLastMidiTime() > 0) {
+        msgHandler.startAnimationLoopTask();
+        msgHandler.setLastMidiTime(0);
+    }
+  
   }
 
   if (msgHandler.isInSleepPhase()) {
@@ -106,19 +122,22 @@ void loop()
     msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
     struct tm timeinfo;
     if (getLocalTime(&timeinfo)) {
-        ESP_LOGI("", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        //ESP_LOGI("Sleep", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     } else {
-        ESP_LOGI("", "Failed to obtain time");
+        //ESP_LOGI("Sleep", "Failed to obtain time");
     }
-    ESP_LOGI("Sleep", "Time in micros: %llu", micros());
+    //ESP_LOGI("Sleep", "Time in micros: %llu", micros());
     msgHandler.turnWifiOff();
     msgHandler.recordTimeOfDayBeforeSleep();
     esp_light_sleep_start();
     msgHandler.setTimeOfDayAfterSleep();
     msgHandler.turnWifiOn();
-    vTaskDelay(1800000 / portTICK_PERIOD_MS);
+    ESP_LOGI("Sleep", "Delaying for 20 seconds");
+    vTaskDelay(20000 / portTICK_PERIOD_MS);
+    ESP_LOGI("Sleep", "Continuing");
     msgHandler.setAddressListInactive();
     msgHandler.startAllTimerSyncTask();
+    
     
    // msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
 
