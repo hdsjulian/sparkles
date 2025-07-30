@@ -69,7 +69,7 @@ void MessageHandler::setLastSendTime(unsigned long long time) {
         xSemaphoreGive(configMutex);
     }
 }
-int MessageHandler::getLastSendTime() {
+unsigned long long MessageHandler::getLastSendTime() {
     int returnTime;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         returnTime = lastSendTime;
@@ -149,9 +149,9 @@ int MessageHandler::addOrGetAddressId(uint8_t * address) {
     return -1;
 }
 
-void MessageHandler::setTimeOffset(unsigned long long masterTime, unsigned long long clientTime, int delay) {
+void MessageHandler::setTimeOffset(long long offsetAvg) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        timeOffset = (long long)masterTime + delay - (long long)clientTime;
+        timeOffset = offsetAvg;
         ESP_LOGI("MSG", "Setting time offset: %lld", timeOffset);
         xSemaphoreGive(configMutex);
     }
@@ -160,7 +160,7 @@ void MessageHandler::setTimeOffset(unsigned long long masterTime, unsigned long 
  long long MessageHandler::getTimeOffset() {
      long long returnOffset;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        returnOffset = timeOffset*offsetMultiplier;
+        returnOffset = timeOffset;
         xSemaphoreGive(configMutex);
     }
     return returnOffset;
@@ -243,6 +243,14 @@ void MessageHandler::setUnavailable(int index) {
         xSemaphoreGive(configMutex);
     }
 }
+
+void MessageHandler::setAvailable(int index) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        addressList[index].active = ACTIVE;
+        addressList[index].tries = 0;
+        xSemaphoreGive(configMutex);
+    }
+}
 activeStatus MessageHandler::getActiveStatus(int index) {
     activeStatus returnStatus;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
@@ -260,12 +268,16 @@ void MessageHandler::setNumDevices(int num) {
     }
 }
 int MessageHandler::getNumDevices() {
-    int returnNum;
+    int activeCount = 0;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        returnNum = numDevices;
+        for (int i = 0; i < NUM_CLIENTS; i++) {
+            if (addressList[i].active == ACTIVE) {
+                activeCount++;
+            }
+        }
         xSemaphoreGive(configMutex);
     }
-    return returnNum;
+    return activeCount;
 }
 /*
 message_data MessageHandler::retrieveCommand(uint8_t * address) {
@@ -324,7 +336,11 @@ message_data MessageHandler::createClapMessage(bool isHost) {
         memcpy(clapMessage.targetAddress, clapDeviceAddress, 6);
     }
     message_clap clapPayload;
-    clapPayload.clapTime = micros() - ledInstance->getTimerOffset();
+    
+    ESP_LOGI("CLAP", "Peak Detected at %lu", micros());
+    ESP_LOGI("CLAP", "Timer Offset: %lld", ledInstance->getTimerOffset());
+    ESP_LOGI("CLAP", "Clap Time: %llu", clapPayload.clapTime);
+    clapPayload.clapTime = micros() + ledInstance->getTimerOffset();
     memcpy(&clapMessage.payload.clap, &clapPayload, sizeof(clapPayload));
     WiFi.macAddress(clapMessage.senderAddress);
     return clapMessage;
@@ -664,4 +680,68 @@ int MessageHandler::getClapDeviceDelay() {
         xSemaphoreGive(configMutex);
     }
     return returnDelay;
+}
+
+void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        midiParams.valMin = minVal;
+        midiParams.valMax = maxVal;
+        midiParams.satMin = minSat;
+        midiParams.satMax = maxSat;
+        midiParams.rangeMin = rangeMin;
+        midiParams.rangeMax = rangeMax;
+        midiParams.rmsMin = rmsMin;
+        midiParams.rmsMax = rmsMax;
+        midiParams.mode = mode;
+        xSemaphoreGive(configMutex);
+    }
+    ESP_LOGI("MIDI", "Set Midi Params");
+    message_data midiParamsMessage = createMidiParamsMessage(midiParams);
+    ESP_LOGI("MIDI", "midi params message %.2f -- %.2f ", midiParams.rmsMin, midiParams.rmsMax);
+    pushToSendQueue(midiParamsMessage);
+}
+message_midi_params MessageHandler::getMidiParams() {
+    message_midi_params returnParams;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnParams = midiParams;
+        xSemaphoreGive(configMutex);
+    }       
+    return returnParams;
+}
+
+message_data MessageHandler::createMidiParamsMessage(message_midi_params params) {
+    message_data midiParamsMessage;
+    midiParamsMessage.messageType = MSG_MIDI_PARAMS;
+    memcpy(midiParamsMessage.targetAddress, raspiDeviceAddress, 6);
+    memcpy(&midiParamsMessage.payload.midiParams, &params, sizeof(params));
+    WiFi.macAddress(midiParamsMessage.senderAddress);
+    return midiParamsMessage;
+}
+bool MessageHandler::getCalibrationTest() {
+    bool returnCalibrationTest;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnCalibrationTest = calibrationTest;
+        xSemaphoreGive(configMutex);
+    }
+    return returnCalibrationTest;
+}
+void MessageHandler::setCalibrationTest(bool test) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        calibrationTest = test;
+        xSemaphoreGive(configMutex);
+    }
+}
+void MessageHandler::setLastMidiTime(unsigned long long timeStamp) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        lastMidiTime = timeStamp;
+        xSemaphoreGive(configMutex);
+    }
+}
+unsigned long long MessageHandler::getLastMidiTime() {
+    unsigned long long returnLastMidiTime;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnLastMidiTime = lastMidiTime;
+        xSemaphoreGive(configMutex);
+    }
+    return returnLastMidiTime;
 }

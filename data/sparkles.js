@@ -191,7 +191,7 @@ function sendDeviceUpdateRequest(id) {
     });
 }
 
-function fetchData(fetchUrl) {
+export function fetchData(fetchUrl) {
   console.log("Fetching URL: " + fetchUrl);
   fetch(fetchUrl)
     .then(response => {

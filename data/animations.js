@@ -50,6 +50,7 @@ document.getElementById('submit_animation_1').addEventListener('click', function
 
   // Handle form submission logic here
   var fetchUrl = `/setSyncAsyncParams?minSpeed=${encodeURIComponent(minSpeed)}&maxSpeed=${encodeURIComponent(maxSpeed)}&minPause=${encodeURIComponent(minPause)}&maxPause=${encodeURIComponent(maxPause)}&minReps=${encodeURIComponent(minReps)}&maxReps=${encodeURIComponent(maxReps)}&minSpread=${encodeURIComponent(minSpread)}&maxSpread=${encodeURIComponent(maxSpread)}&minRed=${encodeURIComponent(minRed)}&maxRed=${encodeURIComponent(maxRed)}&minGreen=${encodeURIComponent(minGreen)}&maxGreen=${encodeURIComponent(maxGreen)}&minBlue=${encodeURIComponent(minBlue)}&maxBlue=${encodeURIComponent(maxBlue)}&minAniReps=${encodeURIComponent(minAniReps)}&maxAniReps=${encodeURIComponent(maxAniReps)}`;
+  console.log(fetchUrl);
   fetchMe(fetchUrl);
   console.log(fetchUrl);
 

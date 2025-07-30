@@ -105,8 +105,24 @@ html {
   .inputs .blue-button {
     background-color: #1b78e2;
   }
+  .inputs .blue-button:hover {
+    background-color: #155a99; /* darker blue on hover */
+  }
   .inputs .red-button {
     background-color: #e21b1b;
+  }
+  .inputs .red-button:hover {
+    background-color: #a31515; /* darker red on hover */
+  }
+
+  .inputs button.active {
+    background-color: #18381a; /* even darker green */
+  }
+  .inputs .blue-button.active {
+    background-color: #0d3556; /* even darker blue */
+  }
+  .inputs .red-button.active {
+    background-color: #5c0d0d; /* even darker red */
   }
   .inputs .half-button {
     width: 48%; /* Make the button half the width of its container */

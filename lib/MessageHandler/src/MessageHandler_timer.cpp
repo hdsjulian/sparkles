@@ -20,6 +20,7 @@ void MessageHandler::startClapSyncTask() {
 }
 
 void MessageHandler::startAllTimerSyncTask() {
+    ESP_LOGI("TIMER", "Starting all timer sync task");
     if (allTimerSyncHandle == NULL)
         {
             xTaskCreatePinnedToCore(runAllTimerSyncWrapper, "runAllTimerSync", 10000, this, 2, &allTimerSyncHandle, 0);
@@ -37,11 +38,17 @@ void MessageHandler::runClapSyncWrapper(void *pvParameters) {
 void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
     messageHandlerInstance->setAddressListInactive();
+    ESP_LOGI("TIMER", "Starting all timer sync wrapper");
+    int numAdresses = 0;
     for (int j = 0; j < 3; j++) {
         ESP_LOGI("TIMER", "Starting all timer sync, iteration %d", j);
+        numAdresses = 0;
         for (int i = 0; i < NUM_DEVICES; i++) {
             if (memcmp(messageHandlerInstance->getItemFromAddressList(i).address, messageHandlerInstance->emptyAddress, 6) == 0) {
                 break;
+            }
+            else {
+                numAdresses++;
             }
             ESP_LOGI("TIMER", "Checking address %02x:%02x:%02x:%02x:%02x:%02x", messageHandlerInstance->addressList[i].address[0], messageHandlerInstance->addressList[i].address[1], messageHandlerInstance->addressList[i].address[2], messageHandlerInstance->addressList[i].address[3], messageHandlerInstance->addressList[i].address[4], messageHandlerInstance->addressList[i].address[5]);
             activeStatus status = messageHandlerInstance->getActiveStatus(i);
@@ -53,10 +60,15 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
             }
             else {
                 ESP_LOGI("TIMER", "Skipping timer sync for index %d with address %02x:%02x:%02x:%02x:%02x:%02x, status: %d", i, messageHandlerInstance->addressList[i].address[0], messageHandlerInstance->addressList[i].address[1], messageHandlerInstance->addressList[i].address[2], messageHandlerInstance->addressList[i].address[3], messageHandlerInstance->addressList[i].address[4], messageHandlerInstance->addressList[i].address[5], status);
+                
                 continue;
             }
         }
     }
+    if (numAdresses > 2) {
+        messageHandlerInstance->startAnimationLoopTask();
+    }
+    messageHandlerInstance->allTimerSyncHandle = NULL;
     vTaskDelete(NULL);
 }
 
@@ -70,9 +82,12 @@ void MessageHandler::runClapSync() {
     TickType_t lastWakeTime = xTaskGetTickCount();
     int delayAverage = 0;
     addPeer(clapDeviceAddress);
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 11; i++) {
         ESP_LOGI("CLAP", "Clap sync iteration %d", i);
-        delayAverage += getLastDelay();
+        if (i > 0) {
+            delayAverage += getLastDelay();
+        }
+        ESP_LOGI("CLAP", "Last delay: %d", getLastDelay());
         lastWakeTime = xTaskGetTickCount();
          setLastSendTime(micros());
         esp_now_send(clapDeviceAddress, (uint8_t *) &messageData, sizeof(messageData));
@@ -128,9 +143,10 @@ void MessageHandler::runTimerSync() {
             }
         }
 
-        if (getLastTimerCounter() < getTimerCounter()-5 && timerIndex > -1) {
+        if ((getLastTimerCounter() < getTimerCounter()-5 || getTimerCounter() > 100)   && timerIndex > -1) {
             setUnavailable(getCurrentTimerIndex()); 
             removePeer(addressList[timerIndex].address);
+            setSettingTimer(false);
             ESP_LOGI("TIMER", "Setting unavailable. Last counter: %d, current counter: %d, index: %d", getLastTimerCounter(), getTimerCounter(), timerIndex);
         }
         

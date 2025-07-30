@@ -1,3 +1,4 @@
+
 // #include "../../include/myDefines.h"
 #if DEVICE_MODE == MASTER
 #include <MyDefines.h>
@@ -77,6 +78,23 @@ void WebServer::configRoutes() {
       this->commandStartCalibration(request);
       request->send(200, "text/html", "Calibration command received");
     });
+    server.on("/commandStartDistanceCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      // This is a placeholder for the distance calibration command
+      // You can implement the distance calibration logic here
+      this->commandStartDistanceCalibration(request);
+      inDistanceCalibration = true;
+      request->send(200, "text/html", "Distance Calibration command received");
+    });
+    server.on("/commandContinueDistanceCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandContinueDistanceCalibration(request);
+      request->send(200, "text/html", "Continue Distance Calibration command received");
+    });
+    server.on("/commandTestCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      // This is a placeholder for the calibration command
+      // You can implement the calibration logic here
+      this->commandTestCalibration(request);
+      request->send(200, "text/html", "Test Calibration command received");
+    });
     server.on("/commandOTAUpdate", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandOTAUpdate(request);
       request->send(200, "text/html", "OTA Update command received");
@@ -104,6 +122,16 @@ void WebServer::configRoutes() {
     server.on("/commandCalibrate", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandCalibrate(request);
       request->send(200, "text/html", "Calibration command received");
+    });
+    server.on("/commandGetMidiParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->getMidiParams(request);
+    });
+    server.on("/setMidiParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->setMidiParams(request);
+      request->send(200, "text/html", "MIDI parameters set");
+    });
+    server.on("/getMidiParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->getMidiParams(request);
     });
     server.on("/setSleepTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setSleepTime(request);
@@ -235,7 +263,7 @@ String WebServer::jsonFromAddress(int id) {
     jsonString += "\",\"status\":\"";
     jsonString += address.active == ACTIVE ? "active" : "inactive";
     ESP_LOGI("WEB", "Active Status %d", address.active );
-    jsonString += "\",\"battery\":\"";
+    jsonString += "\",\"batteryPercentage\":\"";
     jsonString += String(address.batteryPercentage);
     jsonString += "\", \"distance\":\"";
     jsonString += String(address.distanceFromCenter);
@@ -313,6 +341,7 @@ void WebServer::setCalculationDone(bool done) {
 
 void WebServer::commandStartCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->startCalibrationMaster();
+  inCalibration = true;
   request->send(200, "text/html", "Calibration started");
 }
 void WebServer::commandOTAUpdate(AsyncWebServerRequest *request) {
@@ -321,14 +350,32 @@ void WebServer::commandOTAUpdate(AsyncWebServerRequest *request) {
 }
 void WebServer::commandCancelCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->cancelCalibration();
-  request->send(200, "text/html", "Calibration cancelled");
+
+  // Send calibrationStatus event with status 1
+  String calibrationJson = "{\"status\":1}";
+  events.send(calibrationJson.c_str(), "calibrationStatus");
+
+  // Send distanceStatus event with status 1
+  String distanceJson = "{\"status\":1}";
+  events.send(distanceJson.c_str(), "distanceStatus");
 }
 
 void WebServer::commandResetCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->resetCalibration();
   request->send(200, "text/html", "Calibration reset");
 }
-
+void WebServer::commandTestCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->testCalibration();
+  request->send(200, "text/html", "Test Calibration command received");
+}
+void WebServer::commandStartDistanceCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->startDistanceCalibrationMaster();
+  request->send(200, "text/html", "Distance Calibration command received");
+}
+void WebServer::commandContinueDistanceCalibration(AsyncWebServerRequest *request) {
+    messageHandlerInstance->continueDistanceCalibration();
+    request->send(200, "text/html", "Distance Calibration continued");
+}
 void WebServer::commandCalibrate(AsyncWebServerRequest *request) {
   if (!request->hasParam("boardId")) {
     request->send(400, "text/plain", "Missing parameter: boardId");
@@ -339,7 +386,6 @@ void WebServer::commandCalibrate(AsyncWebServerRequest *request) {
   request->send(200, "text/html", "Calibration command received");
 }
 void WebServer::commandContinueCalibration(AsyncWebServerRequest *request) {
-  int clapId = request->getParam("clapId")->value().toInt();
   float xPos = request->getParam("x")->value().toFloat();
   float yPos = request->getParam("y")->value().toFloat();
   messageHandlerInstance->continueCalibration(xPos, yPos);
@@ -352,13 +398,91 @@ void WebServer::commandEndCalibration(AsyncWebServerRequest *request) {
 void WebServer::clapReceived(int clapId, unsigned long long clapTime) {
     String jsonString = "{";
     jsonString += "\"event\":\"clap\",";
+    jsonString += "\"status\":3,";
     jsonString += "\"clapId\":";
     jsonString += String(clapId);
     jsonString += ",\"clapTime\":";
     jsonString += String(clapTime);
     jsonString += "}";
     ESP_LOGI("WEB", "Clap received: %s", jsonString.c_str());
-    events.send(jsonString.c_str(), "clap_received");
+    if (inCalibration) {
+      events.send(jsonString.c_str(), "calibrationStatus");
+    } else if (inDistanceCalibration) {
+      events.send(jsonString.c_str(), "distanceStatus");
+    } 
+
+}
+void WebServer::clapReceivedClient(int clapId, int boardId, float clapDistance) {
+    String jsonString = "{";
+    if (inCalibration) {
+        jsonString += "\"event\":\"clap\",";
+    } else if (inDistanceCalibration) {
+        jsonString += "\"event\":\"distanceClap\",";
+    } 
+    jsonString += "\"clapId\":";
+    jsonString += String(clapId);
+    jsonString += ",\"boardId\":";
+    jsonString += String(boardId);
+    jsonString += ",\"clapDistance\":";
+    jsonString += String(clapDistance, 3); // 3 decimal places for distance
+    jsonString += "}";
+    ESP_LOGI("WEB", "Client Clap received: %s", jsonString.c_str());
+    events.send(jsonString.c_str(), "clientClap");
+}
+
+void WebServer::setMidiParams(AsyncWebServerRequest *request) {
+  // Check for all required parameters
+  const char* requiredParams[] = {"minVal", "maxVal", "minSat", "maxSat", "rangeMin", "rangeMax", "minRms", "maxRms", "mode"};
+  for (int i = 0; i < 9; ++i) {
+    if (!request->hasParam(requiredParams[i])) {
+      String msg = "Missing parameter: ";
+      msg += requiredParams[i];
+      request->send(400, "text/plain", msg);
+      return;
+    }
+  }
+
+  // Parse parameters from GET request
+  int minVal = request->getParam("minVal")->value().toInt();
+  int maxVal = request->getParam("maxVal")->value().toInt();
+  int minSat = request->getParam("minSat")->value().toInt();
+  int maxSat = request->getParam("maxSat")->value().toInt();
+  int rangeMin = request->getParam("rangeMin")->value().toInt();
+  int rangeMax = request->getParam("rangeMax")->value().toInt();
+  float rmsMin = request->getParam("minRms")->value().toFloat();
+  float rmsMax = request->getParam("maxRms")->value().toFloat();
+  int mode = request->getParam("mode")->value().toInt();
+
+  ESP_LOGI("WEB", "Set Midi Params minVal %d, maxVal %d, minRms %.2f, maxRMS %.2f", minVal, maxVal, rmsMin, rmsMax);
+  messageHandlerInstance->setMidiParams(minVal, maxVal, minSat, maxSat, rangeMin, rangeMax, rmsMin, rmsMax, mode);
+  request->send(200, "text/html", "MIDI parameters set");
+}
+
+void WebServer::getMidiParams(AsyncWebServerRequest *request) {
+  message_midi_params midiParams = messageHandlerInstance->getMidiParams();
+  String jsonString = "{";
+  jsonString += "\"minVal\":";
+  jsonString += String(midiParams.valMin);
+  jsonString += ",\"maxVal\":";
+  jsonString += String(midiParams.valMax);
+  jsonString += ",\"minSat\":";
+  jsonString += String(midiParams.satMin);
+  jsonString += ",\"maxSat\":";
+  jsonString += String(midiParams.satMax);
+  jsonString += ",\"rangeMin\":";
+  jsonString += String(midiParams.rangeMin);
+  jsonString += ",\"rangeMax\":";
+  jsonString += String(midiParams.rangeMax);
+  jsonString += ",\"minRms\":";
+  jsonString += String(midiParams.rmsMin, 2);
+  jsonString += ",\"maxRms\":";
+  jsonString += String(midiParams.rmsMax, 2);
+  jsonString += ",\"mode\":";
+  jsonString += String(midiParams.mode);
+  jsonString += "}";
+  ESP_LOGI("WEB", "GetMidiParams: %s", jsonString.c_str());
+  // Send the JSON response
+  request->send(200, "text/html", jsonString.c_str());
 }
 
 void WebServer::setSleepTime(AsyncWebServerRequest *request) {

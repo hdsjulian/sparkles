@@ -26,9 +26,9 @@
 #define CLAP_DEVICE 3
 #define RASPI_DEVICE 4
 #if DEVICE_MODE != CLIENT
-  #define VERSION "1.0.1"
+  #define VERSION "1.0.2"
 #elif DEVICE_MODE == CLIENT
-  #define VERSION "1.0.1"
+  #define VERSION "1.0.2"
 #endif
 
 #define V1 1
@@ -40,7 +40,21 @@
 #define OCTAVE 12
 #define OCTAVESONKEYBOARD 8
 #define ADMIN_PRESENT_TIMEOUT 60000
+#define MIDI_MIN_RANGE 102
+#define MIDI_MAX_RANGE 802
+#define MIDI_VAL_MIN 0
+#define MIDI_VAL_MAX 127
+#define MIDI_SAT_MIN 0
+#define MIDI_SAT_MAX 255
+#define MIDI_MODE 1
+#define FREQUENCY_MODE 2
+#define INPUT_MODE FREQUENCY_MODE
+#define MIDI_HUE 40
+#define MIDI_SATURATION 51
 
+#define INSTRUMENT_MIC 0
+#define INSTRUMENT_KEYBOARD 1
+#define INSTRUMENT_CC 3
 
 //config variables
 #define NUM_CLIENTS 200
@@ -50,7 +64,7 @@
 #define WIFI_PASSWORD "sparklesAdmin"
 #define OTA_UPDATE_URL "http://192.168.4.1/firmware_client.bin" // Update URL for OTA updates
 #define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
-
+#define CLAP_TIMEOUT 10000
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 
@@ -111,6 +125,7 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define MSG_CONFIG_DATA 13
 #define MSG_UPDATE_VERSION 14
 #define MSG_COMMAND 15
+#define MSG_MIDI_PARAMS 16
 
 #define CMD_START_CALIBRATION 1
 #define CMD_CONTINUE_CALIBRATION 2
@@ -120,6 +135,10 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define CMD_SET_ADMIN_PRESENT 6 
 #define CMD_SET_ADMIN_NOT_PRESENT 7
 #define CMD_MESSAGE 8
+#define CMD_TEST_CALIBRATION 9
+#define CMD_START_DISTANCE_CALIBRATION 10
+#define CMD_CONTINUE_DISTANCE_CALIBRATION 11
+#define CMD_END_DISTANCE_CALIBRATION 12
 
 
 
@@ -155,6 +174,7 @@ struct midiNoteTable {
   int note;
   unsigned long long startTime;
   bool sustainPressed;
+  int instrument;
 };
    
 struct client_address {
@@ -163,7 +183,7 @@ struct client_address {
   float xPos;
   float yPos;
   float zPos;
-  long long timerOffset;
+  int32_t timerOffset;
   int delay;
   float distances[NUM_CLAPS];  
   activeStatus active = INACTIVE;
@@ -186,6 +206,21 @@ struct message_address{
   message_address(const message_address& other) : version(other.version) {
     if (this != &other) memcpy(address, other.address, sizeof(address));
   }
+};
+
+struct message_midi_params { 
+  int valMin;
+  int valMax;
+  int satMin;
+  int satMax;
+  int rangeMin;
+  int rangeMax;
+  float rmsMin;
+  float rmsMax;
+  int mode;
+  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(0.1f), rmsMax(8.0f), mode(INPUT_MODE) {}
+  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode) {}
+
 };
 
 struct animation_strobe {
@@ -226,7 +261,8 @@ struct animation_midi {
   uint8_t velocity;
   uint8_t octaveDistance;
   uint8_t offset; // Offset to adjust the MIDI note to the correct LED position
-  animation_midi() : note(0), velocity(0), octaveDistance(0), offset(0) {}
+  uint8_t instrument; // Optional field for instrument type
+  animation_midi() : note(0), velocity(0), octaveDistance(0), offset(0), instrument(0) {}
 };
 
 struct animation_background_shimmer {
@@ -257,8 +293,10 @@ struct message_animation {
 struct message_got_timer{
   int delayAverage;
   float batteryPercentage;
-  unsigned long long perceivedTime;
-  message_got_timer() : delayAverage(0), batteryPercentage(0.0), perceivedTime(0) {}
+  long long perceivedTime;
+  long long offset;
+  unsigned long long sendTime;
+  message_got_timer() : delayAverage(0), batteryPercentage(0.0), perceivedTime(0), offset(0), sendTime(0) {}
 };
 
 struct message_status {
@@ -285,17 +323,18 @@ struct message_sleep_wakeup {
 };
 struct message_timer {
   uint16_t counter;
-  unsigned long long sendTime;
-  unsigned long long receiveTime;
+  uint64_t sendTime;
+  uint64_t receiveTime;
   uint16_t lastDelay;
-  bool reset = false;
-  int addressId = 0;
+  bool reset;
+  int addressId;
   message_timer() :  counter(0), sendTime(0), receiveTime(0), lastDelay(0), reset(false), addressId(0) {}
 } ;
 
 struct message_clap {
   unsigned long long clapTime;
-  message_clap() : clapTime(0) {}
+  bool clapHappened;
+  message_clap() : clapTime(0), clapHappened(true) {}
 };
 struct message_config_data {
   int boardId;
@@ -333,6 +372,7 @@ union message_payload {
   struct message_config_data    configData;
   struct message_update_version updateVersion;
   struct message_command        command;
+  struct message_midi_params    midiParams;
   message_payload() {}
   message_payload(const message_payload& other) {
       if (this != &other) memcpy(this, &other, sizeof(message_payload));
@@ -350,17 +390,19 @@ struct message_data {
   uint8_t         messageType;
   uint8_t         targetAddress[6];
   uint8_t         senderAddress[6];
+  uint64_t         msgReceiveTime;
   message_payload payload;
   message_data()
-      : messageType(0), targetAddress{0}, payload() {}
+      : messageType(0), targetAddress{0}, senderAddress{0}, msgReceiveTime(0), payload() {}
   message_data(const message_data& other) {
       if (this != &other) {
           messageType = other.messageType;
           memcpy(this->targetAddress, other.targetAddress, sizeof(this->targetAddress));
           memcpy(this->senderAddress, other.senderAddress, sizeof(this->senderAddress));
+          msgReceiveTime = other.msgReceiveTime;
           payload = other.payload;
       }
-  };
+  }
   
   message_data& operator=(const message_data& other) {
       if (this != &other) {

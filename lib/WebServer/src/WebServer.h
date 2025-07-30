@@ -24,6 +24,8 @@ class WebServer {
         AsyncEventSource events;
         WebServer(FS* fs);
         bool connected = false;
+        bool inCalibration = false;
+        bool inDistanceCalibration = false;
     public:
         static WebServer& getInstance(FS* fs);
         WebServer(const WebServer&) = delete;
@@ -48,11 +50,17 @@ class WebServer {
         void commandResetCalibration(AsyncWebServerRequest *request);
         void commandContinueCalibration(AsyncWebServerRequest *request);
         void commandEndCalibration(AsyncWebServerRequest *request);
+        void commandTestCalibration(AsyncWebServerRequest *request);
         void commandMessage(AsyncWebServerRequest *request);
         void commandCalibrate(AsyncWebServerRequest *request);
+        void commandStartDistanceCalibration(AsyncWebServerRequest *request);
+        void commandContinueDistanceCalibration(AsyncWebServerRequest *request);
+        void setMidiParams(AsyncWebServerRequest *request);
+        void getMidiParams(AsyncWebServerRequest *request);
         void setSleepTime(AsyncWebServerRequest *request);
         void setWakeupTime(AsyncWebServerRequest *request);
         void clapReceived(int clapId, unsigned long long clapTime);
+        void clapReceivedClient(int clapId, int boardId, float clapDistance);
         void getAddressList(AsyncWebServerRequest *request);
         void serveOnNotFound(AsyncWebServerRequest *request);
         void updateAddressList();

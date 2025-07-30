@@ -19,19 +19,41 @@ uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc1, 0x48};// Example address
 QueueHandle_t receiveQueue, sendQueue ;
 esp_now_peer_info_t peerInfo;
 bool startUp = true;
-
-static void clapTask(void *pvParameters) {
-    ESP_LOGI("CLAP", "Clap task started");
-    // Simulate clap detection
-    delay(3000); // Simulate some processing time
-    message_data clapMessage;
-    clapMessage.messageType = MSG_CLAP;
-    memcpy(clapMessage.targetAddress, hostAddress, 6);
-    WiFi.macAddress(clapMessage.senderAddress);
-    esp_now_send(clapMessage.targetAddress, (uint8_t *)&clapMessage, sizeof(clapMessage));
-    ESP_LOGI("CLAP", "Clap task finished");
-    vTaskDelete(NULL);
+#define CLAP_PIN 47
+volatile bool buttonPressed = false;
+static bool isInterruptAttached = false;
+unsigned long buttonPressTime = 0;
+void IRAM_ATTR handleButtonPress() {
+  if (buttonPressed == false and (micros()-buttonPressTime)>2500000) {
+    buttonPressTime = micros();
+    buttonPressed = true;
+  } 
 }
+static void clapTask(void *pvParameters) {
+    ESP_LOGI("CLAP", "Clap2 task started");
+    // Simulate clap detection
+    if (!isInterruptAttached) {
+        attachInterrupt(digitalPinToInterrupt(CLAP_PIN), handleButtonPress, RISING);
+        isInterruptAttached = true;
+        Serial.println("Interrupt attached");
+    }        
+    while (true) {
+        if (buttonPressed == true) {
+            buttonPressed = false;      
+            Serial.println("CLAP! BPT: "+String(buttonPressTime) );
+            message_data clapMessage;
+            clapMessage.messageType = MSG_CLAP;
+            memcpy(clapMessage.targetAddress, broadcastAddress, 6);
+            WiFi.macAddress(clapMessage.senderAddress);
+            esp_now_send(clapMessage.targetAddress, (uint8_t *)&clapMessage, sizeof(clapMessage));
+            vTaskDelay(1000 / portTICK_PERIOD_MS); // Allow some time for the message to be sent
+            vTaskDelete(NULL);
+        }        
+    } 
+
+  } 
+  // Detach the interrupt if the state is not MODE_CALIBRATE
+
 
 static void handleReceive(void *pvParameters) {
     message_data incomingData;
@@ -44,10 +66,11 @@ static void handleReceive(void *pvParameters) {
                 startUp = false;
                 switch (incomingData.payload.command.commandType) {
                     case CMD_START_CALIBRATION:
+                    case CMD_START_DISTANCE_CALIBRATION:
+                    case CMD_CONTINUE_CALIBRATION:
+                    case CMD_CONTINUE_DISTANCE_CALIBRATION:
                     ESP_LOGI("MSG", "Starting calibration");
                         xTaskCreatePinnedToCore(clapTask, "clapTask", 10000, NULL, 10, NULL, 1);
-                        break;
-                    case CMD_CONTINUE_CALIBRATION:
                         break;
                     case CMD_MESSAGE:
                         ESP_LOGI("MSG", "Received message command");
@@ -82,6 +105,10 @@ static void handleSend(void *pvParameters) {
     }   
 }
 
+
+void clapDetection() {
+
+}
 
 
 void pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
@@ -150,7 +177,7 @@ void setup()
       break;
     }
   }
-
+    pinMode(CLAP_PIN, INPUT_PULLDOWN);
 
   //rtc_clk_32k_enable(true);
   //rtc_clk_32k_bootstrap(10);
@@ -167,6 +194,7 @@ void setup()
   esp_now_register_recv_cb(OnDataRecv);
   esp_now_register_send_cb(OnDataSent);   
   addPeer(const_cast<uint8_t*>(hostAddress));
+  addPeer(const_cast<uint8_t*>(broadcastAddress));
   xTaskCreate(handleReceive, "handleReceive", 4096, NULL, 1, NULL);
   xTaskCreate(handleSend, "handleSend", 4096, NULL, 1, NULL);
 
@@ -191,9 +219,12 @@ void loop()
     lastTick = millis();
     uint8_t address[6];
     WiFi.macAddress(address);
+    
     ESP_LOGI("", "My Address %02x:%02x:%02x:%02x:%02x:%02x", address[0], address[1], address[2], address[3], address[4], address[5]);
+    unsigned long long currentTime = micros();
+    ESP_LOGI("", "Current Time %llu", currentTime);
     ESP_LOGI("", "Current Time %llu", micros());
-
+    ESP_LOGI("", )
 
   }
   // put your main code here, to run repeatedly:

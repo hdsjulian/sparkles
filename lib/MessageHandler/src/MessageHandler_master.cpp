@@ -5,6 +5,11 @@
 #include "esp_now.h"
 #include "WiFi.h"
 
+// Track last MIDI animation time
+#include "Arduino.h"
+#include "esp_now.h"
+#include "WiFi.h"
+
 
 void MessageHandler::turnWifiOn() {
     WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
@@ -51,6 +56,9 @@ void MessageHandler::handleReceive() {
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
             ESP_LOGI("MSG", "Received from queue %d", incomingData.messageType);
+            // Set lastMidiTime if animation message of type MIDI is received
+            
+            
             if (incomingData.messageType == MSG_ADDRESS) {
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
                     ESP_LOGI("MSG", "Received address from clap device, ignoring");
@@ -78,9 +86,17 @@ void MessageHandler::handleReceive() {
                     continue;
                 }
                 else if (!isOTAUpdating) {
+                    // If timerSyncHandle is running, ignore this message
+                    if (timerSyncHandle != NULL && eTaskGetState(timerSyncHandle) != eDeleted) {
+                        ESP_LOGI("MSG", "Timer sync task already running, ignoring address message.");
+                        continue;
+                    }
                     message_address address = (message_address)incomingData.payload.address;
                     int index = addOrGetAddressId(address.address);
+                    ESP_LOGI("MSG", "Received address from %02x:%02x:%02x:%02x:%02x:%02x at index %d", incomingData.senderAddress[0], incomingData.senderAddress[1], incomingData.senderAddress[2], incomingData.senderAddress[3], incomingData.senderAddress[4], incomingData.senderAddress[5], index);
                     setCurrentTimerIndex(index);
+                    ESP_LOGI("MSG", "Num devices in system: %d", getNumDevices());
+                    setAvailable(index);
                     startTimerSyncTask();
                 }
             }
@@ -93,21 +109,17 @@ void MessageHandler::handleReceive() {
                 addressList[timerIndex].active = ACTIVE;
                 addressList[timerIndex].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
                 addressList[timerIndex].lastUpdateTime = millis();
+                addressList[timerIndex].delay = incomingData.payload.gotTimer.delayAverage;
+                unsigned long long now = micros();
                 setCurrentTimerIndex(-1);
                 setSettingTimer(false);
                 writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
                 sendSystemStatus();
                 WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
                 webServerInstance.updateAddress(timerIndex);
-
             }
             else if (incomingData.messageType == MSG_STATUS) {
-                ESP_LOGI("MSG", "Received status message");
-                ESP_LOGI("MSG", "Battery Percentage %.2f",incomingData.payload.status.batteryPercentage );
                 for (int i = 0; i < NUM_DEVICES; i++) {
-                    ESP_LOGI("MSG", "Checking address %d", i);
-                    ESP_LOGI("MSG", "Address %d: %02x:%02x:%02x:%02x:%02x:%02x", i, addressList[i].address[0], addressList[i].address[1], addressList[i].address[2], addressList[i].address[3], addressList[i].address[4], addressList[i].address[5]);
-                    ESP_LOGI("MSG", "Incoming address: %02x:%02x:%02x:%02x:%02x:%02x", incomingData.senderAddress[0], incomingData.senderAddress[1], incomingData.senderAddress[2], incomingData.senderAddress[3], incomingData.senderAddress[4], incomingData.senderAddress[5]);
                     if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
                         addressList[i].batteryPercentage = incomingData.payload.status.batteryPercentage;
                         addressList[i].lastUpdateTime = millis();
@@ -118,7 +130,16 @@ void MessageHandler::handleReceive() {
                         break;
                     }
                 }
+
                 //writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
+            }
+            else if (incomingData.messageType == MSG_ANIMATION && incomingData.payload.animation.animationType == MIDI) {
+                lastMidiTime = millis();
+                if (animationLoopHandle != NULL) {
+                    vTaskDelete(animationLoopHandle);
+                    animationLoopHandle = NULL;
+
+                }
             }
 
             // Doesn't need to be sent so nothing will happen right now
@@ -132,33 +153,37 @@ void MessageHandler::handleReceive() {
             }*/
 
             else if (incomingData.messageType == MSG_CLAP) {
-                ESP_LOGI("MSG", "Received clap message");
                 int clapIndex = getClapIndex();
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
-                    ESP_LOGI("MSG", "Received clap from clap device, setting clap time");
-                    setLastClapTime(incomingData.payload.clap.clapTime - getClapDeviceDelay());
+                    setLastClapTime(micros() - getClapDeviceDelay());
                     WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
                     webServerInstance.clapReceived(clapIndex, incomingData.payload.clap.clapTime);
-                    ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
+                    ESP_LOGI("CLAP", "Clap time %llu", getLastClapTime());
 
                 }
                 else {
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
-                            ESP_LOGI("MSG", "Received clap from address %d", i);
-                            ESP_LOGI("MSG", "Clap time %llu", incomingData.payload.clap.clapTime);
-                            addressList[i].distances[clapIndex] = convertMicrosToMeters(getLastClapTime() - incomingData.payload.clap.clapTime);
-                            ESP_LOGI("MSG", "Distance: %.2f", addressList[i].distances[clapIndex]);
+                            ESP_LOGI("CLAP", "Received clap from address %d", i);
+                            ESP_LOGI("CLAP", "Clap time %llu", incomingData.payload.clap.clapTime);
+                            ESP_LOGI("CLAP", "Locally measured clap time %llu", incomingData.msgReceiveTime
+                                +addressList[i].delay/2);
+                            addressList[i].distances[clapIndex] = convertMicrosToMeters(incomingData.payload.clap.clapTime-getLastClapTime());
+                            ESP_LOGI("CLAP", "Distance: %.2f", addressList[i].distances[clapIndex]);
+                            float distance = convertMicrosToMeters((incomingData.msgReceiveTime - addressList[i].delay / 2)-getLastClapTime());
+                            ESP_LOGI("CLAP", "Distance2: %.2f", addressList[i].distances[clapIndex]);
+                            WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
+                            webServerInstance.clapReceivedClient(clapIndex, i, addressList[i].distances[clapIndex]);
+                            
                             break;
                         }
                     }
+                    ESP_LOGI("CLAP", "Received clap from unknown address");
                 }
                 
             }
 
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
-                ESP_LOGI("MSG", "Received system status message");
-                ESP_LOGI("MSG", "Number of devices: %d", incomingData.payload.systemStatus.numDevices);
             }
 
             else if (incomingData.messageType == MSG_COMMAND && incomingData.payload.command.commandType == CMD_ASK_ADMIN_PRESENT) {
@@ -200,8 +225,6 @@ void MessageHandler::handleSend() {
                     break;
                 default:
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
-                    ESP_LOGI("MSG", "Sending message of type %d to %02x:%02x:%02x:%02x:%02x:%02x", messageData.messageType, messageData.targetAddress[0], messageData.targetAddress[1], messageData.targetAddress[2], messageData.targetAddress[3], messageData.targetAddress[4], messageData.targetAddress[5]);
-                    ESP_LOGI("MSG", "Message tyepe: %d", messageData.messageType);
                     break;
             }        
             if (memcmp(messageData.targetAddress, broadcastAddress, 6) != 0) {
@@ -225,7 +248,9 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
             }
         }
         else if (instance.getSettingClapSync() == true) {
-            instance.setLastDelay(micros() - instance.getLastSendTime());
+            int lastDelay = micros() - instance.getLastSendTime();
+            ESP_LOGI("CLAP", "Last delay: %d", lastDelay);
+            instance.setLastDelay(lastDelay);
         }
         else if (instance.getRequestingOTAUpdate() == true) {
             instance.setRequestingOTAUpdate(false);
@@ -254,15 +279,27 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     //ALPHA
     MessageHandler& instance = getInstance();
-    ESP_LOGI("MSG", "Received message of type %d from %02x:%02x:%02x:%02x:%02x:%02x", incomingData[0], mac->src_addr[0], mac->src_addr[1], mac->src_addr[2], mac->src_addr[3], mac->src_addr[4], mac->src_addr[5]);
+    unsigned long long now = micros();
+    String addressString = instance.stringAddress(mac->src_addr, true);
+    ESP_LOGI("MSG", "Received message of type %d at %llu from %s", incomingData[0], now, addressString.c_str());
 
-    instance.pushToRecvQueue(mac, incomingData, len);
+    // If this is a MSG_GOT_TIMER, set msgReceiveTime to micros() before pushing to queue
+    if ((incomingData[0] == MSG_GOT_TIMER || incomingData[0] == MSG_CLAP) && len >= (int)sizeof(message_data)) {
+        message_data localData;
+        memcpy(&localData, incomingData, sizeof(message_data));
+        localData.msgReceiveTime = now;
+        instance.pushToRecvQueue(mac, (uint8_t*)&localData, sizeof(message_data));
+    } else {
+        instance.pushToRecvQueue(mac, incomingData, len);
+    }
 }
+
 
 
 void MessageHandler::sendSystemStatus() {
     message_system_status systemStatus;
     systemStatus.numDevices = getNumDevices();
+    ESP_LOGI("MSG", "Sending system status message with %d devices", systemStatus.numDevices);
     message_data message;
     message.messageType = MSG_SYSTEM_STATUS;
     memcpy(&message.payload, &systemStatus, sizeof(systemStatus));
@@ -280,6 +317,7 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     else {
         memcpy(&message.targetAddress, addressList[addressId].address, sizeof(addressList[addressId].address));
     }
+    ledInstance->setAnimation(animationMessage);
     ESP_LOGI("MSG", "Sending animation message to %02x:%02x:%02x:%02x:%02x:%02x", message.targetAddress[0], message.targetAddress[1], message.targetAddress[2], message.targetAddress[3], message.targetAddress[4], message.targetAddress[5]);
     ESP_LOGI("MSG", "Animation type: %d", animationMessage.animationType);
     ESP_LOGI("MSG", "Animation params: %d", animationMessage.animationParams.blink.repetitions);
@@ -433,8 +471,34 @@ void MessageHandler::runCalculatePositionsTask() {
 void MessageHandler::endCalibration() {
     message_data endMessage = createCommandMessage(CMD_END_CALIBRATION, true);
     pushToSendQueue(endMessage);
-    WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
+
     startCalculatePositionsTask();
+}
+
+void MessageHandler::endDistanceCalibration() {
+    message_data endMessage = createCommandMessage(CMD_END_DISTANCE_CALIBRATION, true);
+    pushToSendQueue(endMessage);
+    calculateDistances();
+
+}
+
+void MessageHandler::calculateDistances() {
+    ESP_LOGI("MSG", "Calculating distances");
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
+            continue;
+        }
+        int distanceCounter = 0;
+        float distanceSum = 0.0f;
+        for (int j = 0; j < NUM_CLAPS; j++) {
+            if (clapTable[j].clapTime == 0) {
+                continue;
+            }
+            distanceCounter++;
+            distanceSum += addressList[i].distances[j];
+        }
+        addressList[i].distanceFromCenter = (distanceCounter > 0) ? (distanceSum / distanceCounter) : 0.0f;
+    }
 }
 
 void MessageHandler::startCalibrationMaster() {
@@ -447,6 +511,18 @@ void MessageHandler::startCalibrationMaster() {
         xSemaphoreGive(configMutex);
     }
 }
+
+void MessageHandler::startDistanceCalibrationMaster() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        ESP_LOGI("MSG", "Starting Distance calibration as master");
+        clapIndex = 0;
+        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
+        message_data startMessage = createCommandMessage(CMD_START_DISTANCE_CALIBRATION, true);
+        pushToSendQueue(startMessage);
+        xSemaphoreGive(configMutex);
+    }
+}
+
 void MessageHandler::cancelCalibration() {
     ESP_LOGI("MSG", "Cancelling calibration");
     setLastClapTime(0);
@@ -465,6 +541,13 @@ void MessageHandler::continueCalibration(float xPos, float yPos) {
     pushToSendQueue(continueMessage);
 }
 
+void MessageHandler::continueDistanceCalibration() {
+    ESP_LOGI("MSG", "Continuing distance calibration");
+    setClap(0, 0); // Set clap position to 0,0 for distance calibration
+    clapIndex++;
+    message_data continueMessage = createCommandMessage(CMD_CONTINUE_DISTANCE_CALIBRATION, true);
+    pushToSendQueue(continueMessage);
+}
 void MessageHandler::commandCalibrate(int boardId) {
     ESP_LOGI("MSG", "Sending calibration command to board ID: %d", boardId);
     message_data commandMessage = createCommandMessage(CMD_START_CALIBRATION, false);
@@ -472,4 +555,31 @@ void MessageHandler::commandCalibrate(int boardId) {
     pushToSendQueue(commandMessage);
 }
 
+void MessageHandler::startAnimationLoopTask() {
+    xTaskCreatePinnedToCore(runAnimationLoopWrapper, "runAnimationLoop", 10000, this, 2, &animationLoopHandle, 0);
+}
+void MessageHandler::runAnimationLoopWrapper(void *pvParameters) {
+    MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
+    messageHandlerInstance->runAnimationLoop();
+}
+
+void MessageHandler::runAnimationLoop() {
+    ESP_LOGI("MSG", "Running animation loop task");
+    while (true) {
+        TickType_t ticksUntilStart = ledInstance->getNextAnimationTicks();
+        if (ticksUntilStart > 0 ) {
+            TickType_t currentTicks = xTaskGetTickCount();
+            vTaskDelayUntil(&currentTicks, ticksUntilStart);
+        }   else {
+            ESP_LOGI("MSG", "No animation to run, waiting for next tick");
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+        message_animation newAnimation;
+        newAnimation = ledInstance->createSyncAsyncBlinkRandom();
+        newAnimation.animationParams.syncAsyncBlink.startTime = micros()+1000000;
+        sendAnimation(newAnimation, -1);
+
+    }
+
+}
 #endif

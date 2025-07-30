@@ -12,10 +12,7 @@ void MessageHandler::handleReceive() {
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
                 //handleTimer(incomingData);            
-            
             if (incomingData.messageType == MSG_ANIMATION) {
-                ESP_LOGI("MSG", "Received animation message");
-                ESP_LOGI("MSG", "Animation type: %d", incomingData.payload.animation.animationType);
                 
                 float batteryPercentage = getBatteryPercentage();
                 if (batteryPercentage < BATTERY_LOW_THRESHOLD) {
@@ -32,12 +29,6 @@ void MessageHandler::handleReceive() {
                 }
                 else {
                     message_animation animation = (message_animation)incomingData.payload.animation;
-                    ESP_LOGI("MSG", "Received animation message");
-                    ESP_LOGI("MSG", "Animation Type: %d", animation.animationType);
-                    ESP_LOGI("MSG", "Start Time: %llu", animation.animationParams.blink.startTime);
-                    ESP_LOGI("MSG", "Now: %llu", micros());
-                    ESP_LOGI("MSG", "Now plus offset: %llu", micros() + ledInstance->getTimerOffset());
-                    ESP_LOGI("MSG", "Animation starting in %llu ms", (animation.animationParams.blink.startTime - (micros() + ledInstance->getTimerOffset())) / 1000);
                     ledInstance->pushToAnimationQueue(animation);
                 }
             }
@@ -55,9 +46,11 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_COMMAND) {
                 message_command commandMessage = (message_command)incomingData.payload.command;
-                ESP_LOGI("MSG", "Received command message with type: %d", commandMessage.commandType);
-                if (commandMessage.commandType == CMD_START_CALIBRATION) {
-                    ESP_LOGI("MSG", "Starting calibration");
+                if (commandMessage.commandType == CMD_START_CALIBRATION || commandMessage.commandType == CMD_START_DISTANCE_CALIBRATION || CMD_CONTINUE_CALIBRATION || CMD_CONTINUE_DISTANCE_CALIBRATION) {
+                    startCalibrationClient();
+                }
+                if (commandMessage.commandType == CMD_TEST_CALIBRATION) {
+                    setCalibrationTest(true);
                     startCalibrationClient();
                 }
                 if (commandMessage.commandType == CMD_SET_ADMIN_NOT_PRESENT) {
@@ -112,33 +105,47 @@ void MessageHandler::handleTimer(message_data incomingData) {
         vTaskDelete(announceTaskHandle);
         announceTaskHandle = NULL;
     }
+    if (timerMessage.addressId >=0) {
+        ledInstance->setCurrentPosition(timerMessage.addressId);
+            ESP_LOGI("MSG", "Board position: %d", timerMessage.addressId);
+
+    }
+    ESP_LOGI("LED", "Current position set to: %d", ledInstance->getCurrentPosition());
     unsigned long long timeDiff = timerMessage.receiveTime-getLastReceiveTime();
     unsigned long long timerFrequencyMicros = TIMER_FREQUENCY*1000;
     if (timeDiffAbs(timeDiff, timerFrequencyMicros) < 2500 and timerMessage.lastDelay < 6000) {
-        if (delayCounter < TIMER_ARRAY_COUNT) {
-            delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);    
-            delayCounter++;
-            unsigned long long offset;
-            if (timerMessage.receiveTime < timerMessage.sendTime) {
-               offset = timerMessage.sendTime-timerMessage.receiveTime - timerMessage.lastDelay/2;
-                offsetMultiplier = -1;
-            }
-            else {
-                offset = timerMessage.receiveTime-timerMessage.sendTime -timerMessage.lastDelay/2;
-                offsetMultiplier = 1;
-            }
+
+        unsigned long long offset;
+        if (timerMessage.receiveTime < timerMessage.sendTime) {
+            offset = timerMessage.sendTime-timerMessage.receiveTime;
+            offsetMultiplier = 1;
         }
         else {
+            offset = timerMessage.receiveTime-timerMessage.sendTime;
+            offsetMultiplier = -1;
+        }
+        offsetSum += offset;
+        offsetCount++;
+
+        setTimeOffset(offsetMultiplier*(offsetSum / offsetCount));
+        if (delayCounter < TIMER_ARRAY_COUNT) {
+            delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);    
+            ESP_LOGI("MSG", "Delay average: %d", delayAverage);
+            delayCounter++;
+            
+        }
+        else {  
+            long long correctedOffset = offsetMultiplier * (offsetSum / offsetCount) + offsetMultiplier * (delayAverage / 2);
+            setTimeOffset(correctedOffset);
             message_data gotTimerMessage;
             unsigned long long now = micros();
-            setTimeOffset(timerMessage.sendTime, timerMessage.receiveTime, delayAverage);
+            long long timeOffset = getTimeOffset();
             gotTimerMessage.messageType = MSG_GOT_TIMER;
             gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
             gotTimerMessage.payload.gotTimer.batteryPercentage = getBatteryPercentage();
-            gotTimerMessage.payload.gotTimer.perceivedTime = now - getTimeOffset();
+            gotTimerMessage.payload.gotTimer.offset = getTimeOffset();           
             memcpy(gotTimerMessage.targetAddress, hostAddress, 6);
-
-            ESP_LOGI("MSG", "Sending got timer message with perceived time: %llu, delay average: %d, battery percentage: %f", gotTimerMessage.payload.gotTimer.perceivedTime, gotTimerMessage.payload.gotTimer.delayAverage, gotTimerMessage.payload.gotTimer.batteryPercentage);
+            ESP_LOGI("MSG", "Sending got timer message with perceived time: %lld, delay average: %d, battery percentage: %f", gotTimerMessage.payload.gotTimer.perceivedTime, gotTimerMessage.payload.gotTimer.delayAverage, gotTimerMessage.payload.gotTimer.batteryPercentage);
             xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
             setTimerSet(true);
             ledInstance->blink(micros(), 300, 3, 100, 255, 127);
@@ -176,23 +183,25 @@ void MessageHandler::goToSleep() {
 
 void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
+   ledInstance->blink(micros(), 100, 4, 160, 255, 127);
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
     vTaskDelay(1000/portTICK_PERIOD_MS);
-    ESP_LOGI("MSG", "Going to sleep for %llu seconds", sleepWakeupMessage.duration);
+    ESP_LOGI("MSG", "Going to sleep for %llu milliseconds", sleepWakeupMessage.duration);
     turnWifiOff();
     esp_sleep_enable_timer_wakeup((unsigned long)sleepWakeupMessage.duration*1000); // Convert seconds to microseconds
     esp_light_sleep_start();
+    ESP_LOGI("MSG", "Wokue up");
     turnWifiOn();
     ledInstance->resetLedTask();
     ledInstance->blink(micros(), 150, 2, 160, 255, 127);
     ESP_LOGI("MSG", "Woke up from sleep, current time: %llu", micros());
+    Serial.begin(115200);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     ESP_LOGI("MSG", "Should be back up");
 }
 
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    ESP_LOGI("MSG", "OnDataSent called with status: %d", status);
     if (status == ESP_NOW_SEND_SUCCESS) {
         if (memcmp(mac_addr, broadcastAddress, 6) == 0) {
             ESP_LOGI("MSG", "Broadcast message sent");
@@ -208,14 +217,27 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
 
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     unsigned long long receiveTime = micros();
+    MessageHandler& instance = getInstance();
     if (incomingData[0] == MSG_TIMER) {
         message_data* messageData = (message_data*)incomingData;
         messageData->payload.timer.receiveTime = receiveTime;
     }
-    MessageHandler& instance = getInstance();
+    if (incomingData[0] == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
+        message_data* messageData = (message_data*)incomingData;
+        if (messageData->payload.animation.animationType == MIDI || messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
+            LedHandler& ledInstance = LedHandler::getInstance(); 
+            ledInstance.pushToAnimationQueue(messageData->payload.animation);
+            return;
+        }
+        
+    }
+    else if (incomingData[0] == MSG_ANIMATION && instance.getBatteryPercentage() <= BATTERY_LOW_THRESHOLD) {
+        ESP_LOGI("RECV", "Threshold too low %f of %f", instance.getBatteryPercentage(), BATTERY_LOW_THRESHOLD);
+    }
 
-    ESP_LOGI("MSG", "Received message of type %d from %02x:%02x:%02x:%02x:%02x:%02x", incomingData[0], mac->src_addr[0], mac->src_addr[1], mac->src_addr[2], mac->src_addr[3], mac->src_addr[4], mac->src_addr[5]);
     instance.pushToRecvQueue(mac, incomingData, len);
+
+    
 }
 
 
@@ -228,13 +250,9 @@ void MessageHandler::runAnnounceAddress() {
     message_data messageData;
     messageData.messageType = MSG_ADDRESS;
     memcpy(messageData.targetAddress, hostAddress, 6);
-    ESP_LOGI("MSG", "Announcing address with version: %s", version.toString().c_str());
     messageData.payload.address.version = version;
-    ESP_LOGI("MSG", "Version is now : %s", version.toString().c_str());
     WiFi.macAddress(messageData.payload.address.address);
     while (getAddressAnnounced() == false) {    
-        ESP_LOGI("MSG", "Announcing address");  
-        ESP_LOGI("MSG", "Version is now : %s", version.toString().c_str());
   
         xQueueSend(sendQueue, &messageData, portMAX_DELAY);
         vTaskDelay(1000/portTICK_PERIOD_MS);
@@ -244,27 +262,25 @@ void MessageHandler::runAnnounceAddress() {
 
 void MessageHandler::handleSend() {
     message_data messageData;
+    unsigned long long now;
     while(true) {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
             esp_err_t err = esp_now_register_send_cb(onDataSent);
             addPeer(messageData.targetAddress);
-            ESP_LOGI("ESP-NOW", "Send callback registration result: %d", err);
             switch (messageData.messageType) {
                 case MSG_GOT_TIMER:
-                    ESP_LOGI("MSG", "Sending got timer message");
-                    messageData.payload.gotTimer.perceivedTime = micros() - getTimeOffset();
+                    now = micros();
+                    messageData.payload.gotTimer.sendTime = now;
+                    messageData.payload.gotTimer.perceivedTime = (long long)now + getTimeOffset();
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_ADDRESS:
-                    ESP_LOGI("MSG", "Sending address message to %02x:%02x:%02x:%02x:%02x:%02x", messageData.targetAddress[0], messageData.targetAddress[1], messageData.targetAddress[2], messageData.targetAddress[3], messageData.targetAddress[4], messageData.targetAddress[5]);
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_STATUS:
-                    ESP_LOGI("MSG", "Sending status message");
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_CLAP:
-                    ESP_LOGI("MSG", "Sending clap message");
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 default:
@@ -306,7 +322,7 @@ void MessageHandler::runBatterySync() {
             if (getAdminPresent()) {
                 ESP_LOGI("MSG", "Admin present, not going to sleep");
                 setAdminPresent(0);
-                ledInstance->createFlash(micros(), 200, 100, 0, 255, 255); // Skip the sleep if admin is present
+                ledInstance->blink(micros(), 200, 3, 0, 255, 255); // Skip the sleep if admin is present
                 vTaskDelay(60000 / portTICK_PERIOD_MS); // Wait for 1 minute before checking again
             }
             else {
