@@ -148,3 +148,19 @@ bool LedHandler::getSustain() {
     }
     return returnSustain;  
 }
+
+bool LedHandler::getBackgroundShimmerFadeout() {
+    bool fadeout;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        fadeout = backgroundShimmerFadeout;
+        xSemaphoreGive(configMutex);
+    }
+    return fadeout;
+}
+void LedHandler::setBackgroundShimmerFadeout(bool fadeout) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        backgroundShimmerFadeout = fadeout;
+        ESP_LOGI("LED", "Setting background shimmer fadeout to %s", fadeout ? "true" : "false");
+        xSemaphoreGive(configMutex);        
+    }
+}

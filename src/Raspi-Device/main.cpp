@@ -125,13 +125,18 @@ void outputFrequency(float pitch, float rms) {
         return;
     }
 
-    // Detect pitch change greater than a quarter note
+    // Only send a new shimmer message if pitch deviates enough (e.g., more than a quarter note)
+    bool sendShimmer = false;
+    float ratio = 1.0f;
+    float quarterNoteRatio = pow(2.0, 1.0/48.0);
     if (lastPitch > 0 && pitch > 0) {
-        float ratio = pitch / lastPitch;
-        float quarterNoteRatio = pow(2.0, 1.0/48.0);
+        ratio = pitch / lastPitch;
         if (ratio > quarterNoteRatio || ratio < 1.0/quarterNoteRatio) {
-            // Optionally handle pitch jump
+            sendShimmer = true;
         }
+    } else {
+        // First run, always send
+        sendShimmer = true;
     }
     lastPitch = pitch;
 
@@ -178,7 +183,9 @@ void outputFrequency(float pitch, float rms) {
     CHSV hsvColor(hue, saturation, value);
     CRGB rgbColor = hsvColor;
     rgbLedWrite(RGB_BUILTIN, rgbColor.r, rgbColor.g, rgbColor.b);
-    esp_now_send(broadcastAddress, (uint8_t*)&messageData, sizeof(messageData));
+    if (sendShimmer) {
+        esp_now_send(broadcastAddress, (uint8_t*)&messageData, sizeof(messageData));
+    }
 }
 unsigned long lastTick, lastTick2;
 /*
