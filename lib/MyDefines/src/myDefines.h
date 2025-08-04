@@ -62,6 +62,8 @@
 #define TIMER_ARRAY_COUNT 10
 #define WIFI_SSID "SPARKLES"
 #define WIFI_PASSWORD "sparklesAdmin"
+#define OTA_WIFI_SSID "Pi_AP"
+#define OTA_WIFI_PASSWORD "raspberry"
 #define OTA_UPDATE_URL "http://192.168.4.1/firmware_client.bin" // Update URL for OTA updates
 #define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
 #define CLAP_TIMEOUT 10000

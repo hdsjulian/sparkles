@@ -13,8 +13,8 @@ void OTAHandler::setup() {
 
 void OTAHandler::connectToWiFi() {
 
-    ESP_LOGI("OTA", "Connecting to WiFi: %s", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    ESP_LOGI("OTA", "Connecting to WiFi: %s", OTA_WIFI_SSID);
+    WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
     int retryCount = 0;
     while (WiFi.status() != WL_CONNECTED && retryCount < 20) {
         delay(500);

@@ -1,0 +1,123 @@
+(kicad_symbol_lib (version 20210201) (generator TousstNicolas/JLC2KiCad_lib)
+  (symbol "LM358DR" (pin_names hide)  (in_bom yes) (on_board yes)
+    (property "Reference" "U" (id 0) (at 0 1.27 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "LM358DR" (id 1) (at 0 -2.54 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "footprint:SOIC-8_L5.0-W4.0-P1.27-LS6.0-BL" (id 2) (at 0 -10.16 0)
+      (effects (font (size 1.27 1.27) italic) hide)
+    )
+    (property "Datasheet" "https://item.szlcsc.com/417287.html" (id 3) (at -2.286 0.127 0)
+      (effects (font (size 1.27 1.27)) (justify left) hide)
+    )
+    (property "ki_keywords" "C5423" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "LCSC" "C5423" (id 5) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "LM358DR_1_1"
+      (polyline
+        (pts
+          (xy -5.08001016002032 5.08001016002032)
+          (xy -5.08001016002032 -5.08001016002032)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy -5.08001016002032 -5.08001016002032)
+          (xy 5.08001016002032 -0.0)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 5.08001016002032 -0.0)
+          (xy -5.08001016002032 5.08001016002032)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (pin input line
+        (at -7.62001524003048 2.54000508001016 0)
+        (length 2.54000508001016)
+        (name "-IN1" (effects (font (size 1 1))))
+        (number "2" (effects (font (size 1 1))))
+      )
+      (pin input line
+        (at -7.62001524003048 -2.54000508001016 0)
+        (length 2.54000508001016)
+        (name "+IN1" (effects (font (size 1 1))))
+        (number "3" (effects (font (size 1 1))))
+      )
+      (pin output line
+        (at 7.62001524003048 -0.0 180)
+        (length 2.54000508001016)
+        (name "OUT1" (effects (font (size 1 1))))
+        (number "1" (effects (font (size 1 1))))
+      )
+      (pin power_in line
+        (at 0.0 5.08001016002032 270)
+        (length 2.54000508001016)
+        (name "+V" (effects (font (size 1 1))))
+        (number "8" (effects (font (size 1 1))))
+      )
+      (pin power_in line
+        (at 0.0 -5.08001016002032 90)
+        (length 2.54000508001016)
+        (name "GND" (effects (font (size 1 1))))
+        (number "4" (effects (font (size 1 1))))
+      )
+    )
+    (symbol "LM358DR_2_1"
+      (polyline
+        (pts
+          (xy -5.08001016002032 5.08001016002032)
+          (xy -5.08001016002032 -5.08001016002032)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy -5.08001016002032 -5.08001016002032)
+          (xy 5.08001016002032 -0.0)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 5.08001016002032 -0.0)
+          (xy -5.08001016002032 5.08001016002032)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (pin output line
+        (at 7.62001524003048 -0.0 180)
+        (length 2.54000508001016)
+        (name "OUT2" (effects (font (size 1 1))))
+        (number "7" (effects (font (size 1 1))))
+      )
+      (pin input line
+        (at -7.62001524003048 2.54000508001016 0)
+        (length 2.54000508001016)
+        (name "-IN2" (effects (font (size 1 1))))
+        (number "6" (effects (font (size 1 1))))
+      )
+      (pin input line
+        (at -7.62001524003048 -2.54000508001016 0)
+        (length 2.54000508001016)
+        (name "+IN2" (effects (font (size 1 1))))
+        (number "5" (effects (font (size 1 1))))
+      )
+    )
+  )
+)

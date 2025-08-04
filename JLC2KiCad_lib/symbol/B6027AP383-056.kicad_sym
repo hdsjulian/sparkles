@@ -1,0 +1,92 @@
+(kicad_symbol_lib (version 20210201) (generator TousstNicolas/JLC2KiCad_lib)
+  (symbol "B6027AP383-056" (pin_names hide)  (in_bom yes) (on_board yes)
+    (property "Reference" "U" (id 0) (at 0 1.27 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "B6027AP383-056" (id 1) (at 0 -2.54 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "footprint:MIC-TH_BD6.0_B6027AP383-056" (id 2) (at 0 -10.16 0)
+      (effects (font (size 1.27 1.27) italic) hide)
+    )
+    (property "Datasheet" "https://atta.szlcsc.com/upload/public/pdf/source/20220914/97BA7D4D29A741F4A78B16123EEEBF89.pdf" (id 3) (at -2.286 0.127 0)
+      (effects (font (size 1.27 1.27)) (justify left) hide)
+    )
+    (property "ki_keywords" "C5160215" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "LCSC" "C5160215" (id 5) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "B6027AP383-056_0_1"
+      (polyline
+        (pts
+          (xy 1.0160020320040641 2.54000508001016)
+          (xy -0.5080010160020321 2.54000508001016)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 0.25400050800101603 -3.3020066040132083)
+          (xy 0.25400050800101603 -1.7780035560071121)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 1.0160020320040641 -2.54000508001016)
+          (xy -0.5080010160020321 -2.54000508001016)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy -2.54000508001016 5.08001016002032)
+          (xy -2.54000508001016 -5.08001016002032)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (arc
+        (start 1.052104552636767 148.80819516796268)
+        (mid -6.132114712657087 148.80819516796268)
+        (end -6.132114712657087 155.99241443325653)
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 1.7780035560071121 -2.54000508001016)
+          (xy 2.54000508001016 -2.54000508001016)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 1.7780035560071121 2.54000508001016)
+          (xy 2.54000508001016 2.54000508001016)
+        )
+        (stroke (width 0) (type default) (color 0 0 0 0))
+        (fill (type none))
+      )
+      (pin unspecified line
+        (at 5.08001016002032 2.54000508001016 180)
+        (length 2.54000508001016)
+        (name "2" (effects (font (size 1.7526035052070106 1.7526035052070106))))
+        (number "2" (effects (font (size 1.7526035052070106 1.7526035052070106))))
+      )
+      (pin unspecified line
+        (at 5.08001016002032 -2.54000508001016 180)
+        (length 2.54000508001016)
+        (name "1" (effects (font (size 1.7526035052070106 1.7526035052070106))))
+        (number "1" (effects (font (size 1.7526035052070106 1.7526035052070106))))
+      )
+    )
+  )
+)

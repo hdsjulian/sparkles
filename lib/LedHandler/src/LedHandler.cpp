@@ -248,13 +248,12 @@ void LedHandler::handleQueue(message_animation& animationData, int currentPositi
         if (getCurrentAnimation() == MIDI) {
             return;
         }
-        float hue = animationData.animationParams.backgroundShimmer.hue;
-        float saturation = animationData.animationParams.backgroundShimmer.saturation;
-        float value = animationData.animationParams.backgroundShimmer.value;   
+        if (xQueueSend(backgroundShimmerQueue, &animationData, portMAX_DELAY) != pdTRUE) {
+            ESP_LOGE("LED", "Failed to send animation to queue");
+        }
     }
     setAnimation(animationData);
     setCurrentAnimation(animationData.animationType);
-
 }
 
 void LedHandler::runBlink() {
@@ -449,26 +448,63 @@ unsigned long long LedHandler::calculateStrobeTime(message_animation& animationD
 }
 
 
-void LedHandler::runBackgroundShimmer() {
-    
-    // Run the shimmer effect
-    while (getCurrentAnimation() == BACKGROUND_SHIMMER) {
-        message_animation animation = getAnimation();
-        float hue = animation.animationParams.backgroundShimmer.hue;
-        float saturation = animation.animationParams.backgroundShimmer.saturation;
-        float value = animation.animationParams.backgroundShimmer.value;
 
-        CRGB color = CHSV(hue, saturation, value);
-        writeLeds(color);
-        vTaskDelay(1000 / FPS);
-        if ( value == 0) {
+void LedHandler::runBackgroundShimmer() {
+    // Use a dedicated queue for shimmer parameter updates
+    const TickType_t frameDelay = (1000 / FPS) / portTICK_PERIOD_MS;
+    message_animation animation = getAnimation();
+    float hue = animation.animationParams.backgroundShimmer.hue;
+    float saturation = animation.animationParams.backgroundShimmer.saturation;
+    float value = animation.animationParams.backgroundShimmer.value;
+    while (getCurrentAnimation() == BACKGROUND_SHIMMER) {
+        // Wait for new shimmer update or timeout for next frame
+        message_animation newAnimation;
+        bool gotUpdate = xQueueReceive(backgroundShimmerQueue, &newAnimation, frameDelay) == pdTRUE;
+        if (gotUpdate) {
+            animation = newAnimation;
+            float newHue = animation.animationParams.backgroundShimmer.hue;
+            float newSaturation = animation.animationParams.backgroundShimmer.saturation;
+            float newValue = animation.animationParams.backgroundShimmer.value;
+            if (newValue == 0 && value > 0) {
+                // Fade out over 200ms, but interrupt if a new shimmer update arrives
+                int fadeSteps = 12; // 200ms / ~16ms (60Hz)
+                float stepValue = value / fadeSteps;
+                TickType_t fadeStepDelay = 200 / fadeSteps; // ms
+                for (int i = 1; i <= fadeSteps; ++i) {
+                    // Check for new shimmer update during fade-out
+                    message_animation fadeUpdate;
+                    if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, fadeStepDelay) == pdTRUE) {
+                        // New shimmer update arrived, break fade-out and process it
+                        animation = fadeUpdate;
+                        hue = animation.animationParams.backgroundShimmer.hue;
+                        saturation = animation.animationParams.backgroundShimmer.saturation;
+                        value = animation.animationParams.backgroundShimmer.value;
+                        break;
+                    }
+                    float fadeVal = value - stepValue * i;
+                    if (fadeVal < 0) fadeVal = 0;
+                    CRGB color = CHSV(hue, saturation, fadeVal);
+                    writeLeds(color);
+                }
+                value = 0;
+            } else {
+                hue = newHue;
+                saturation = newSaturation;
+                value = newValue;
+            }
+        }
+        if (value == 0) {
             // If the color is black, turn off the LEDs
             ledsOff();
             setCurrentAnimation(OFF);
+            break;
         }
-
+        else {
+            // Write the shimmer color
+            CRGB color = CHSV(hue, saturation, value);
+            writeLeds(color);
+        }
     }
-    
     ledsOff();
     setCurrentAnimation(OFF);
     animationTaskHandle = NULL;

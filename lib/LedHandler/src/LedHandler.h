@@ -38,6 +38,8 @@ public:
     long long getMicrosUntilStart();
     void setMicrosUntilStart(unsigned long long masterStartTime);
     TickType_t getNextAnimationTicks();
+    bool getBackgroundShimmerFadeout();
+    void setBackgroundShimmerFadeout(bool fadeout);
     unsigned long long calculateAnimation(message_animation& animationData);
     unsigned long long calculateSyncAsyncBlink(message_animation& animationData);
     unsigned long long calculateBlinkTime(message_animation& animationData);
@@ -103,8 +105,9 @@ private:
     int syncAsyncMaxAniReps = 20;
     int syncAsyncMinSpread = 500;
     int syncAsyncMaxSpread = 2000;
+    bool backgroundShimmerFadeout = false;
     SemaphoreHandle_t configMutex;
-    QueueHandle_t ledQueue;
+    QueueHandle_t ledQueue, backgroundShimmerQueue;
     message_animation animation;
     midiNoteTable midiNoteTableArray[OCTAVESONKEYBOARD];
     midiNoteTable micNoteTableArray[OCTAVESONKEYBOARD];
