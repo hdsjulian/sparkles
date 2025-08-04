@@ -1,0 +1,1 @@
+This repo theoretically contains everything to build, assemble and run the sparkling forests light installation. In practice it would require much more documentation which i'm too lazy for right now, and maybe the casing-folder also has some pretty rogue STL files that don't belong there. 
