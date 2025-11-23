@@ -8,7 +8,6 @@
 #include <MyDefines.h>
 #include <Version.h>
 #include <time.h>
-#include <Telnet.h>
 class MessageHandler
 {
 public:
@@ -77,7 +76,9 @@ public:
     void setCommand(message_data command, uint8_t * address);
     void setAddressListInactive();
     message_midi_params getMidiParams();
-    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode);
+    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch  );
+    message_darkroom_params getDarkroomParams();
+    void setDarkroomParams(int strobeMin, int strobeMax, int redlightMin, int redlightMax, int candlelightMin, int candlelightMax, bool redLightEnabled, bool candleLightEnabled);
     bool getCalibrationTest();
     void setCalibrationTest(bool test);
     message_data createClapMessage(bool isHost = false);
@@ -93,6 +94,7 @@ public:
     int getClapIndex();
     bool getBatteryLow();
     void setBatteryLow(bool low);
+
 
     clap_table getClap(int index);
     void setIsOTAUpdating(bool isUpdating);
@@ -131,6 +133,7 @@ public:
     void startAnnounceAddressTask();
     void startClapSyncTask();
     void startAnimationLoopTask();
+    void startDarkroomTask();
     void handleSleepWakeup(message_data incomingData);
     void handleReceive();
     void handleSend();
@@ -143,6 +146,7 @@ public:
     void runCalculatePositionsTask();
     void runClapSync();
     void runAnimationLoop();
+    void runDarkroomTask();
     int addPeer(uint8_t * address);
     bool addressAnnounced = false;
     void sendAnimation(message_animation animationMessage, int addressId);
@@ -166,16 +170,17 @@ public:
     void cancelCalibration();
     void resetCalibration();
     void continueDistanceCalibration();
-    void endDistacneCalibration();
+    void endDistanceCalibration();
     void startDistanceCalibrationMaster();
     void startDistanceCalibrationClient();
-    void endDistanceCalibration();
     void calculateDistances();
     void cancelDistanceCalibration();
     void resetDistanceCalibration();
     void testCalibration();
-    void sendSleepWakeupMessage(unsigned long sleepDuration);
+    void sendSleepWakeupMessage(unsigned long long sleepDuration);
     void commandCalibrate(int boardId);
+    void resetSystem();
+    void stopAllAnimations();
 private:
     // Static Constants
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -183,7 +188,8 @@ private:
     static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xbf, 0xb8};
     //kiste 2
     //static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc0, 0x60};
-    
+    // testdevice
+    //static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8e, 0xf8, 0x50};
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8F, 0xBF, 0xF4};
@@ -202,8 +208,9 @@ private:
     const uint8_t *incomingData;
     client_address addressList[NUM_CLIENTS];
     message_midi_params midiParams;
+    message_darkroom_params darkroomParams;
     SemaphoreHandle_t configMutex, updateOTAMutex;
-    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle, animationLoopHandle ;
+    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle, animationLoopHandle, darkroomHandle;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;
@@ -255,6 +262,7 @@ private:
     static void calculatePositionsTaskWrapper(void *pvParameters);
     static void runClapSyncWrapper(void *pvParameters);
     static void runAnimationLoopWrapper(void *pvParameters);
+    static void runDarkroomTaskWrapper(void *pvParameters);
     // Member Functions
     unsigned long long getLastSendTime();
     void setLastSendTime(unsigned long long time);

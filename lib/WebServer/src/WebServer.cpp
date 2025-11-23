@@ -103,6 +103,11 @@ void WebServer::configRoutes() {
       this->commandCancelCalibration(request);
       request->send(200, "text/html", "Cancel Calibration command received");
     });
+    server.on("/commandCancelDistanceCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      inDistanceCalibration = false;
+      this->commandCancelCalibration(request);
+      request->send(200, "text/html", "Cancel Distance Calibration command received");
+    });
     server.on("/commandResetCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandResetCalibration(request);  
       request->send(200, "text/html", "Reset Calibration command received");
@@ -115,6 +120,11 @@ void WebServer::configRoutes() {
       this->commandEndCalibration(request);
       request->send(200, "text/html", "End Calibration command received");
     });
+    server.on("/commandEndDistanceCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      inDistanceCalibration = false;
+      this->commandEndDistanceCalibration(request);
+      request->send(200, "text/html", "End Distance Calibration command received");
+    });
     server.on("/commandMessage", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandMessage(request);
       request->send(200, "text/html", "Message command received");
@@ -126,6 +136,10 @@ void WebServer::configRoutes() {
     server.on("/commandGetMidiParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getMidiParams(request);
     });
+    server.on("/commandAnimationOff", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->commandAnimationOff(request);
+      request->send(200, "text/html", "Animation off command received");
+    });
     server.on("/setMidiParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setMidiParams(request);
       request->send(200, "text/html", "MIDI parameters set");
@@ -133,6 +147,13 @@ void WebServer::configRoutes() {
     server.on("/getMidiParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getMidiParams(request);
     });
+    server.on("/getDarkroomParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->getDarkroomParams(request);
+    });
+    server.on("/setDarkroomParams", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->setDarkroomParams(request);
+      request->send(200, "text/html", "Darkroom parameters set");
+    }); 
     server.on("/setSleepTime", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->setSleepTime(request);
       request->send(200, "text/html", "Goodnight command received");
@@ -144,6 +165,11 @@ void WebServer::configRoutes() {
     //get all addresses
     server.on("/getAddressList", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getAddressList(request);
+    });
+    server.on("/resetSystem", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      ESP_LOGI("WEB", "Resetting system");
+      this->resetSystem(request);
+      request->send(200, "text/html", "System reset command received");
     });
       server.onNotFound([this](AsyncWebServerRequest *request) {
         this->serveOnNotFound(request);
@@ -296,7 +322,7 @@ void WebServer::commandBlink(AsyncWebServerRequest *request) {
   }
   int boardId = request->getParam("boardId")->value().toInt();
   message_animation animation;
-  animation.animationType = BLINK;
+  animation.animationType = BATTERY_BLINK;
   animation.animationParams.blink.brightness = 255;
   animation.animationParams.blink.duration = 500;
   animation.animationParams.blink.repetitions = 3;
@@ -339,6 +365,12 @@ void WebServer::setCalculationDone(bool done) {
   }
 }
 
+void WebServer::resetSystem(AsyncWebServerRequest *request) {
+  ESP_LOGI("WEB", "Resetting system");
+  // Reset the system by restarting the ESP32
+  messageHandlerInstance->resetSystem();
+}
+
 void WebServer::commandStartCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->startCalibrationMaster();
   inCalibration = true;
@@ -359,6 +391,8 @@ void WebServer::commandCancelCalibration(AsyncWebServerRequest *request) {
   String distanceJson = "{\"status\":1}";
   events.send(distanceJson.c_str(), "distanceStatus");
 }
+
+
 
 void WebServer::commandResetCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->resetCalibration();
@@ -394,6 +428,10 @@ void WebServer::commandContinueCalibration(AsyncWebServerRequest *request) {
 void WebServer::commandEndCalibration(AsyncWebServerRequest *request) {
   messageHandlerInstance->endCalibration();
   request->send(200, "text/html", "Calibration ended");
+}
+void WebServer::commandEndDistanceCalibration(AsyncWebServerRequest *request) {
+  messageHandlerInstance->endDistanceCalibration();
+  request->send(200, "text/html", "Distance Calibration ended");
 }
 void WebServer::clapReceived(int clapId, unsigned long long clapTime) {
     String jsonString = "{";
@@ -432,11 +470,12 @@ void WebServer::clapReceivedClient(int clapId, int boardId, float clapDistance) 
 
 void WebServer::setMidiParams(AsyncWebServerRequest *request) {
   // Check for all required parameters
-  const char* requiredParams[] = {"minVal", "maxVal", "minSat", "maxSat", "rangeMin", "rangeMax", "minRms", "maxRms", "mode"};
-  for (int i = 0; i < 9; ++i) {
+  const char* requiredParams[] = {"minVal", "maxVal", "minSat", "maxSat", "midiHue", "midiSaturation", "rangeMin", "rangeMax", "minRms", "maxRms", "mode"};
+  for (int i = 0; i < 11; ++i) {
     if (!request->hasParam(requiredParams[i])) {
       String msg = "Missing parameter: ";
       msg += requiredParams[i];
+      ESP_LOGI("WEB", "%s", msg.c_str());
       request->send(400, "text/plain", msg);
       return;
     }
@@ -447,14 +486,17 @@ void WebServer::setMidiParams(AsyncWebServerRequest *request) {
   int maxVal = request->getParam("maxVal")->value().toInt();
   int minSat = request->getParam("minSat")->value().toInt();
   int maxSat = request->getParam("maxSat")->value().toInt();
+  int hue = request->getParam("midiHue")->value().toInt();
+  int saturation = request->getParam("midiSaturation")->value().toInt();
   int rangeMin = request->getParam("rangeMin")->value().toInt();
   int rangeMax = request->getParam("rangeMax")->value().toInt();
   float rmsMin = request->getParam("minRms")->value().toFloat();
   float rmsMax = request->getParam("maxRms")->value().toFloat();
   int mode = request->getParam("mode")->value().toInt();
-
-  ESP_LOGI("WEB", "Set Midi Params minVal %d, maxVal %d, minRms %.2f, maxRMS %.2f", minVal, maxVal, rmsMin, rmsMax);
-  messageHandlerInstance->setMidiParams(minVal, maxVal, minSat, maxSat, rangeMin, rangeMax, rmsMin, rmsMax, mode);
+  int distance = request->hasParam("distance") ? request->getParam("distance")->value().toInt() : 100; // default to 100 if not provided
+  bool distanceSwitch = request->hasParam("distanceSwitch") ? (request->getParam("distanceSwitch")->value() == "1" || request->getParam("distanceSwitch")->value() == "true") : false; // default to false if not provided
+  ESP_LOGI("WEB", "Set Midi Params minSat %d, maxSat %d, hue %d, saturation %d, rangeMin %d, rangeMax %d, mode %d", minSat, maxSat, hue, saturation, rangeMin, rangeMax, mode);
+  messageHandlerInstance->setMidiParams(minVal, maxVal, minSat, maxSat, hue, saturation, rangeMin, rangeMax, rmsMin, rmsMax, mode, distance, distanceSwitch);
   request->send(200, "text/html", "MIDI parameters set");
 }
 
@@ -469,6 +511,10 @@ void WebServer::getMidiParams(AsyncWebServerRequest *request) {
   jsonString += String(midiParams.satMin);
   jsonString += ",\"maxSat\":";
   jsonString += String(midiParams.satMax);
+  jsonString += ",\"hue\":";
+  jsonString += String(midiParams.hue);
+  jsonString += ",\"saturation\":";
+  jsonString += String(midiParams.saturation);
   jsonString += ",\"rangeMin\":";
   jsonString += String(midiParams.rangeMin);
   jsonString += ",\"rangeMax\":";
@@ -477,6 +523,10 @@ void WebServer::getMidiParams(AsyncWebServerRequest *request) {
   jsonString += String(midiParams.rmsMin, 2);
   jsonString += ",\"maxRms\":";
   jsonString += String(midiParams.rmsMax, 2);
+  jsonString += ",\"distance\":";
+  jsonString += String(midiParams.distance);
+  jsonString += ",\"distanceSwitch\":";
+  jsonString += String(midiParams.distanceSwitch);
   jsonString += ",\"mode\":";
   jsonString += String(midiParams.mode);
   jsonString += "}";
@@ -484,6 +534,57 @@ void WebServer::getMidiParams(AsyncWebServerRequest *request) {
   // Send the JSON response
   request->send(200, "text/html", jsonString.c_str());
 }
+
+
+void WebServer::getDarkroomParams(AsyncWebServerRequest *request) {
+  message_darkroom_params darkroomParams = messageHandlerInstance->getDarkroomParams();
+  String jsonString = "{";
+  jsonString += "\"strobeMin\":";
+  jsonString += String(darkroomParams.strobeMin);
+  jsonString += ",\"strobeMax\":";
+  jsonString += String(darkroomParams.strobeMax);
+  jsonString += ",\"redlightMin\":";
+  jsonString += String(darkroomParams.redlightMin);
+  jsonString += ",\"redlightMax\":";
+  jsonString += String(darkroomParams.redlightMax);
+  jsonString += ",\"candlelightMin\":";
+  jsonString += String(darkroomParams.candlelightMin);
+  jsonString += ",\"candlelightMax\":";
+  jsonString += String(darkroomParams.candlelightMax);
+  jsonString += "}";
+  ESP_LOGI("WEB", "GetDarkroomParams: %s", jsonString.c_str());
+  // Send the JSON response
+  request->send(200, "text/html", jsonString.c_str());
+}
+void WebServer::setDarkroomParams(AsyncWebServerRequest *request) {
+  // Check for all required parameters
+  const char* requiredParams[] = {"strobeMin", "strobeMax", "redlightMin", "redlightMax", "candlelightMin", "candlelightMax", "redLightEnabled", "candleLightEnabled"};
+  for (int i = 0; i < 8; ++i) {
+    if (!request->hasParam(requiredParams[i])) {
+      String msg = "Missing parameter: ";
+      msg += requiredParams[i];
+      ESP_LOGI("WEB", "%s", msg.c_str());
+      request->send(400, "text/plain", msg);
+      return;
+    }
+  }
+  // Parse parameters from GET request
+  int strobeMin = request->getParam("strobeMin")->value().toInt();
+  int strobeMax = request->getParam("strobeMax")->value().toInt();
+  int redlightMin = request->getParam("redlightMin")->value().toInt();
+  int redlightMax = request->getParam("redlightMax")->value().toInt();
+  int candlelightMin = request->getParam("candlelightMin")->value().toInt();
+  int candlelightMax = request->getParam("candlelightMax")->value().toInt();
+  bool redLightEnabled = request->getParam("redLightEnabled")->value() == "1" || request->getParam("redLightEnabled")->value() == "true";
+  bool candleLightEnabled = request->getParam("candleLightEnabled")->value() == "1" || request->getParam("candleLightEnabled")->value() == "true";
+
+  ESP_LOGI("WEB", "Set Darkroom Params strobeMin %d, strobeMax %d, redlightMin %d, redlightMax %d, candlelightMin %d, candlelightMax %d, redLightEnabled %d, candleLightEnabled %d", 
+            strobeMin, strobeMax, redlightMin, redlightMax, candlelightMin, candlelightMax, redLightEnabled, candleLightEnabled);
+  messageHandlerInstance->setDarkroomParams(strobeMin, strobeMax, redlightMin, redlightMax, candlelightMin, candlelightMax, redLightEnabled, candleLightEnabled );
+
+  request->send(200, "text/html", "Darkroom parameters set");
+}
+
 
 void WebServer::setSleepTime(AsyncWebServerRequest *request) {
   int hours = request->getParam("hours")->value().toInt();
@@ -509,6 +610,12 @@ void WebServer::commandMessage(AsyncWebServerRequest *request) {
   message_data commandMessage = messageHandlerInstance->createCommandMessage(CMD_MESSAGE, false);
   memcpy(commandMessage.targetAddress, messageHandlerInstance->getItemFromAddressList(boardId).address, 6);
   messageHandlerInstance->pushToSendQueue(commandMessage);
+  request->send(200, "text/html", "OK");
+}
+
+void WebServer::commandAnimationOff(AsyncWebServerRequest *request) {
+  messageHandlerInstance->stopAllAnimations();
+  ESP_LOGI("WEB", "Animation off command received");
   request->send(200, "text/html", "OK");
 }
 #endif

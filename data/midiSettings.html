@@ -48,6 +48,17 @@
             <div id="midiVal"></div>
             <span id="midiValValue">40 - 200</span>
           </div>
+            <div class="input-group saturation-range-group">
+              <label for="saturationRange">Saturation Range:</label>
+              <div id="saturationRange"></div>
+              <span id="saturationRangeValue">51 - 255</span>
+            </div>
+
+          <div class="input-group hue-group">
+            <label for="midiHue">Hue:</label>
+            <div id="midiHue"></div>
+            <span id="midiHueValue">0 - 255</span>
+          </div>
           <div class="input-group saturation-group">
             <label for="midiSaturation">Saturation:</label>
             <div id="midiSaturation"></div>
@@ -56,7 +67,19 @@
           <div class="input-group rms-group">
             <label for="midiRms">RMS:</label>
             <div id="midiRms"></div>
-            <span id="midiRmsValue">0.1 - 8.0</span>
+            <span id="midiRmsValue">0.003 - 1.0</span>
+          </div>
+          <div class="input-group rms-group">
+            <label for="distance">Distance:</label>
+            <div id="distance"></div>
+            <span id="distanceValue">10 - 100</span>
+          </div>
+          <div class="input-group distance-switch-group">
+            <label for="distanceSwitch">Use distance:</label>
+            <label class="switch">
+              <input type="checkbox" id="distanceSwitch" />
+              <span class="slider"></span>
+            </label>
           </div>
           <button id='submit_switchMidi'>Switch to Midi</button>
           <div class="instrument-buttons" style="margin-top: 1em;">
@@ -71,7 +94,6 @@
             <button id='submit_settingsMidi' style="background-color:blue">Submit</button>
           </div>
         </div>
-      </div>
 
 
 

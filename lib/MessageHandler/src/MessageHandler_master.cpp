@@ -203,7 +203,7 @@ void MessageHandler::handleReceive() {
 
              }
             else {
-                ESP_LOGI("MSG", "Unknown message type ");
+                ESP_LOGI("MSG", "Unknown message type  %d received", incomingData.messageType);
             }
         }
     }
@@ -476,7 +476,8 @@ void MessageHandler::endCalibration() {
 }
 
 void MessageHandler::endDistanceCalibration() {
-    message_data endMessage = createCommandMessage(CMD_END_DISTANCE_CALIBRATION, true);
+    ESP_LOGI("MSG", "Ending distance calibration");
+    message_data endMessage = createCommandMessage(CMD_END_CALIBRATION, true);
     pushToSendQueue(endMessage);
     calculateDistances();
 
@@ -494,10 +495,22 @@ void MessageHandler::calculateDistances() {
             if (clapTable[j].clapTime == 0) {
                 continue;
             }
+            if (addressList[i].distances[j] == 0) {
+                continue;
+            }
             distanceCounter++;
             distanceSum += addressList[i].distances[j];
         }
-        addressList[i].distanceFromCenter = (distanceCounter > 0) ? (distanceSum / distanceCounter) : 0.0f;
+        if (distanceCounter > 0) {
+            addressList[i].distanceFromCenter = (distanceCounter > 0) ? (distanceSum / distanceCounter) : 0.0f;
+        }
+        else {
+            addressList[i].distanceFromCenter = 0.0f;
+        }
+        ESP_LOGI("MSG", "Device %d distance from center: %.2f", i, addressList[i].distanceFromCenter);
+        message_data configMessage = createConfigMessage(i);
+        memcpy(configMessage.targetAddress, addressList[i].address, 6);
+        pushToSendQueue(configMessage);
     }
 }
 
@@ -525,6 +538,8 @@ void MessageHandler::startDistanceCalibrationMaster() {
 
 void MessageHandler::cancelCalibration() {
     ESP_LOGI("MSG", "Cancelling calibration");
+    message_data cancelCalibrationMessage = createCommandMessage(CMD_CANCEL_CALIBRATION, true);
+    pushToSendQueue(cancelCalibrationMessage);
     setLastClapTime(0);
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
@@ -565,9 +580,12 @@ void MessageHandler::runAnimationLoopWrapper(void *pvParameters) {
 
 void MessageHandler::runAnimationLoop() {
     ESP_LOGI("MSG", "Running animation loop task");
+    ledInstance->resetMicrosUntilEnd();
     while (true) {
         TickType_t ticksUntilStart = ledInstance->getNextAnimationTicks();
+        ESP_LOGI("MSG", "Ticks until next animation start: %d", ticksUntilStart);
         if (ticksUntilStart > 0 ) {
+            ESP_LOGI("MSG", "Waiting for next animation to start, ticks until start: %d", ticksUntilStart);
             TickType_t currentTicks = xTaskGetTickCount();
             vTaskDelayUntil(&currentTicks, ticksUntilStart);
         }   else {
@@ -577,9 +595,49 @@ void MessageHandler::runAnimationLoop() {
         message_animation newAnimation;
         newAnimation = ledInstance->createSyncAsyncBlinkRandom();
         newAnimation.animationParams.syncAsyncBlink.startTime = micros()+1000000;
+        ESP_LOGI("MSG", "Starting animation loop with start time %lu", newAnimation.animationParams.syncAsyncBlink.startTime);
         sendAnimation(newAnimation, -1);
 
     }
 
+}
+
+void MessageHandler::stopAllAnimations() {
+    if (animationLoopHandle != NULL) {
+        vTaskDelete(animationLoopHandle);
+        ESP_LOGI("MSG", "Deleted animation loop task");
+        animationLoopHandle = NULL;
+    }
+    ESP_LOGI("MSG", "Stopping all animations");
+    message_animation stopAnimation;
+    stopAnimation.animationType = OFF;
+    sendAnimation(stopAnimation, -1);
+    ledInstance->setAnimation(stopAnimation);
+}
+
+void MessageHandler::startDarkroomTask() {
+    if (darkroomHandle != NULL) {
+        vTaskDelete(darkroomHandle);
+        darkroomHandle = NULL;
+    }
+    xTaskCreatePinnedToCore(runDarkroomTaskWrapper, "runDarkroom", 10000, this, 2, &darkroomHandle, 0);
+}
+void MessageHandler::runDarkroomTaskWrapper(void *pvParameters) {
+    MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
+    messageHandlerInstance->runDarkroomTask();
+}
+void MessageHandler::runDarkroomTask() {
+    ESP_LOGI("MSG", "Running darkroom task");
+    while (true) {
+        message_animation darkroomStrobe = ledInstance->createFlash(micros()+100000, 150, 1, 255, 0, 255);
+        sendAnimation(darkroomStrobe, -1);
+        ESP_LOGI("LED", "Strobe happening");
+        vTaskDelay(200 / portTICK_PERIOD_MS);
+        int nextBlink = random(darkroomParams.strobeMin, darkroomParams.strobeMax);
+        message_animation darkroomCandle = ledInstance->createCandle(micros()+100000+150, nextBlink*1000, 255, 255, darkroomParams.redlightMax);
+        sendAnimation(darkroomCandle, -1);
+        ESP_LOGI("MSG", "Next darkroom blink in %d seconds", nextBlink);
+        vTaskDelay(nextBlink * 1000 / portTICK_PERIOD_MS);
+    }
 }
 #endif

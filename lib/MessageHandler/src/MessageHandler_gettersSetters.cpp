@@ -354,6 +354,7 @@ message_data MessageHandler::createConfigMessage(int boardId) {
     configPayload.boardId = boardId;
     configPayload.xPos = addressList[boardId].xPos;
     configPayload.yPos = addressList[boardId].yPos;
+    configPayload.distance = addressList[boardId].distanceFromCenter;
     memcpy(&configMessage.payload.configData, &configPayload, sizeof(configPayload));
     WiFi.macAddress(configMessage.senderAddress);
     return configMessage;
@@ -479,8 +480,8 @@ unsigned long long MessageHandler::getLastClapTime() {
     unsigned long long returnTime;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         returnTime = lastClapTime;
+        xSemaphoreGive(configMutex);
     }
-    xSemaphoreGive(configMutex);
     return returnTime;
 }
 
@@ -682,17 +683,21 @@ int MessageHandler::getClapDeviceDelay() {
     return returnDelay;
 }
 
-void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode) {
+void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         midiParams.valMin = minVal;
         midiParams.valMax = maxVal;
         midiParams.satMin = minSat;
         midiParams.satMax = maxSat;
+        midiParams.hue = hue;
+        midiParams.saturation = saturation;
         midiParams.rangeMin = rangeMin;
         midiParams.rangeMax = rangeMax;
         midiParams.rmsMin = rmsMin;
         midiParams.rmsMax = rmsMax;
         midiParams.mode = mode;
+        midiParams.distance = distance;
+        midiParams.distanceSwitch = distanceSwitch;
         xSemaphoreGive(configMutex);
     }
     ESP_LOGI("MIDI", "Set Midi Params");
@@ -712,7 +717,7 @@ message_midi_params MessageHandler::getMidiParams() {
 message_data MessageHandler::createMidiParamsMessage(message_midi_params params) {
     message_data midiParamsMessage;
     midiParamsMessage.messageType = MSG_MIDI_PARAMS;
-    memcpy(midiParamsMessage.targetAddress, raspiDeviceAddress, 6);
+    memcpy(midiParamsMessage.targetAddress, broadcastAddress, 6);
     memcpy(&midiParamsMessage.payload.midiParams, &params, sizeof(params));
     WiFi.macAddress(midiParamsMessage.senderAddress);
     return midiParamsMessage;
@@ -744,4 +749,31 @@ unsigned long long MessageHandler::getLastMidiTime() {
         xSemaphoreGive(configMutex);
     }
     return returnLastMidiTime;
+}
+
+void MessageHandler::setDarkroomParams(int strobeMin, int strobeMax, int redlightMin, int redlightMax, int candlelightMin, int candlelightMax, bool redLightEnabled, bool candlelightEnabled) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        darkroomParams.strobeMin = strobeMin;
+        darkroomParams.strobeMax = strobeMax;
+        darkroomParams.redlightMin = redlightMin;
+        darkroomParams.redlightMax = redlightMax;
+        darkroomParams.candlelightMin = candlelightMin;
+        darkroomParams.candlelightMax = candlelightMax;
+        darkroomParams.redLightEnabled = redLightEnabled;
+        darkroomParams.candlelightEnabled = candlelightEnabled;
+        xSemaphoreGive(configMutex);
+    }
+    ESP_LOGI("Darkroom", "Set Darkroom Params");
+    stopAllAnimations();
+    startDarkroomTask();
+
+
+}
+message_darkroom_params MessageHandler::getDarkroomParams() {
+    message_darkroom_params returnDarkroomParams;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnDarkroomParams = darkroomParams;
+        xSemaphoreGive(configMutex);
+    }
+    return returnDarkroomParams;
 }

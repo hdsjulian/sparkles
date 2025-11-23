@@ -29,6 +29,8 @@ void MessageHandler::handleReceive() {
                 }
                 else {
                     message_animation animation = (message_animation)incomingData.payload.animation;
+                    ESP_LOGI("MSG", "Received Animation type %d", animation.animationType);
+
                     ledInstance->pushToAnimationQueue(animation);
                 }
             }
@@ -44,6 +46,13 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_SLEEP_WAKEUP) {
                 handleSleepWakeup(incomingData);
             }
+            else if (incomingData.messageType == MSG_MIDI_PARAMS) {
+                message_midi_params midiParamsMessage = (message_midi_params)incomingData.payload.midiParams;
+                ledInstance->setMaxDistanceFromCenter(midiParamsMessage.distance);
+                ledInstance->setUseDistanceSwitch(midiParamsMessage.distanceSwitch);
+                ledInstance->setMidiParams(midiParamsMessage);
+                ESP_LOGI("MIDI", "Received Midi Params minVal %d, maxVal %d, minRms %.2f, maxRMS %.2f", midiParamsMessage.valMin, midiParamsMessage.valMax, midiParamsMessage.rmsMin, midiParamsMessage.rmsMax);
+            }
             else if (incomingData.messageType == MSG_COMMAND) {
                 message_command commandMessage = (message_command)incomingData.payload.command;
                 if (commandMessage.commandType == CMD_START_CALIBRATION || commandMessage.commandType == CMD_START_DISTANCE_CALIBRATION || CMD_CONTINUE_CALIBRATION || CMD_CONTINUE_DISTANCE_CALIBRATION) {
@@ -53,6 +62,16 @@ void MessageHandler::handleReceive() {
                     setCalibrationTest(true);
                     startCalibrationClient();
                 }
+                if (commandMessage.commandType == CMD_CANCEL_CALIBRATION || CMD_END_CALIBRATION) {
+                    ESP_LOGI("MSG", "Cancel calibration command received");
+
+                    if (clapTaskHandle != NULL) {
+                        vTaskDelete(clapTaskHandle);
+                        clapTaskHandle = NULL;
+                    }
+
+                }
+
                 if (commandMessage.commandType == CMD_SET_ADMIN_NOT_PRESENT) {
                     setAdminPresent(false);
                 }
@@ -62,6 +81,12 @@ void MessageHandler::handleReceive() {
                 }
                 if (commandMessage.commandType == CMD_MESSAGE) {
                     ESP_LOGI("MSG", "Received message command");
+                }
+                if (commandMessage.commandType == CMD_RESET_SYSTEM) {
+                    ESP_LOGI("MSG", "Received reset system command");
+                    delay(1000);
+                    delay(100*ledInstance->getCurrentPosition());
+                    ESP.restart();
                 }
 
                 
@@ -75,7 +100,21 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_CONFIG_DATA) {
                 message_config_data configData = incomingData.payload.configData;
                 ESP_LOGI("MSG", "Received config data for board ID: %d", configData.boardId);
-                setBoardPosition(configData.boardId, configData.xPos, configData.yPos);
+                ledInstance->setCurrentPosition(configData.boardId);
+                if (configData.distance > 0) {
+                    ledInstance->setDistanceFromCenter(configData.distance);
+                    ESP_LOGI("MSG", "Setting distance from center to: %f", configData.distance);
+                }
+                else {
+                    ESP_LOGI("MSG", "Received config data with no distance, not setting distance from center");
+                }
+                if (configData.xPos != 0.0 || configData.yPos != 0.0) {
+                    ledInstance->setLocation(configData.xPos, configData.yPos);
+                    ESP_LOGI("MSG", "Setting position to: (%f, %f)", configData.xPos, configData.yPos);
+                }
+                else {
+                    ESP_LOGI("MSG", "Received config data with no position, not setting position");
+                }
             }
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
                 message_update_version updateVersionMessage = incomingData.payload.updateVersion;
@@ -183,15 +222,16 @@ void MessageHandler::goToSleep() {
 
 void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
-   ledInstance->blink(micros(), 100, 4, 160, 255, 127);
+    ESP_LOGI("MSG", "Going to sleep for %llu microseconds", sleepWakeupMessage.duration);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+    ledInstance->blink(micros(), 100, 4, 160, 255, 127);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
-    vTaskDelay(1000/portTICK_PERIOD_MS);
-    ESP_LOGI("MSG", "Going to sleep for %llu milliseconds", sleepWakeupMessage.duration);
     turnWifiOff();
-    esp_sleep_enable_timer_wakeup((unsigned long)sleepWakeupMessage.duration*1000); // Convert seconds to microseconds
+    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration); // Convert seconds to microseconds
     esp_light_sleep_start();
-    ESP_LOGI("MSG", "Wokue up");
+    ESP_LOGI("MSG", "Woke up");
     turnWifiOn();
     ledInstance->resetLedTask();
     ledInstance->blink(micros(), 150, 2, 160, 255, 127);
@@ -226,8 +266,12 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         message_data* messageData = (message_data*)incomingData;
         if (messageData->payload.animation.animationType == MIDI || messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
             LedHandler& ledInstance = LedHandler::getInstance(); 
+            if (messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
+                ESP_LOGI("RECV", "Received background shimmer animation with hue %d, saturation %d, value %d", messageData->payload.animation.animationParams.backgroundShimmer.hue, messageData->payload.animation.animationParams.backgroundShimmer.saturation, messageData->payload.animation.animationParams.backgroundShimmer.value);
+            }
             ledInstance.pushToAnimationQueue(messageData->payload.animation);
             return;
+            
         }
         
     }

@@ -126,6 +126,11 @@ function handleCommandAnimateClick() {
   fetchData('/commandAnimate');
 }
 
+function handleCommandAnimationOffClick() {
+  console.log("Turning off animations");
+  fetchData('/commandAnimationOff');
+}
+
 // Initialize the page
 document.addEventListener('DOMContentLoaded', () => {
   // Add event listeners
@@ -133,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cmd_sync_all').addEventListener('click', handleCommandSyncClick);
   document.getElementById('cmd_animate').addEventListener('click', handleCommandAnimateClick);
   document.getElementById('cmd_blink_all').addEventListener('click', handleCommandBlinkAllClick);
+  document.getElementById('cmd_animation_off').addEventListener('click', () => handleCommandAnimationOffClick);
   document.getElementById('settings').addEventListener('click', () => {
     window.location.href = "settings.html";
   });

@@ -64,6 +64,17 @@ message_animation LedHandler::createFlash(unsigned long long startTime, unsigned
     return animation;
 }
 
+message_animation LedHandler::createCandle(unsigned long long startTime, int duration, int hue, int saturation, int value) {
+    message_animation animation;
+    animation.animationType = CANDLE;
+    animation.animationParams.candle.startTime = startTime;
+    animation.animationParams.candle.duration = duration;
+    animation.animationParams.candle.hue = hue;
+    animation.animationParams.candle.saturation = saturation;
+    animation.animationParams.candle.value = value;
+    return animation;
+}
+
 message_animation LedHandler::createSyncAsyncBlinkRandom() {
     message_animation animation;
     animation.animationType = SYNC_ASYNC_BLINK;
@@ -72,7 +83,7 @@ message_animation LedHandler::createSyncAsyncBlinkRandom() {
     sabAnimation.pause = random(syncAsyncMinPause, syncAsyncMaxPause);
     sabAnimation.repetitions = random(syncAsyncMinReps, syncAsyncMaxReps);
     sabAnimation.spreadTime = random(syncAsyncMinSpread, syncAsyncMaxSpread); 
-    sabAnimation.fraction = random (4, 8);
+    sabAnimation.fraction = random (10, 20);
     sabAnimation.animationReps = random(syncAsyncMinAniReps, syncAsyncMaxAniReps);
     sabAnimation.hue = random(0, 40);
     sabAnimation.saturation = random(20, 127);
@@ -107,6 +118,30 @@ void LedHandler::blink(unsigned long long startTime, unsigned long long duration
     //ESP_LOGI("LED", "Blinking with hue: %d, saturation: %d, brightness: %d", hue, saturation, brightness);
 }
 
+void LedHandler::batteryBlink(float batteryPercentage) {
+    int hue, sat, val = 255;
+    if (batteryPercentage >= 95.0f) {
+        // White to green
+        float frac = (batteryPercentage - 95.0f) / 5.0f; // 95-100%
+        hue = 96 * (1.0f - frac); // 0 (white) to 96 (green)
+        sat = (int)(255 * (1.0f - frac)); // 0 (white) to 255 (green)
+    } else if (batteryPercentage >= 70.0f) {
+        // Green to yellow
+        float frac = (batteryPercentage - 70.0f) / 25.0f; // 70-95%
+        hue = (int)(96 * frac + 32 * (1.0f - frac)); // 96 (green) to 32 (yellow)
+        sat = 255;
+    } else if (batteryPercentage >= 30.0f) {
+        // Yellow to red
+        float frac = (batteryPercentage - 30.0f) / 40.0f; // 30-70%
+        hue = (int)(32 * frac); // 32 (yellow) to 0 (red)
+        sat = 255;
+    } else {
+        // Red
+        hue = 0; sat = 255;
+    }
+    blink(micros(), 100, 1, hue, sat, val);
+}
+
 TickType_t LedHandler::getNextAnimationTicks() {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         TickType_t nextTicks = microsToTicks((unsigned long long)microsUntilEnd);
@@ -116,5 +151,38 @@ TickType_t LedHandler::getNextAnimationTicks() {
     else {
         ESP_LOGI("LED", "Failed to get next animation ticks");
         return 0;
+    }
+}
+
+void LedHandler::setMicrosUntilEnd(message_animation& animationData) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        unsigned long long endTime = calculateAnimation(animationData);
+        microsUntilEnd = endTime - micros();
+        xSemaphoreGive(configMutex);
+    }
+    else {
+        ESP_LOGI("LED", "Failed to set micros until end");
+    }
+}
+
+void LedHandler::resetMicrosUntilEnd() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        microsUntilEnd = micros()+1000000; // Set to 1 second in the future
+        ESP_LOGI("LED", "Reset micros until end to %llu", microsUntilEnd);
+        xSemaphoreGive(configMutex);
+    }
+    else {
+        ESP_LOGI("LED", "Failed to reset micros until end");
+    }
+}
+
+bool LedHandler::isTimedAnimation(animationEnum type) {
+    if (type == STROBE || type == SYNC_ASYNC_BLINK || type == BLINK) {
+        ESP_LOGI("LED", "Animation %d is timed", type);
+        return true;
+    }
+    else {
+        ESP_LOGI("LED", "Animation %d is not timed", type);
+        return false;
     }
 }

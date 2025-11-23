@@ -128,6 +128,7 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define MSG_UPDATE_VERSION 14
 #define MSG_COMMAND 15
 #define MSG_MIDI_PARAMS 16
+#define MSG_DARKROOM_PARAMS 17
 
 #define CMD_START_CALIBRATION 1
 #define CMD_CONTINUE_CALIBRATION 2
@@ -141,6 +142,8 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define CMD_START_DISTANCE_CALIBRATION 10
 #define CMD_CONTINUE_DISTANCE_CALIBRATION 11
 #define CMD_END_DISTANCE_CALIBRATION 12
+#define CMD_RESET_SYSTEM 13
+#define CMD_CANCEL_CALIBRATION 14
 
 
 
@@ -160,6 +163,7 @@ enum animationEnum {
     OFF,
     FLASH,
     BLINK,
+    BATTERY_BLINK,
     CANDLE,
     SYNC_ASYNC_BLINK,
     SYNC_BLINK,
@@ -167,10 +171,12 @@ enum animationEnum {
     SYNC_END,
     LED_ON,
     CONCENTRIC, 
-    STROBE, 
     MIDI, 
-    BACKGROUND_SHIMMER
+    BACKGROUND_SHIMMER,
+    STROBE, 
 };
+
+
 struct midiNoteTable {
   int velocity;
   int note;
@@ -215,16 +221,32 @@ struct message_midi_params {
   int valMax;
   int satMin;
   int satMax;
+  int hue;
+  int saturation; 
   int rangeMin;
   int rangeMax;
   float rmsMin;
   float rmsMax;
   int mode;
-  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(0.1f), rmsMax(8.0f), mode(INPUT_MODE) {}
-  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode) {}
+  int distance; // New field for distance from center
+  bool distanceSwitch; // New field for enabling/disabling distance-based effects
+  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(0.003f), rmsMax(1.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false) {}
+  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), hue(other.hue), saturation(other.saturation), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode), distance(other.distance), distanceSwitch(other.distanceSwitch) {}
 
 };
 
+struct message_darkroom_params {
+  int strobeMin;
+  int strobeMax;
+  int redlightMin;
+  int redlightMax;
+  int candlelightMin;
+  int candlelightMax;
+  bool redLightEnabled;
+  bool candlelightEnabled;
+  message_darkroom_params() : strobeMin(0), strobeMax(1023), redlightMin(0), redlightMax(1023), candlelightMin(0), candlelightMax(1023), redLightEnabled(false), candlelightEnabled(false) {}
+  message_darkroom_params(const message_darkroom_params& other) : strobeMin(other.strobeMin), strobeMax(other.strobeMax), redlightMin(other.redlightMin), redlightMax(other.redlightMax), candlelightMin(other.candlelightMin), candlelightMax(other.candlelightMax), redLightEnabled(other.redLightEnabled), candlelightEnabled(other.candlelightEnabled) {}
+};
 struct animation_strobe {
   uint8_t frequency;
   unsigned long long startTime;
@@ -243,6 +265,15 @@ struct animation_blink {
   int saturation;
   int brightness;
   animation_blink() : repetitions(0), duration(0), startTime(0), hue(0), saturation(0), brightness(0) {}
+};
+
+struct animation_candle {
+  unsigned long long startTime;
+  int duration; 
+  int hue;
+  int saturation;
+  int value;
+  animation_candle() : startTime(0), duration(0), hue(0), saturation(0), value(0) {}
 };
 
 struct animation_sync_async_blink {
@@ -280,6 +311,7 @@ union animation_params {
   struct animation_blink blink;
   struct animation_sync_async_blink syncAsyncBlink;
   struct animation_background_shimmer backgroundShimmer;
+  struct animation_candle candle;
   animation_params() {}
   ~animation_params() {}
 };
@@ -342,7 +374,15 @@ struct message_config_data {
   int boardId;
   float xPos;
   float yPos;
-  message_config_data() : boardId(0), xPos(0.0), yPos(0.0) {}
+  float distance;
+  float minDistance;
+  float maxDistance;
+  float minX;
+  float minY;
+  float maxX;
+  float maxY;
+
+  message_config_data() : boardId(0), xPos(0.0), yPos(0.0), distance(0.0), minDistance(0.0), maxDistance(0.0), minX(0.0), minY(0.0), maxX(0.0), maxY(0.0) {}
 };
 
 struct message_update_version {
@@ -375,6 +415,7 @@ union message_payload {
   struct message_update_version updateVersion;
   struct message_command        command;
   struct message_midi_params    midiParams;
+  struct message_darkroom_params  darkroomParams;
   message_payload() {}
   message_payload(const message_payload& other) {
       if (this != &other) memcpy(this, &other, sizeof(message_payload));

@@ -45,7 +45,10 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
         numAdresses = 0;
         for (int i = 0; i < NUM_DEVICES; i++) {
             if (memcmp(messageHandlerInstance->getItemFromAddressList(i).address, messageHandlerInstance->emptyAddress, 6) == 0) {
+                ESP_LOGI("TIMER", "Empty address found at %d, skipping", i);
+
                 break;
+
             }
             else {
                 numAdresses++;
@@ -65,7 +68,8 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
             }
         }
     }
-    if (numAdresses > 2) {
+    if (numAdresses > 0) {
+        ESP_LOGI("TIMER", "RUNNING ANIMATION LOOP TASK FROM ALL TIMER SYNC");
         messageHandlerInstance->startAnimationLoopTask();
     }
     messageHandlerInstance->allTimerSyncHandle = NULL;

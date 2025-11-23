@@ -242,7 +242,7 @@ void MessageHandler::testCalibration() {
         pushToSendQueue(commandMessage);
 }
 
-void MessageHandler::sendSleepWakeupMessage(unsigned long sleepDuration) {
+void MessageHandler::sendSleepWakeupMessage(unsigned long long sleepDuration) {
     message_data sleepWakeupMessage;
     sleepWakeupMessage.messageType = MSG_SLEEP_WAKEUP;
     memcpy(sleepWakeupMessage.targetAddress, broadcastAddress, 6);
@@ -257,4 +257,16 @@ void MessageHandler::turnWifiOff() {
     esp_now_deinit();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+}
+
+void MessageHandler::resetSystem() {
+    File file;
+    if (LittleFS.exists("/clientAddress")) {
+        LittleFS.remove("/clientAddress");
+        ESP_LOGI("FS", "File removed successfully");
+    }
+    message_data commandResetMessage = createCommandMessage(CMD_RESET_SYSTEM, true);
+    esp_now_send(broadcastAddress, (uint8_t*)&commandResetMessage, sizeof(commandResetMessage));
+    delay(1000);
+    ESP.restart();
 }

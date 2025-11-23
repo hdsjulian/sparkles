@@ -15,8 +15,10 @@
 
 
 uint8_t myAddress[6];
-uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc1, 0x48};// Example address, replace with actual host address
+//uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc1, 0x48};// Example address, replace with actual host address
+uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xbf, 0xb8};
 QueueHandle_t receiveQueue, sendQueue ;
+TaskHandle_t clapTaskHandle = NULL;
 esp_now_peer_info_t peerInfo;
 bool startUp = true;
 #define CLAP_PIN 47
@@ -70,10 +72,23 @@ static void handleReceive(void *pvParameters) {
                     case CMD_CONTINUE_CALIBRATION:
                     case CMD_CONTINUE_DISTANCE_CALIBRATION:
                     ESP_LOGI("MSG", "Starting calibration");
-                        xTaskCreatePinnedToCore(clapTask, "clapTask", 10000, NULL, 10, NULL, 1);
+                        xTaskCreatePinnedToCore(clapTask, "clapTask", 10000, NULL, 10, &clapTaskHandle, 1);
                         break;
                     case CMD_MESSAGE:
                         ESP_LOGI("MSG", "Received message command");
+                        break;
+                    case CMD_CANCEL_CALIBRATION:
+                    case CMD_END_CALIBRATION:
+                        ESP_LOGI("MSG", "Cancel calibration command received");
+                        if (isInterruptAttached) {
+                            detachInterrupt(digitalPinToInterrupt(CLAP_PIN));
+                            isInterruptAttached = false;
+                            Serial.println("Interrupt detached");
+                            if (clapTaskHandle != NULL) {
+                                vTaskDelete(clapTaskHandle);
+                                clapTaskHandle = NULL;
+                            }
+                        } 
                         break;
                     default:
                         ESP_LOGW("MSG", "Unknown command type: %d", incomingData.payload.command.commandType);
@@ -224,7 +239,6 @@ void loop()
     unsigned long long currentTime = micros();
     ESP_LOGI("", "Current Time %llu", currentTime);
     ESP_LOGI("", "Current Time %llu", micros());
-    ESP_LOGI("", )
 
   }
   // put your main code here, to run repeatedly:

@@ -64,7 +64,8 @@ void setup()
   ledInstance.setup();
   msgHandler.setup(ledInstance);
   ESP_LOGI("", "Setup");
-  ledInstance.blink(millis(), 100, 2, 160, 255, 255);
+  float batPercentage = msgHandler.getBatteryPercentage();
+  ledInstance.batteryBlink(batPercentage);
 
   // put your setup code here, to run once:
 }
