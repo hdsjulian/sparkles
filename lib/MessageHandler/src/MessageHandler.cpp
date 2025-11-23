@@ -3,7 +3,7 @@ MessageHandler* MessageHandler::instance = nullptr;
 
 MessageHandler::MessageHandler() {
     configMutex = xSemaphoreCreateMutex();
-    receiveQueue = xQueueCreate(10, sizeof(message_data));
+    receiveQueue = xQueueCreate(100, sizeof(message_data));
     if (receiveQueue == NULL) {
         ESP_LOGE("ERROR", "Failed to create receiveQueue");
     }

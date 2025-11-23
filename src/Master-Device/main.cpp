@@ -11,6 +11,7 @@
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "soc/rtc.h"
+//#include <Elog.h>
 
 // put function declarations here:
 
@@ -87,6 +88,9 @@ void loop()
     WiFi.macAddress(address);
     lastTick = millis();
     ESP_LOGI("TICK", "Tick %s", msgHandler.stringAddress(address, true).c_str());
+    ESP_LOGI("TICK", "Ticks until end: %llu", (unsigned long long)ledInstance.getNextAnimationTicks());
+    ESP_LOGI("", "Battery: %.2f%%", msgHandler.getBatteryPercentage());
+
     unsigned long long now = micros();
     //ESP_LOGI("TICK", "Now is %llu", now);
     esp_log_level_t level = esp_log_level_get("Sleep");
@@ -110,6 +114,7 @@ void loop()
     }
     // If lastMidiTime is more than 1 minute ago, start animation loop task
     if (millis() - msgHandler.getLastMidiTime() > 60000 && msgHandler.getLastMidiTime() > 0) {
+      ESP_LOGI("MSG", "No MIDI message for 60 seconds, starting animation loop");
         msgHandler.startAnimationLoopTask();
         msgHandler.setLastMidiTime(0);
     }
@@ -118,28 +123,31 @@ void loop()
 
   if (msgHandler.isInSleepPhase()) {
     ESP_LOGI("Sleep", "Going to sleep for %lu ms", msgHandler.getSleepDuration());
-    esp_sleep_enable_timer_wakeup((unsigned long)((msgHandler.getSleepDuration()-1)*1000));
-    msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
+    unsigned long long sleepDuration = (unsigned long long)(msgHandler.getSleepDuration()-1)*1000;
+    ESP_LOGI("Sleep", "Sleep duration in micros: %llu", sleepDuration);
+    ESP_LOGI("Sleep", "Sleep duration in seconds, hours and minutes: %02llu:%02llu:%02llu", sleepDuration/1000000/3600, (sleepDuration/1000000%3600)/60, (sleepDuration/1000000%3600)%60);
+    esp_sleep_enable_timer_wakeup(sleepDuration);
+    msgHandler.sendSleepWakeupMessage(sleepDuration);
     struct tm timeinfo;
     if (getLocalTime(&timeinfo)) {
-        //ESP_LOGI("Sleep", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        ESP_LOGI("Sleep", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     } else {
-        //ESP_LOGI("Sleep", "Failed to obtain time");
+        ESP_LOGI("Sleep", "Failed to obtain time");
     }
-    //ESP_LOGI("Sleep", "Time in micros: %llu", micros());
+    ESP_LOGI("Sleep", "Time in micros: %llu", micros());
     msgHandler.turnWifiOff();
     msgHandler.recordTimeOfDayBeforeSleep();
     esp_light_sleep_start();
     msgHandler.setTimeOfDayAfterSleep();
     msgHandler.turnWifiOn();
-    ESP_LOGI("Sleep", "Delaying for 20 seconds");
-    vTaskDelay(20000 / portTICK_PERIOD_MS);
+    ESP_LOGI("Sleep", "Delaying for 1200 seconds");
+    vTaskDelay(1200000 / portTICK_PERIOD_MS);
     ESP_LOGI("Sleep", "Continuing");
     msgHandler.setAddressListInactive();
     msgHandler.startAllTimerSyncTask();
     
     
-   // msgHandler.sendSleepWakeupMessage(msgHandler.getSleepDuration());
+   // msgHandler.sendSleepWakeupMessage(wbmsgHandler.getSleepDuration());
 
    // esp_sleep_enable_timer_wakeup(msgHandler.getSleepDuration() - 2000); // Sleep for 24 hours
    // esp_light_sleep_start();

@@ -1,0 +1,95 @@
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP-NOW DASHBOARD</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="all.css" >
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" type="text/css" href="sparkles.css">
+<link rel="stylesheet" href="nouislider.min.css">
+<script src="nouislider.min.js"></script>
+</head>
+<body>
+  <div class="topnav">
+    <h3>ESP-NOW DASHBOARD</h3>
+    <div class="hamburger" onclick="toggleMenu()">
+      <div></div>
+      <div></div>
+      <div></div>
+    </div>
+
+    <div class="nav-menu" id="navMenu">
+      <a href="addressList.html">Addresss List</a>
+      <a href="newCalibration.html">Calibration</a>
+      <a href="settings.html">Settings</a>
+      <a href="animations.html">Animations</a>
+      <a href="midiSettings.html">MidiSettings</a>
+    </div>
+  </div>
+  <div class="content">
+    <div class="cards">
+      <div class="card deviceList">
+        <p>
+            <span class="reading">
+                <span id="addressList" class="devicenum">A very Dark room</span>
+            </span>
+        </p>
+      </div>
+
+
+      <div class="card">
+        <div class="inputs">
+          <div class="input-group pitch-range-group">
+            <label for="timeframeRange">Zeitspanne:</label>
+            <div id="timeframeRange"></div>
+            <span id="rangeValue">1 - 120</span>
+          </div>
+          <div class="input-group val-group">
+            <label for="brightnessVal">Helligkeit:</label>
+            <div id="brightnessVal"></div>
+            <span id="brightnessValValue">100 - 255</span>
+          </div>
+          <div class="input-group candlelight-group">
+            <label class="checkbox">
+              <input type="checkbox" id="candlelight" />
+              <span class="box"></span>
+              <span class="label">Kerze</span>
+            </label>
+          </div>
+          <div class="input-group saturation-group">
+            <label for="candleBrightness">Kerze Helligkeit:</label>
+            <div id="candleBrightness"></div>
+            <span id="candleBrightnessValue">51 - 255</span>
+          </div>
+          <div class="input-group redlight-group">
+            <label class="checkbox">
+              <input type="checkbox" id="redlight" />
+              <span class="box"></span>
+              <span class="label">Rotlicht</span>
+            </label>
+          </div>
+          <div class="input-group redlight-value-group">
+            <label for="redlight_value">Rotlicht:</label>
+            <div id="redlight_value"></div>
+            <span id="redlightValue">10 - 255</span>
+          </div>
+
+          <div class="instrument-buttons" style="margin-top: 1em;">
+            <button id='submit_settingsDarkroom' style="background-color:blue">Submit</button>
+          </div>
+        </div>
+
+
+
+
+
+    </div>
+
+  </div>
+
+<script>
+
+</script>
+<!-- Load page logic -->
+<script type="module" src="darkroom.js"></script>
+</body>
+</html>

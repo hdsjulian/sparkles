@@ -55,8 +55,14 @@ class WebServer {
         void commandCalibrate(AsyncWebServerRequest *request);
         void commandStartDistanceCalibration(AsyncWebServerRequest *request);
         void commandContinueDistanceCalibration(AsyncWebServerRequest *request);
+        void commandCancelDistanceCalibration(AsyncWebServerRequest *request);
+        void commandEndDistanceCalibration(AsyncWebServerRequest *request);
+        void commandAnimationOff(AsyncWebServerRequest *request);
+        void resetSystem(AsyncWebServerRequest *request);
         void setMidiParams(AsyncWebServerRequest *request);
         void getMidiParams(AsyncWebServerRequest *request);
+        void getDarkroomParams(AsyncWebServerRequest *request);
+        void setDarkroomParams(AsyncWebServerRequest *request);
         void setSleepTime(AsyncWebServerRequest *request);
         void setWakeupTime(AsyncWebServerRequest *request);
         void clapReceived(int clapId, unsigned long long clapTime);

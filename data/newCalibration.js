@@ -1,4 +1,3 @@
-
 // Unified handler for test buttons
 function setupTestButton(buttonId, endpoint) {
   window.addEventListener('DOMContentLoaded', function() {
@@ -201,35 +200,47 @@ function statusClapHappened(type, data) {
         .finally(() => { continueBtn.disabled = false; });
     }
   });
+
   cancelBtn.addEventListener('click', () => {
     cancelBtn.disabled = true;
-      fetch('/commandCancelCalibration')
-        .then(response => {
-          if (response.ok) {
-            updateCard('calibration', { status: 1 });
-          }
-        })
-        .finally(() => { cancelBtn.disabled = false; });
+    const endpoint = isCalibration ? '/commandCancelCalibration' : '/commandCancelDistanceCalibration';
+    const target = isCalibration ? 'calibration' : 'distance';
+    console.log("Cancelling calibration with endpoint: " + endpoint);
+    fetch(endpoint)
+      .then(response => {
+        if (response.ok) {
+          updateCard(target, { status: 1 });
+        }
+      })
+      .finally(() => { cancelBtn.disabled = false; });
   });
+
   resetBtn.addEventListener('click', () => {
     resetBtn.disabled = true;
-      fetch('/commandResetCalibration')
-        .then(response => {
-          if (response.ok) {
-            updateCard('calibration', { status: 1 });
-          }
-        })
-        .finally(() => { resetBtn.disabled = false; });
+    const endpoint = isCalibration ? '/commandResetCalibration' : '/commandResetDistanceCalibration';
+    const target = isCalibration ? 'calibration' : 'distance';
+    fetch(endpoint)
+      .then(response => {
+        if (response.ok) {
+          updateCard(target, { status: 1 });
+        }
+      })
+      .finally(() => { resetBtn.disabled = false; });
   });
+
   endBtn.addEventListener('click', () => {
     endBtn.disabled = true;
-      fetch('/commandEndCalibration')
-        .then(response => {
-          if (response.ok) {
-            updateCard('calibration', { status: 5 });
-          }
-        })
-        .finally(() => { endBtn.disabled = false; });
+    const endpoint = isCalibration ? '/commandEndCalibration' : '/commandEndDistanceCalibration';
+    const target = isCalibration ? 'calibration' : 'distance';
+    console.log("Ending calibration with endpoint: " + endpoint);
+    console.log("Target: " + target);
+    fetch(endpoint)
+      .then(response => {
+        if (response.ok) {
+          updateCard(target, { status: 5 });
+        }
+      })
+      .finally(() => { endBtn.disabled = false; });
   });
 }
 
@@ -310,4 +321,3 @@ if (usePolling) {
   setupStatusEventListener('calibration');
   setupStatusEventListener('distance');
 }
-  

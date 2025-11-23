@@ -55,7 +55,7 @@ void MessageHandler::runClapTask() {
 }
 
 void MessageHandler::startClapTask() {
-    xTaskCreatePinnedToCore(runClapTaskWrapper, "runClapTask", 10000, this, 20, NULL, 1);
+    xTaskCreatePinnedToCore(runClapTaskWrapper, "runClapTask", 10000, this, 20, &clapTaskHandle, 1);
 }
 
 void MessageHandler::runClapTaskWrapper(void *pvParameters) {

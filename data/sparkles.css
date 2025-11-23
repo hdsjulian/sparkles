@@ -44,7 +44,7 @@ html {
     flex: 1 0 100%;
     padding: 5px;
   }
-  .card span {
+  .card span:not(.box):not(.label) {
     display: block;
   }
   .cards {
@@ -149,6 +149,170 @@ html {
   .nav-menu a:hover {
     background-color: #4CAF50;
   }
+  /* Toggle switch styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 52px;
+  height: 28px;
+  vertical-align: middle;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  background: #cfd4dc;
+  transition: background 0.2s ease;
+  border-radius: 999px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.08);
+}
+.switch .slider::before {
+  content: "";
+  position: absolute;
+  height: 22px;
+  width: 22px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.switch input:checked + .slider {
+  background: #22c55e;
+}
+.switch input:checked + .slider::before {
+  transform: translateX(24px);
+}
+.switch input:focus + .slider {
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.25);
+}
+.switch input:disabled + .slider {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Align label and switch neatly */
+.input-group.distance-switch-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* Checkbox styling */
+.checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap; /* keep box and text on the same line */
+}
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+/* Make checkbox box respect width/height */
+.checkbox .box {
+  display: inline-block; /* needed for width/height on span */
+  box-sizing: border-box; /* include 2px border in 22px box */
+}
+.checkbox .box {
+  width: 22px;
+  height: 22px;
+  background: #fff;
+  border: 2px solid #cfd4dc;
+  border-radius: 6px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.08);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+.checkbox .box::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -55%) rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 0.18s ease;
+}
+.checkbox .label {
+  font-size: 1.2rem;
+  color: #1f2937; /* slate-800 */
+  display: inline-block; /* override .card span { display:block } */
+}
+/* Checked */
+.checkbox input:checked + .box {
+  background: #22c55e; /* match switch green */
+  border-color: #22c55e;
+}
+.checkbox input:checked + .box::after {
+  transform: translate(-50%, -55%) rotate(45deg) scale(1);
+}
+/* Indeterminate */
+.checkbox input:indeterminate + .box {
+  background: #22c55e;
+  border-color: #22c55e;
+}
+.checkbox input:indeterminate + .box::after {
+  width: 12px;
+  height: 2px;
+  border: none;
+  background: #fff;
+  border-radius: 2px;
+  transform: translate(-50%, -50%) scale(1);
+}
+/* Focus ring */
+.checkbox input:focus + .box {
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.25);
+}
+/* Disabled */
+.checkbox input:disabled + .box,
+.checkbox input:disabled ~ .label {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Sizes */
+.checkbox.sm .box {
+  width: 18px;
+  height: 18px;
+}
+.checkbox.lg .box {
+  width: 28px;
+  height: 28px;
+}
+/* Group utility */
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+/* Color variants (optional) */
+.checkbox--warning input:checked + .box,
+.checkbox--warning input:indeterminate + .box {
+  background: #f59e0b; /* amber-500 */
+  border-color: #f59e0b;
+}
+.checkbox--danger input:checked + .box,
+.checkbox--danger input:indeterminate + .box {
+  background: #ef4444; /* red-500 */
+  border-color: #ef4444;
+}
+
   @media (max-width: 600px) {
     .hamburger {
       display: block;

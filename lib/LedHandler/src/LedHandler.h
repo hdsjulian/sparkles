@@ -31,15 +31,31 @@ public:
     void setCurrentAnimation(animationEnum animation);
     int getCurrentPosition();
     void setCurrentPosition(int position);
+    void setLocation(float x, float y);
+    float getXLocation();
+    float getYLocation();
     void setAnimation(message_animation& animationData);
     void setSustain(bool sustain);
     bool getSustain();
     message_animation getAnimation();
     long long getMicrosUntilStart();
     void setMicrosUntilStart(unsigned long long masterStartTime);
+    unsigned long long calculateMicrosUntilStart(unsigned long long masterStartTime);
     TickType_t getNextAnimationTicks();
+    void setMicrosUntilEnd(message_animation& animationData);
+    void resetMicrosUntilEnd();
+
     bool getBackgroundShimmerFadeout();
     void setBackgroundShimmerFadeout(bool fadeout);
+    float getDistanceFromCenter();
+    void setDistanceFromCenter(float distance);
+    int getMaxDistanceFromCenter();
+    void setMaxDistanceFromCenter(int distance);
+    void setUseDistanceSwitch(bool use);
+    bool getUseDistanceSwitch();
+    void setMidiParams(message_midi_params& params);
+    message_midi_params getMidiParams();
+
     unsigned long long calculateAnimation(message_animation& animationData);
     unsigned long long calculateSyncAsyncBlink(message_animation& animationData);
     unsigned long long calculateBlinkTime(message_animation& animationData);
@@ -49,11 +65,14 @@ public:
     message_animation createAnimation(animationEnum animationType);
     message_animation createFlash(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness);
     message_animation createSyncAsyncBlinkRandom();
+    message_animation createCandle(unsigned long long startTime, int duration, int hue, int saturation, int value);
     void blink(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness);
+    void batteryBlink(float batteryPercentage);
     void stopAnimationTask();
     void turnOff();
     void candleLight(unsigned long long duration, float hue, float saturation, float value);
     void resetLedTask();
+    bool isTimedAnimation(animationEnum type);
 private:
     LedHandler();
     LedHandler(const LedHandler&) = delete;
@@ -64,16 +83,18 @@ private:
     static void runStrobeWrapper(void *pvParameters);
     static void runSyncAsyncBlinkWrapper(void *pvParameters);
     static void runBackgroundShimmerWrapper(void *pvParameters);
+    static void runCandleWrapper(void *pvParameters);
     void ledTask();
     void runMidi();
     void runBlink();
     void runStrobe();
     void runSyncAsyncBlink();
     void runBackgroundShimmer();
+    void runCandle();
     
     static void ledsOff();
-    static constexpr float midiHue = 25.0f / 360.0f;
-    static constexpr float midiSat = 0.84;
+    float midiHue = 25.0f / 360.0f;
+    float midiSat = 0.4f;
     static void writeLeds(CRGB color);
     static float *hsv2rgb(float h, float s, float b, float *rgb);
     static float float_to_sRGB(float x);
@@ -92,6 +113,10 @@ private:
     long long timerOffset;
     int mode;
     int position;
+    float xLocation;
+    float yLocation;
+    float distanceFromCenter;
+    int maxDistanceFromCenter;
     long long microsUntilStart;
     long long microsUntilEnd = 0;
     bool sustain;
@@ -106,6 +131,7 @@ private:
     int syncAsyncMinSpread = 500;
     int syncAsyncMaxSpread = 2000;
     bool backgroundShimmerFadeout = false;
+    bool useDistanceSwitch = false;
     SemaphoreHandle_t configMutex;
     QueueHandle_t ledQueue, backgroundShimmerQueue;
     message_animation animation;
@@ -114,6 +140,7 @@ private:
     SemaphoreHandle_t midiNoteTableMutex; 
     animationEnum currentAnimation = OFF;
     TaskHandle_t midiTaskHandle, animationTaskHandle;
+    message_midi_params midiParams;
 };
 
 #endif

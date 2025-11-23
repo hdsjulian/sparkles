@@ -22,27 +22,3 @@ unsigned long long LedHandler::calculateAnimation(message_animation& animationDa
     return 0;
 }
 
-unsigned long long LedHandler::calculateSyncAsyncBlink(message_animation& animationData)
-{
-    int spreadTime = animationData.animationParams.syncAsyncBlink.spreadTime;
-    int blinkDuration = animationData.animationParams.syncAsyncBlink.blinkDuration;
-    int pause = animationData.animationParams.syncAsyncBlink.pause;
-    uint8_t repetitions = animationData.animationParams.syncAsyncBlink.repetitions;
-    uint16_t animationReps = animationData.animationParams.syncAsyncBlink.animationReps;
-    uint8_t fraction = animationData.animationParams.syncAsyncBlink.fraction;
-    unsigned long long returnTime;
-    returnTime += pause * repetitions * animationReps;
-    returnTime += blinkDuration * repetitions * animationReps;
-    for (int i = 1; i < animationReps+1; i++)
-    {
-        for (int j = 0; j < repetitions; j++)
-        {
-            if (j <= repetitions/2) {
-                returnTime += (spreadTime/(repetitions/2))*fraction*j;
-            }
-            returnTime += (spreadTime/(repetitions/2))*fraction*(repetitions-j);
-        }
-    }
-
-    return returnTime*1000;
-}

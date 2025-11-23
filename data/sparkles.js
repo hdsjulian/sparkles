@@ -33,8 +33,8 @@ export function boardCards(obj, mode = MODE_STANDARD) {
     const batteryElem = document.getElementById("battery" + obj.id);
     if (batteryElem) batteryElem.textContent = "Battery: " + obj.batteryPercentage;
 
-    const distCenterElem = document.getElementById("distCenter" + obj.id);
-    if (distCenterElem) distCenterElem.textContent = "DfC: " + obj.distanceFromCenter;
+    const distElem = document.getElementById("dist" + obj.id);
+    if (distElem) distElem.textContent = "Distance: " + obj.distance;
 
     //const addrElem = document.getElementById("addr" + obj.id);
     //if (addrElem) addrElem.textContent = "Address: " + decimalArrayToMacAddress(obj.address);
@@ -42,7 +42,7 @@ export function boardCards(obj, mode = MODE_STANDARD) {
     if (delElem) delElem.textContent = "Delay: " + obj.delay;
   
     if (obj.distances ) {
-      const distElem = document.getElementById("dist" + obj.id);
+      const distElem = document.getElementById("dists" + obj.id);
       if (distElem) distElem.textContent = "Distances: " + formatNonZeroFloats(obj.distances);
     }
     let numDevices = document.getElementById("boardCards").children.length;
@@ -95,6 +95,7 @@ const placeholderZText = (obj.zpos === undefined || obj.zpos === null || obj.zpo
         <input type='text' id='xpos_${obj.id}' ${placeholderXText}>
         <input type='text' id='ypos_${obj.id}' ${placeholderYText}>
         <input type='text' id='zpos_${obj.id}' ${placeholderZText}>
+
         <button id='submit_${obj.id}'>Submit</button>
         <button id='update_${obj.id}' class='blue-button'>Update Device</button>
         <button id='blink_${obj.id}' class='blue-button'>Blink</button>
