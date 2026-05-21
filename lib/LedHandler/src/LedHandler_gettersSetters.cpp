@@ -250,7 +250,24 @@ bool LedHandler::getUseDistanceSwitch() {
 void LedHandler::setUseDistanceSwitch(bool use) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         useDistanceSwitch = use;
-        ESP_LOGI("LED", "Setting use distance switch: %s", use ? "  true" : "false");
+        ESP_LOGI("LED", "Setting use distance switch: %s", use ? "true" : "false");
+        xSemaphoreGive(configMutex);
+    }
+}
+
+int LedHandler::getDistanceMode() {
+    int m;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        m = distanceMode;
+        xSemaphoreGive(configMutex);
+    }
+    return m;
+}
+
+void LedHandler::setDistanceMode(int mode) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        distanceMode = mode;
+        ESP_LOGI("LED", "Distance mode: %s", mode == 1 ? "delay" : "brightness");
         xSemaphoreGive(configMutex);
     }
 }   

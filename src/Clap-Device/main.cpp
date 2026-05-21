@@ -194,10 +194,13 @@ void setup()
   }
     pinMode(CLAP_PIN, INPUT_PULLDOWN);
 
-  //rtc_clk_32k_enable(true);
-  //rtc_clk_32k_bootstrap(10);
-
-  //rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL);
+  // Init external 32kHz xtal for accurate light sleep timing; falls back to internal RC if xtal is dead
+  rtc_clk_32k_enable(true);
+  rtc_clk_32k_bootstrap(10);
+  uint32_t xtalCal = 0;
+  for (int i = 0; i < 10 && xtalCal == 0; i++) { delay(10); xtalCal = rtc_clk_cal(RTC_CAL_32K_XTAL, 1000); }
+  if (xtalCal != 0) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); ESP_LOGI("XTAL", "32kHz xtal OK (cal=%u)", xtalCal); }
+  else { rtc_clk_32k_enable(false); ESP_LOGW("XTAL", "32kHz xtal failed, using internal RC"); }
   WiFi.mode(WIFI_STA);
   ESP_LOGI("", "Setup1");
   if (esp_now_init() != ESP_OK)

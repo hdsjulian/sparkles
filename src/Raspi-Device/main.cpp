@@ -18,9 +18,9 @@ message_data messageData;
 CRGB leds[NUM_LEDS];
 const float minPitch = 100.0;
 const float maxPitch = 1000.0;
-const uint8_t hueRed = 0;
-const uint8_t hueBlue = 160;
-uint8_t hue = hueRed; // default
+uint8_t hueStart = 22; // warm orange (candle)
+uint8_t hueEnd = 8; 
+uint8_t hue;
 const float minRms = 0.008;
 const float maxRms = 1.0;
 int minVal = 0;
@@ -88,7 +88,7 @@ void outputMidi(float pitch, float rms) {
     // Convert pitch to MIDI note number
     int midiNote = round(69 + 12 * log2(pitch / 440.0));
     if (midiNote < 0) midiNote = 0;
-    if (midiNote > 127) midiNote = 127;
+    if (midiNote > 127) midiNote = 127; 
 
     // Only send if note changed
     if (midiNote != lastMidiNote) {
@@ -119,8 +119,7 @@ void outputFrequency(float pitch, float rms) {
     // Use midiParams for dynamic mapping
     float minPitchParam = midiParams.rangeMin > 0 ? midiParams.rangeMin : minPitch;
     float maxPitchParam = midiParams.rangeMax > 0 ? midiParams.rangeMax : maxPitch;
-    uint8_t hueStart = 0;
-    uint8_t hueEnd = 160; // Use saturation as hueEnd if needed, or add a new field
+  // redder orange — higher pitch moves marginally toward red
     int valMin = midiParams.valMin > 0 ? midiParams.valMin : minVal;
     int valMax = midiParams.valMax > 0 ? midiParams.valMax : maxVal;
     int satMin = midiParams.satMin > 0 ? midiParams.satMin : minSat;
@@ -171,6 +170,15 @@ void outputFrequency(float pitch, float rms) {
         hue = hueStart;
     }
     messageData.payload.animation.animationParams.backgroundShimmer.hue = hue;
+    uint8_t saturation = 0;
+    if (pitch >= minPitchParam && pitch <= maxPitchParam) {
+        saturation = (uint8_t)(255.0f * (1.0f - scale) + 0.5f);
+    } else if (pitch > maxPitchParam) {
+        saturation = 0;
+    } else {
+        saturation = 255;
+    }
+    messageData.payload.animation.animationParams.backgroundShimmer.saturation = saturation;
     ESP_LOGI("MIDI", "Pitch updated: %f, Hue updated: %d, scale: %f, minPitch: %f, maxPitch: %f", pitch, hue, scale, minPitchParam, maxPitchParam);
 
     // Map rms to value using continuous mapping; clamp rms to [minRmsParam, maxRmsParam]
@@ -185,18 +193,8 @@ void outputFrequency(float pitch, float rms) {
     }
     messageData.payload.animation.animationParams.backgroundShimmer.value = value;
 
-    // Map rms to saturation using continuous mapping; clamp rms to [minRmsParam, maxRmsParam]
-    uint8_t saturation = 0;
-    {
-        const float denomSat = (maxRmsParam - minRmsParam);
-        float rSat = rms;
-        if (rSat < minRmsParam) rSat = minRmsParam;
-        if (rSat > maxRmsParam) rSat = maxRmsParam;
-        float normSat = (denomSat > 0.0f) ? (rSat - minRmsParam) / denomSat : 0.0f;
-        float satF = satMin + normSat * (satMax - satMin);
-        saturation = (uint8_t)(satF + 0.5f);
-    }
-    messageData.payload.animation.animationParams.backgroundShimmer.saturation = saturation;
+    // Map pitch to saturation: minPitch = 255, maxPitch = 0 (same log scale as hue)
+
 
     shimmerOn = true;
     CHSV hsvColor(hue, saturation, value);

@@ -25,7 +25,7 @@ void MessageHandler::runClapTask() {
         if ((peak == -1 || (millis() - lastClapTime > CLAP_TIMEOUT)) && (getHasClapHappened() == true || (getCalibrationTest() == true && millis() - lastClapTime > 1000 ) )) {            
             ESP_LOGI("CLAP" , "Clap happened? %d", (int)getHasClapHappened());
             message_data clapMessage = createClapMessage(true);
-            lastClapTime = millis();
+            
             //
             message_animation animation = ledInstance->createFlash(millis(), 300, 2, 0, 255, 255);
             ledInstance->pushToAnimationQueue(animation);
@@ -37,10 +37,12 @@ void MessageHandler::runClapTask() {
             else {
                 ESP_LOGI("CLAP", "Clap detected with peak: %d, filtered: %.2f", peak, filtered);
                 clapMessage.payload.clap.clapHappened = true;
-            }            
+            }      
+            lastClapTime = millis();      
             memcpy(clapMessage.targetAddress, hostAddress, 6);
             pushToSendQueue(clapMessage);
             setHasClapHappened(false);
+            clapTaskHandle = nullptr;
             vTaskDelete(NULL);
             ESP_LOGI("CLAP", "Clap task finished");
         } 
@@ -55,6 +57,10 @@ void MessageHandler::runClapTask() {
 }
 
 void MessageHandler::startClapTask() {
+    if (clapTaskHandle != nullptr) {
+        vTaskDelete(clapTaskHandle);
+        clapTaskHandle = nullptr;
+    }
     xTaskCreatePinnedToCore(runClapTaskWrapper, "runClapTask", 10000, this, 20, &clapTaskHandle, 1);
 }
 

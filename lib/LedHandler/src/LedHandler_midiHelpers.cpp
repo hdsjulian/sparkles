@@ -23,43 +23,27 @@ void LedHandler::addToMidiTable(midiNoteTable midiNoteTableArray[OCTAVESONKEYBOA
                 midiNoteTableArray[octave].velocity = velocity;
                 midiNoteTableArray[octave].note = note;
                 midiNoteTableArray[octave].startTime = micros();
+                midiNoteTableArray[octave].effectiveElapsed = 0;
             }
         } else {
-            // Only clear entry if sustain is not active
+            // With sustain active, leave the entry to continue decaying at half rate
             if (!getSustain()) {
                 midiNoteTableArray[octave].velocity = 0;
                 midiNoteTableArray[octave].note = 0;
                 midiNoteTableArray[octave].startTime = 0;
+                midiNoteTableArray[octave].effectiveElapsed = 0;
             }
         }
         xSemaphoreGive(midiNoteTableMutex);
     }
 }
 
-float LedHandler::calculateMidiDecay(unsigned long long startTime, int velocity, int note)
+float LedHandler::calculateMidiDecay(unsigned long long effectiveElapsed, int velocity, int note)
 {
-    if (startTime == 0)
-    {
-        return 0;
-    }
-    unsigned long long currentTime = micros();
-    unsigned long long timeElapsed = currentTime - startTime;
+    if (effectiveElapsed == 0) return 0.0f;
     int decay = getDecayTime(note, velocity);
-    //ESP_LOGI("LED", "Decay time: %d", decay);
-    //ESP_LOGI("LED", "Time elapsed: %llu", timeElapsed);
-    if (timeElapsed == 0)
-    {
-        return 1;
-    }
-    else if (timeElapsed > decay)
-    {
-        return 1;
-    }
-    else
-    {
-        float decayFactor = (float) timeElapsed / float(decay);
-        return decayFactor;
-    }
+    if (effectiveElapsed >= (unsigned long long)decay) return 1.0f;
+    return (float)effectiveElapsed / (float)decay;
 }
 
 int LedHandler::getDecayTime(int midiNote, int velocity)

@@ -14,6 +14,8 @@ public:
     static constexpr uint8_t emptyAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
     bool isOTAUpdating = false;
+    bool testMode = false;
+    bool xtalOk = false;
     bool nextOTAAddress = false;
     bool requestingOTAUpdate = false;
     bool calibrationTest = false;
@@ -76,7 +78,7 @@ public:
     void setCommand(message_data command, uint8_t * address);
     void setAddressListInactive();
     message_midi_params getMidiParams();
-    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch  );
+    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode);
     message_darkroom_params getDarkroomParams();
     void setDarkroomParams(int strobeMin, int strobeMax, int redlightMin, int redlightMax, int candlelightMin, int candlelightMax, bool redLightEnabled, bool candleLightEnabled);
     bool getCalibrationTest();
@@ -176,11 +178,16 @@ public:
     void calculateDistances();
     void cancelDistanceCalibration();
     void resetDistanceCalibration();
+    void abortDistanceCalibration();
     void testCalibration();
     void sendSleepWakeupMessage(unsigned long long sleepDuration);
     void commandCalibrate(int boardId);
     void resetSystem();
+    void broadcastReannounce();
     void stopAllAnimations();
+    void setTestMode(bool on);
+    bool getTestMode();
+    void setXtalOk(bool ok) { xtalOk = ok; }
 private:
     // Static Constants
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -210,7 +217,7 @@ private:
     message_midi_params midiParams;
     message_darkroom_params darkroomParams;
     SemaphoreHandle_t configMutex, updateOTAMutex;
-    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle, animationLoopHandle, darkroomHandle;
+    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle = nullptr, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle, animationLoopHandle, darkroomHandle;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;

@@ -498,141 +498,162 @@ unsigned long long LedHandler::calculateStrobeTime(message_animation& animationD
 
 
 
+// Helper: apply brightness attenuation based on distance
+static float applyDistanceAttenuation(float val, float d, float maxDist) {
+    if (d < 0.0f) d = 0.0f;
+    if (d > maxDist) d = maxDist;
+    float factor = 1.0f - 0.5f * (d / maxDist);
+    if (factor < 0.5f) factor = 0.5f;
+    return val * factor;
+}
+
 void LedHandler::runBackgroundShimmer() {
-    // Use a dedicated queue for shimmer parameter updates
     const TickType_t frameDelay = (1000 / FPS) / portTICK_PERIOD_MS;
     message_animation animation = getAnimation();
-    float hue = animation.animationParams.backgroundShimmer.hue;
+    float hue        = animation.animationParams.backgroundShimmer.hue;
     float saturation = animation.animationParams.backgroundShimmer.saturation;
-    float value = animation.animationParams.backgroundShimmer.value;
+    float value      = animation.animationParams.backgroundShimmer.value;
 
-    // Track time of last received update to enable natural decay on inactivity
     TickType_t lastUpdateTick = xTaskGetTickCount();
-    const uint32_t inactivityMs = 2000;   // Start natural decay after 500 ms without updates
-    const uint32_t inactivityFadeMs = 300; // Fade to black over 300 ms if still no updates
+    const uint32_t inactivityMs   = 2000;
+    const uint32_t inactivityFadeMs = 300;
+
+    // Pending update slot for delay mode
+    message_animation pendingAnimation = {};
+    TickType_t        pendingApplyAt   = 0;
+    bool              pendingValid     = false;
 
     while (getCurrentAnimation() == BACKGROUND_SHIMMER) {
-        // Wait for new shimmer update or timeout for next frame
         message_animation newAnimation;
         bool gotUpdate = xQueueReceive(backgroundShimmerQueue, &newAnimation, frameDelay) == pdTRUE;
+
         if (gotUpdate) {
             lastUpdateTick = xTaskGetTickCount();
-            animation = newAnimation;
-            float newHue = animation.animationParams.backgroundShimmer.hue;
-            float newSaturation = animation.animationParams.backgroundShimmer.saturation;
-            float newValue = animation.animationParams.backgroundShimmer.value;
 
-            // Apply distance attenuation once (pre-adoption) when enabled
-            if (getDistanceFromCenter() > 0.0 && getUseDistanceSwitch()) {
+            bool useDelay = getUseDistanceSwitch()
+                         && getDistanceMode() == 1
+                         && getDistanceFromCenter() > 0.0f;
+
+            if (useDelay) {
                 float d = getDistanceFromCenter();
-                const float maxDist = (float)getMaxDistanceFromCenter(); // meters
-                if (d < 0.0f) d = 0.0f;
-                if (d > maxDist) d = maxDist;
-                const float minFactor = 0.5f; // 255 -> 127 at max distance
-                float factor = 1.0f - 0.5f * (d / maxDist); // linear falloff to 0.5 at maxDist
-                if (factor < minFactor) factor = minFactor;
-                newValue *= factor;
-            }
-
-            if (newValue == 0 && value > 0) {
-                ESP_LOGI("LED", "Background shimmer fading out (explicit zero)");
-                // Fade out over a fixed duration, but interrupt if a new shimmer update arrives
-                const int fadeSteps = 12; // ~200ms / ~16ms (60Hz)
-                const uint32_t fadeTotalMs = 200;
-                const TickType_t fadeStepDelayTicks = pdMS_TO_TICKS(fadeTotalMs / fadeSteps);
-                float stepValue = value / fadeSteps;
-                bool fadeInterrupted = false;
-                for (int i = 1; i <= fadeSteps; ++i) {
-                    // Check for new shimmer update during fade-out
-                    message_animation fadeUpdate;
-                    if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, fadeStepDelayTicks) == pdTRUE) {
-                        // New shimmer update arrived, adopt it and interrupt the fade
-                        animation = fadeUpdate;
-                        hue = animation.animationParams.backgroundShimmer.hue;
-                        saturation = animation.animationParams.backgroundShimmer.saturation;
-                        value = animation.animationParams.backgroundShimmer.value;
-                        // Apply distance attenuation to adopted value if enabled
-                        if (getDistanceFromCenter() > 0.0 && getUseDistanceSwitch()) {
-                            float d = getDistanceFromCenter();
-                            const float maxDist = (float)getMaxDistanceFromCenter();
-                            if (d < 0.0f) d = 0.0f;
-                            if (d > maxDist) d = maxDist;
-                            const float minFactor = 0.5f;
-                            float factor = 1.0f - 0.5f * (d / maxDist);
-                            if (factor < minFactor) factor = minFactor;
-                            value *= factor;
-                        }
-                        fadeInterrupted = true;
-                        break;
-                    }
-                    float fadeVal = value - stepValue * i;
-                    if (fadeVal < 0) fadeVal = 0;
-                    CRGB color = CHSV(hue, saturation, fadeVal);
-                    writeLeds(color);
-                }
-                if (!fadeInterrupted) {
-                    value = 0;
-                }
+                uint32_t delayMs = (uint32_t)((d / 343.0f) * 1000.0f);
+                pendingAnimation = newAnimation;
+                pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
+                pendingValid     = true;
+                // continue rendering current state until delay expires
             } else {
-                // Adopt new HSV
-                hue = newHue;
-                saturation = newSaturation;
-                value = newValue; // distance already applied above if enabled
-            }
-        } else {
-            // No update received within frameDelay: consider natural decay on inactivity
-            if (value > 0) {
-                TickType_t now = xTaskGetTickCount();
-                if ((now - lastUpdateTick) >= pdMS_TO_TICKS(inactivityMs)) {
-                    ESP_LOGD("LED", "Background shimmer natural decay (inactivity)");
+                // Brightness mode: apply immediately
+                float newHue = newAnimation.animationParams.backgroundShimmer.hue;
+                float newSat = newAnimation.animationParams.backgroundShimmer.saturation;
+                float newVal = newAnimation.animationParams.backgroundShimmer.value;
+
+                if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch()) {
+                    newVal = applyDistanceAttenuation(newVal,
+                        getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                }
+
+                if (newVal == 0 && value > 0) {
                     const int fadeSteps = 12;
-                    const TickType_t fadeStepDelayTicks = pdMS_TO_TICKS(inactivityFadeMs / fadeSteps);
-                    float startVal = value;
-                    float stepValue = startVal / fadeSteps;
-                    bool fadeInterrupted = false;
+                    const TickType_t stepTicks = pdMS_TO_TICKS(200 / fadeSteps);
+                    float stepVal = value / fadeSteps;
+                    bool interrupted = false;
                     for (int i = 1; i <= fadeSteps; ++i) {
                         message_animation fadeUpdate;
-                        if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, fadeStepDelayTicks) == pdTRUE) {
-                            // New update: adopt and stop natural decay
-                            lastUpdateTick = xTaskGetTickCount();
-                            animation = fadeUpdate;
-                            hue = animation.animationParams.backgroundShimmer.hue;
-                            saturation = animation.animationParams.backgroundShimmer.saturation;
-                            value = animation.animationParams.backgroundShimmer.value;
-                            if (getDistanceFromCenter() > 0.0 && getUseDistanceSwitch()) {
-                                float d = getDistanceFromCenter();
-                                const float maxDist = (float)getMaxDistanceFromCenter();
-                                if (d < 0.0f) d = 0.0f;
-                                if (d > maxDist) d = maxDist;
-                                const float minFactor = 0.5f;
-                                float factor = 1.0f - 0.5f * (d / maxDist);
-                                if (factor < minFactor) factor = minFactor;
-                                value *= factor;
+                        if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, stepTicks) == pdTRUE) {
+                            newAnimation = fadeUpdate;
+                            hue = newAnimation.animationParams.backgroundShimmer.hue;
+                            saturation = newAnimation.animationParams.backgroundShimmer.saturation;
+                            value = newAnimation.animationParams.backgroundShimmer.value;
+                            if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch()) {
+                                value = applyDistanceAttenuation(value,
+                                    getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
                             }
-                            fadeInterrupted = true;
+                            interrupted = true;
                             break;
                         }
-                        float fadeVal = startVal - stepValue * i;
+                        float fadeVal = value - stepVal * i;
                         if (fadeVal < 0) fadeVal = 0;
-                        CRGB color = CHSV(hue, saturation, fadeVal);
-                        writeLeds(color);
+                        writeLeds(CHSV(hue, saturation, fadeVal));
                     }
-                    if (!fadeInterrupted) {
-                        value = 0;
-                    }
+                    if (!interrupted) value = 0;
+                } else {
+                    hue = newHue; saturation = newSat; value = newVal;
                 }
             }
         }
 
-        if (value == 0) {
-            // If the color is black, turn off the LEDs and stop shimmer
+        // Apply a delayed update once its time has come
+        if (pendingValid && xTaskGetTickCount() >= pendingApplyAt) {
+            pendingValid = false;
+            float newHue = pendingAnimation.animationParams.backgroundShimmer.hue;
+            float newSat = pendingAnimation.animationParams.backgroundShimmer.saturation;
+            float newVal = pendingAnimation.animationParams.backgroundShimmer.value;
+
+            if (newVal == 0 && value > 0) {
+                const int fadeSteps = 12;
+                const TickType_t stepTicks = pdMS_TO_TICKS(200 / fadeSteps);
+                float stepVal = value / fadeSteps;
+                bool interrupted = false;
+                for (int i = 1; i <= fadeSteps; ++i) {
+                    message_animation fadeUpdate;
+                    if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, stepTicks) == pdTRUE) {
+                        // New update during delayed fade — reschedule it
+                        float d = getDistanceFromCenter();
+                        uint32_t delayMs = (uint32_t)((d / 343.0f) * 1000.0f);
+                        pendingAnimation = fadeUpdate;
+                        pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
+                        pendingValid     = true;
+                        interrupted = true;
+                        break;
+                    }
+                    float fadeVal = value - stepVal * i;
+                    if (fadeVal < 0) fadeVal = 0;
+                    writeLeds(CHSV(hue, saturation, fadeVal));
+                }
+                if (!interrupted) value = 0;
+            } else {
+                hue = newHue; saturation = newSat; value = newVal;
+            }
+        }
+
+        // Inactivity decay
+        if (!gotUpdate && !pendingValid && value > 0) {
+            TickType_t now = xTaskGetTickCount();
+            if ((now - lastUpdateTick) >= pdMS_TO_TICKS(inactivityMs)) {
+                const int fadeSteps = 12;
+                const TickType_t stepTicks = pdMS_TO_TICKS(inactivityFadeMs / fadeSteps);
+                float startVal = value;
+                float stepVal  = startVal / fadeSteps;
+                bool interrupted = false;
+                for (int i = 1; i <= fadeSteps; ++i) {
+                    message_animation fadeUpdate;
+                    if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, stepTicks) == pdTRUE) {
+                        lastUpdateTick = xTaskGetTickCount();
+                        hue        = fadeUpdate.animationParams.backgroundShimmer.hue;
+                        saturation = fadeUpdate.animationParams.backgroundShimmer.saturation;
+                        value      = fadeUpdate.animationParams.backgroundShimmer.value;
+                        if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch() && getDistanceMode() == 0) {
+                            value = applyDistanceAttenuation(value,
+                                getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                        }
+                        interrupted = true;
+                        break;
+                    }
+                    float fadeVal = startVal - stepVal * i;
+                    if (fadeVal < 0) fadeVal = 0;
+                    writeLeds(CHSV(hue, saturation, fadeVal));
+                }
+                if (!interrupted) value = 0;
+            }
+        }
+
+        if (value == 0 && !pendingValid) {
             ledsOff();
             setCurrentAnimation(OFF);
             break;
-        } else {
-            // Write the shimmer color
-            CRGB color = CHSV(hue, saturation, value);
-            writeLeds(color);
+        }
+        if (value > 0) {
+            writeLeds(CHSV(hue, saturation, value));
         }
     }
     ledsOff();
@@ -676,6 +697,20 @@ void LedHandler::runMidi()
             setCurrentAnimation(OFF);
             vTaskDelete(NULL);
         }
+        unsigned long long now = micros();
+        unsigned long long realDelta = (lastMidiFrameTime == 0) ? 0 : (now - lastMidiFrameTime);
+        lastMidiFrameTime = now;
+        float sustainMult = getSustain() ? 0.5f : 1.0f;
+        if (xSemaphoreTake(midiNoteTableMutex, portMAX_DELAY) == pdTRUE) {
+            for (int i = 0; i < OCTAVESONKEYBOARD; i++) {
+                if (midiNoteTableArray[i].velocity == 0) continue;
+                midiNoteTableArray[i].effectiveElapsed += (unsigned long long)(realDelta * sustainMult);
+                if (midiNoteTableArray[i].effectiveElapsed >= (unsigned long long)getDecayTime(midiNoteTableArray[i].note, midiNoteTableArray[i].velocity)) {
+                    midiNoteTableArray[i] = {};
+                }
+            }
+            xSemaphoreGive(midiNoteTableMutex);
+        }
         getMidiNoteTableArray(localMidiNoteTableArray, sizeof(localMidiNoteTableArray), INSTRUMENT_KEYBOARD);
         getMidiNoteTableArray(localMicNoteTableArray, sizeof(localMicNoteTableArray), INSTRUMENT_MIC);
         bool brightnessZeroMidi = true;
@@ -687,31 +722,15 @@ void LedHandler::runMidi()
             if (localMidiNoteTableArray[i].velocity == 0) {
                 continue;
             }
-            float midiDecayFactor = 0.0f;
-            if (!getSustain()) {
-                midiDecayFactor = calculateMidiDecay(localMidiNoteTableArray[i].startTime, localMidiNoteTableArray[i].velocity, localMidiNoteTableArray[i].note);
-                if (midiDecayFactor == 0.0) {
-                    continue;
-                }
-                if (midiDecayFactor >= 1.0) {
-                    localMidiNoteTableArray[i].velocity = 0;
-                    localMidiNoteTableArray[i].note = 0;
-                    localMidiNoteTableArray[i].startTime = 0;
-                    continue;
-                }
-            }
+            float midiDecayFactor = calculateMidiDecay(localMidiNoteTableArray[i].effectiveElapsed, localMidiNoteTableArray[i].velocity, localMidiNoteTableArray[i].note);
+            if (midiDecayFactor >= 1.0f) continue;
             int note = localMidiNoteTableArray[i].note;
             int velocity = localMidiNoteTableArray[i].velocity;
             int octave = (note / OCTAVE) - 1;
             int ledOctave = getOctaveFromPosition(position);
             int octaveDistance = abs((octave % numDevices) - ledOctave);
             float distanceFactor = 0.2 * octaveDistance;
-            float currentBrightness;
-            if (getSustain()) {
-                currentBrightness = (int)(velocity * (1 - distanceFactor));
-            } else {
-                currentBrightness = (int)(velocity * (1 - midiDecayFactor) * (1 - distanceFactor));
-            }
+            float currentBrightness = (int)(velocity * (1 - midiDecayFactor) * (1 - distanceFactor));
             if (currentBrightness > brightnessMidi) {
                 brightnessMidi = currentBrightness;
                 huemodMidi = -0.02 * octaveDistance;

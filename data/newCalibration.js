@@ -136,11 +136,16 @@ function statusCalibrationOpen(type) {
   const cardId = type === 'calibration' ? 'calibrationCard' : 'distanceCard';
   const btnId = type === 'calibration' ? 'calibrateButton' : 'calibrateDistanceButton';
   const endpoint = type === 'calibration' ? '/commandCancelCalibration' : '/commandCancelDistanceCalibration';
+  const abortBtn = type === 'distance' ? `<button id="abortButton" class="red-button">Abort</button>` : '';
   document.getElementById(cardId).innerHTML = `<p>Status: Waiting for Clap</p>
     <div class='inputs'>
       <button id="${btnId}">Cancel</button>
+      ${abortBtn}
     </div>`;
   calibrationButton(type, endpoint, 1);
+  if (type === 'distance') {
+    document.getElementById('abortButton').addEventListener('click', () => abortDistanceCalibration());
+  }
 }
 
 
@@ -167,6 +172,7 @@ function statusClapHappened(type, data) {
       <button id="continueButton" class="half-button">Continue</button>
       <button id="resetButton" class="red-button half-button">Reset</button>
       <button id="endCalibrationButton" class="blue-button half-button">End Distance Calibration</button>
+      <button id="abortButton" class="red-button">Abort</button>
     </div>`;
   }
   card.innerHTML = html;
@@ -242,9 +248,20 @@ function statusClapHappened(type, data) {
       })
       .finally(() => { endBtn.disabled = false; });
   });
+
+  if (!isCalibration) {
+    document.getElementById('abortButton').addEventListener('click', () => abortDistanceCalibration());
+  }
 }
 
-
+function abortDistanceCalibration() {
+  fetch('/commandAbortDistanceCalibration')
+    .then(response => {
+      if (response.ok) {
+        updateCard('distance', { status: 0 });
+      }
+    });
+}
 
 function pollStatus(type) {
   const endpoint = type === 'calibration' ? '/calibrationStatus' : '/distanceCalibrationStatus';

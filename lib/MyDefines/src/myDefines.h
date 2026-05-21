@@ -62,9 +62,9 @@
 #define TIMER_ARRAY_COUNT 10
 #define WIFI_SSID "SPARKLES"
 #define WIFI_PASSWORD "sparklesAdmin"
-#define OTA_WIFI_SSID "Pi_AP"
-#define OTA_WIFI_PASSWORD "raspberry"
-#define OTA_UPDATE_URL "http://192.168.4.1/firmware_client.bin" // Update URL for OTA updates
+#define OTA_WIFI_SSID "fogscreen"
+#define OTA_WIFI_PASSWORD ""
+#define OTA_UPDATE_URL "http://192.168.4.1/firmware.bin" // Update URL for OTA updates
 #define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
 #define CLAP_TIMEOUT 10000
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -144,6 +144,10 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define CMD_END_DISTANCE_CALIBRATION 12
 #define CMD_RESET_SYSTEM 13
 #define CMD_CANCEL_CALIBRATION 14
+#define CMD_REANNOUNCE 15
+#define CMD_OTA_UPDATE 16
+#define CMD_TEST_MODE_ON  17
+#define CMD_TEST_MODE_OFF 18
 
 
 
@@ -181,6 +185,7 @@ struct midiNoteTable {
   int velocity;
   int note;
   unsigned long long startTime;
+  unsigned long long effectiveElapsed;
   bool sustainPressed;
   int instrument;
 };
@@ -230,8 +235,9 @@ struct message_midi_params {
   int mode;
   int distance; // New field for distance from center
   bool distanceSwitch; // New field for enabling/disabling distance-based effects
-  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(0.003f), rmsMax(1.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false) {}
-  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), hue(other.hue), saturation(other.saturation), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode), distance(other.distance), distanceSwitch(other.distanceSwitch) {}
+  int distanceMode; // 0 = brightness attenuation, 1 = timing delay
+  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(0.003f), rmsMax(1.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false), distanceMode(0) {}
+  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), hue(other.hue), saturation(other.saturation), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode), distance(other.distance), distanceSwitch(other.distanceSwitch), distanceMode(other.distanceMode) {}
 
 };
 

@@ -1,6 +1,8 @@
 
 #include "MessageHandler.h"
-#if (DEVICE_MODE == CLIENT) 
+#include "soc/rtc.h"
+#include "esp_private/rtc_ctrl.h"
+#if (DEVICE_MODE == CLIENT)
 #include "Arduino.h"
 #include "esp_now.h"
 #include "WiFi.h"
@@ -50,19 +52,20 @@ void MessageHandler::handleReceive() {
                 message_midi_params midiParamsMessage = (message_midi_params)incomingData.payload.midiParams;
                 ledInstance->setMaxDistanceFromCenter(midiParamsMessage.distance);
                 ledInstance->setUseDistanceSwitch(midiParamsMessage.distanceSwitch);
+                ledInstance->setDistanceMode(midiParamsMessage.distanceMode);
                 ledInstance->setMidiParams(midiParamsMessage);
                 ESP_LOGI("MIDI", "Received Midi Params minVal %d, maxVal %d, minRms %.2f, maxRMS %.2f", midiParamsMessage.valMin, midiParamsMessage.valMax, midiParamsMessage.rmsMin, midiParamsMessage.rmsMax);
             }
             else if (incomingData.messageType == MSG_COMMAND) {
                 message_command commandMessage = (message_command)incomingData.payload.command;
-                if (commandMessage.commandType == CMD_START_CALIBRATION || commandMessage.commandType == CMD_START_DISTANCE_CALIBRATION || CMD_CONTINUE_CALIBRATION || CMD_CONTINUE_DISTANCE_CALIBRATION) {
+                if (commandMessage.commandType == CMD_START_CALIBRATION || commandMessage.commandType == CMD_START_DISTANCE_CALIBRATION || commandMessage.commandType == CMD_CONTINUE_CALIBRATION || commandMessage.commandType == CMD_CONTINUE_DISTANCE_CALIBRATION) {
                     startCalibrationClient();
                 }
                 if (commandMessage.commandType == CMD_TEST_CALIBRATION) {
                     setCalibrationTest(true);
                     startCalibrationClient();
                 }
-                if (commandMessage.commandType == CMD_CANCEL_CALIBRATION || CMD_END_CALIBRATION) {
+                if (commandMessage.commandType == CMD_CANCEL_CALIBRATION || commandMessage.commandType == CMD_END_CALIBRATION) {
                     ESP_LOGI("MSG", "Cancel calibration command received");
 
                     if (clapTaskHandle != NULL) {
@@ -87,6 +90,48 @@ void MessageHandler::handleReceive() {
                     delay(1000);
                     delay(100*ledInstance->getCurrentPosition());
                     ESP.restart();
+                }
+                if (commandMessage.commandType == CMD_TEST_MODE_ON) {
+                    setTestMode(true);
+                    ledInstance->setDistanceFromCenter((float)ledInstance->getCurrentPosition());
+                    ESP_LOGI("MSG", "Test mode ON: distance set to %d m", ledInstance->getCurrentPosition());
+                }
+                if (commandMessage.commandType == CMD_TEST_MODE_OFF) {
+                    setTestMode(false);
+                }
+                if (commandMessage.commandType == CMD_OTA_UPDATE) {
+                    ESP_LOGI("MSG", "CMD_OTA_UPDATE received — connecting to %s", OTA_WIFI_SSID);
+                    WiFi.mode(WIFI_OFF);
+                    delay(100);
+                    WiFi.mode(WIFI_STA);
+                    if (strlen(OTA_WIFI_PASSWORD) > 0) {
+                        WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
+                    } else {
+                        WiFi.begin(OTA_WIFI_SSID);
+                    }
+                    int retries = 0;
+                    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+                        delay(500);
+                        retries++;
+                    }
+                    if (WiFi.status() == WL_CONNECTED) {
+                        OTAHandler& ota = OTAHandler::getInstance();
+                        ota.setup();
+                        ota.performUpdate(); // reboots on success
+                    } else {
+                        ESP_LOGE("MSG", "CMD_OTA_UPDATE: WiFi failed, aborting");
+                    }
+                }
+                if (commandMessage.commandType == CMD_REANNOUNCE) {
+                    uint8_t mac[6];
+                    WiFi.macAddress(mac);
+                    uint32_t delayMs = (mac[5] % 30) * 2000;
+                    ESP_LOGI("MSG", "CMD_REANNOUNCE: re-announcing in %u ms", delayMs);
+                    vTaskDelay(delayMs / portTICK_PERIOD_MS);
+                    setAddressAnnounced(false);
+                    if (announceTaskHandle == NULL) {
+                        xTaskCreatePinnedToCore(announceAddressWrapper, "runAnnounceAddress", 10000, this, 2, &announceTaskHandle, 1);
+                    }
                 }
 
                 
@@ -229,14 +274,18 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
     turnWifiOff();
-    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration); // Convert seconds to microseconds
+    Serial.end();
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration);
     esp_light_sleep_start();
+    if (xtalOk) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); }
+    Serial.begin(115200);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
     ESP_LOGI("MSG", "Woke up");
     turnWifiOn();
     ledInstance->resetLedTask();
     ledInstance->blink(micros(), 150, 2, 160, 255, 127);
     ESP_LOGI("MSG", "Woke up from sleep, current time: %llu", micros());
-    Serial.begin(115200);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     ESP_LOGI("MSG", "Should be back up");
 }
@@ -356,12 +405,12 @@ void MessageHandler::runBatterySync() {
                 setBatteryLow(true);
                 ledInstance->turnOff();
                 message_data statusMessage = createStatusMessage();
-                esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
-                vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for 1 second before checking again
-            }   
+                pushToSendQueue(statusMessage);
+                vTaskDelay(1000 / portTICK_PERIOD_MS);
+            }
             message_data askAdminPresentMessage = createCommandMessage(CMD_ASK_ADMIN_PRESENT);
             memcpy(askAdminPresentMessage.targetAddress, hostAddress, 6);
-            esp_now_send(hostAddress, (uint8_t *) &askAdminPresentMessage, sizeof(askAdminPresentMessage));
+            pushToSendQueue(askAdminPresentMessage);
             vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for 1
             if (getAdminPresent()) {
                 ESP_LOGI("MSG", "Admin present, not going to sleep");
@@ -371,9 +420,10 @@ void MessageHandler::runBatterySync() {
             }
             else {
                 turnWifiOff();
-                //go to sleep for 5 minutes
-                esp_sleep_enable_timer_wakeup(5 * 60 * 1000000); //
+                esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+                esp_sleep_enable_timer_wakeup(5 * 60 * 1000000ULL);
                 esp_light_sleep_start();
+                if (xtalOk) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); }
                 turnWifiOn();
             }
 
@@ -381,7 +431,7 @@ void MessageHandler::runBatterySync() {
         else {
         setBatteryLow(false);
         message_data statusMessage = createStatusMessage();
-        esp_now_send(hostAddress, (uint8_t *) &statusMessage, sizeof(statusMessage));
+        pushToSendQueue(statusMessage);
         vTaskDelay(30 * 60 * 1000 / portTICK_PERIOD_MS); // 30 minutes
 
         }

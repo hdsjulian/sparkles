@@ -30,9 +30,14 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
     esp_now_register_recv_cb(onDataRecv);
     #if (DEVICE_MODE == MASTER)
         ESP_LOGI("MSG", "Master setup");
+        bool noClientList = !LittleFS.exists("/clientAddress");
         handleAddressStruct();
         startAllTimerSyncTask();
-         // using const char*
+        if (noClientList) {
+            ESP_LOGI("MSG", "No client list found — broadcasting CMD_REANNOUNCE");
+            delay(500);
+            broadcastReannounce();
+        }
     #endif
     #if (DEVICE_MODE == CLIENT)
         ESP_LOGI("MSG", "Client setup");

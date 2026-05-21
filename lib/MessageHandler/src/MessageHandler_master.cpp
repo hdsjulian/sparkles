@@ -333,36 +333,28 @@ void MessageHandler::runOTAUpdateTaskWrapper(void *pvParameters) {
     messageHandlerInstance->runOTAUpdateTask();
 }
 void MessageHandler::runOTAUpdateTask() {
-    setIsOTAUpdating(true);
-    setOTAUpdateAddressId(0);
-    message_data updateVersionMessage = createUpdateVersionMessage(version);
-    ESP_LOGI("MSG", "Running OTA update task - THIS SHOULD NOT BE WORKING YET");
-    while (isOTAUpdating) {
-        if (getOTAUpdateAddressId() < 0 || getOTAUpdateAddressId() >= NUM_DEVICES) {
-            ESP_LOGE("MSG", "Invalid OTA update address ID");
-            isOTAUpdating = false;
-            vTaskDelete(otaUpdateHandle);
-            
-        }
-        if (getNextOTAAddress() == true) {
-            setOTAUpdateAddressId(getOTAUpdateAddressId() + 1);
-            if (getOTAUpdateAddressId() >= NUM_DEVICES || memcmp(addressList[getOTAUpdateAddressId()].address, emptyAddress, 6) == 0) {
-                vTaskDelete(otaUpdateHandle);
-                
-            }
-            message_data updateVersionMessage;
-            updateVersionMessage = createUpdateVersionMessage(version);
-            memcpy(updateVersionMessage.targetAddress, OTAUpdateAddress, 6);
-            pushToSendQueue(updateVersionMessage);
-        }
+    ESP_LOGI("OTA", "OTA update task started");
+    int sent = 0;
+    for (int i = 0; i < NUM_CLIENTS; i++) {
+        client_address item = getItemFromAddressList(i);
+        if (item.active != ACTIVE) continue;
+        if (memcmp(item.address, "\x00\x00\x00\x00\x00\x00", 6) == 0) continue;
 
+        message_data msg;
+        msg.messageType = MSG_COMMAND;
+        memcpy(msg.targetAddress, item.address, 6);
+        WiFi.macAddress(msg.senderAddress);
+        msg.payload.command.commandType = CMD_OTA_UPDATE;
 
-        // Here you would implement the actual OTA update logic
-        // For now, we just simulate a successful update
-        isOTAUpdating = false;
-        ESP_LOGI("MSG", "OTA update completed");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        addPeer(item.address);
+        esp_now_send(item.address, (uint8_t*)&msg, sizeof(msg));
+
+        ESP_LOGI("OTA", "Sent OTA command to device %d (%d/%d)",
+                 item.id, ++sent, getNumDevices());
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
+    ESP_LOGI("OTA", "OTA commands sent to %d devices", sent);
+    vTaskDelete(otaUpdateHandle);
 }
 
 void MessageHandler::startCalculatePositionsTask() {
@@ -473,6 +465,20 @@ void MessageHandler::endCalibration() {
     pushToSendQueue(endMessage);
 
     startCalculatePositionsTask();
+}
+
+void MessageHandler::abortDistanceCalibration() {
+    ESP_LOGI("MSG", "Aborting distance calibration — resetting all data");
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        clapIndex = 0;
+        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
+        for (int i = 0; i < NUM_CLIENTS; i++) {
+            memset(addressList[i].distances, 0, sizeof(float) * NUM_CLAPS);
+        }
+        xSemaphoreGive(configMutex);
+    }
+    message_data cancelMsg = createCommandMessage(CMD_CANCEL_CALIBRATION, true);
+    pushToSendQueue(cancelMsg);
 }
 
 void MessageHandler::endDistanceCalibration() {

@@ -59,6 +59,7 @@ class WebServer {
         void commandEndDistanceCalibration(AsyncWebServerRequest *request);
         void commandAnimationOff(AsyncWebServerRequest *request);
         void resetSystem(AsyncWebServerRequest *request);
+        void factoryReset(AsyncWebServerRequest *request);
         void setMidiParams(AsyncWebServerRequest *request);
         void getMidiParams(AsyncWebServerRequest *request);
         void getDarkroomParams(AsyncWebServerRequest *request);

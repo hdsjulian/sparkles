@@ -259,6 +259,23 @@ void MessageHandler::turnWifiOff() {
     WiFi.mode(WIFI_OFF);
 }
 
+void MessageHandler::broadcastReannounce() {
+    message_data msg = createCommandMessage(CMD_REANNOUNCE, true);
+    pushToSendQueue(msg);
+    ESP_LOGI("MSG", "CMD_REANNOUNCE queued for broadcast");
+}
+
+bool MessageHandler::getTestMode() {
+    return testMode;
+}
+
+void MessageHandler::setTestMode(bool on) {
+    testMode = on;
+    ESP_LOGI("MSG", "Test mode: %s", on ? "ON" : "OFF");
+    message_data msg = createCommandMessage(on ? CMD_TEST_MODE_ON : CMD_TEST_MODE_OFF, true);
+    pushToSendQueue(msg);
+}
+
 void MessageHandler::resetSystem() {
     File file;
     if (LittleFS.exists("/clientAddress")) {

@@ -53,6 +53,8 @@ public:
     void setMaxDistanceFromCenter(int distance);
     void setUseDistanceSwitch(bool use);
     bool getUseDistanceSwitch();
+    void setDistanceMode(int mode);
+    int  getDistanceMode();
     void setMidiParams(message_midi_params& params);
     message_midi_params getMidiParams();
 
@@ -104,7 +106,7 @@ private:
     static float step(float edge, float x);
     static float intRGBToFloat(int val);
     static int getOctaveFromPosition(int position);
-    static float calculateMidiDecay(unsigned long long startTime, int velocity, int note);
+    static float calculateMidiDecay(unsigned long long effectiveElapsed, int velocity, int note);
     static int getDecayTime(int midiNote, int velocity);
     static int getMidiNoteFromPosition(int position);
     TickType_t microsToTicks(unsigned long long micros);
@@ -120,6 +122,7 @@ private:
     long long microsUntilStart;
     long long microsUntilEnd = 0;
     bool sustain;
+    unsigned long long lastMidiFrameTime = 0;
     int syncAsyncMinDuration = 500;
     int syncAsyncMaxDuration = 1500;
     int syncAsyncMinPause = 1000;
@@ -132,6 +135,7 @@ private:
     int syncAsyncMaxSpread = 2000;
     bool backgroundShimmerFadeout = false;
     bool useDistanceSwitch = false;
+    int distanceMode = 0;
     SemaphoreHandle_t configMutex;
     QueueHandle_t ledQueue, backgroundShimmerQueue;
     message_animation animation;

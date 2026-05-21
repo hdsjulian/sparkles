@@ -34,6 +34,28 @@ document.getElementById("setClock").addEventListener('click', function() {
 function statusUpdate(obj) {
   document.getElementById('status').textContent = obj.status;
 }
+document.getElementById('toggleTestMode').addEventListener('click', function() {
+  fetch('/toggleTestMode')
+    .then(r => r.json())
+    .then(data => {
+      const btn = document.getElementById('toggleTestMode');
+      btn.textContent = data.testMode ? 'TEST MODE: ON' : 'TEST MODE: OFF';
+      btn.classList.toggle('active', data.testMode);
+    });
+});
+
+document.getElementById('otaUpdateAll').addEventListener('click', function() {
+  var userConfirmed = confirm("Send OTA update command to all active devices?");
+  if (userConfirmed) {
+    fetchMe('/commandOTAUpdate');
+  }
+  var clickButton = document.getElementById("otaUpdateAll");
+  clickButton.classList.add("active");
+  setTimeout(function() {
+    clickButton.classList.remove('active');
+  }, 1000);
+});
+
 document.getElementById('resetSystem').addEventListener('click', function() {
   var fetchUrl = '/resetSystem';
   var userConfirmed = confirm("Are you sure? You will reset the entire system!");
@@ -41,6 +63,18 @@ document.getElementById('resetSystem').addEventListener('click', function() {
     fetchMe(fetchUrl);
   }
   var clickButton = document.getElementById("resetSystem");
+  clickButton.classList.add("active");
+  setTimeout(function() {
+        clickButton.classList.remove('active');
+      }, 1000);
+});
+
+document.getElementById('factoryReset').addEventListener('click', function() {
+  var userConfirmed = confirm("Factory reset: wipes the device list and reboots the master. Clients are NOT restarted — they will re-announce themselves. Continue?");
+  if (userConfirmed) {
+    fetchMe('/factoryReset');
+  }
+  var clickButton = document.getElementById("factoryReset");
   clickButton.classList.add("active");
   setTimeout(function() {
         clickButton.classList.remove('active');

@@ -683,7 +683,7 @@ int MessageHandler::getClapDeviceDelay() {
     return returnDelay;
 }
 
-void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch) {
+void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         midiParams.valMin = minVal;
         midiParams.valMax = maxVal;
@@ -698,6 +698,7 @@ void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSa
         midiParams.mode = mode;
         midiParams.distance = distance;
         midiParams.distanceSwitch = distanceSwitch;
+        midiParams.distanceMode = distanceMode;
         xSemaphoreGive(configMutex);
     }
     ESP_LOGI("MIDI", "Set Midi Params");

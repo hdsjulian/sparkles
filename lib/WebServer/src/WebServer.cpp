@@ -108,6 +108,11 @@ void WebServer::configRoutes() {
       this->commandCancelCalibration(request);
       request->send(200, "text/html", "Cancel Distance Calibration command received");
     });
+    server.on("/commandAbortDistanceCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      inDistanceCalibration = false;
+      messageHandlerInstance->abortDistanceCalibration();
+      request->send(200, "text/html", "Abort Distance Calibration command received");
+    });
     server.on("/commandResetCalibration", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->commandResetCalibration(request);  
       request->send(200, "text/html", "Reset Calibration command received");
@@ -166,10 +171,21 @@ void WebServer::configRoutes() {
     server.on("/getAddressList", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getAddressList(request);
     });
+    server.on("/toggleTestMode", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      bool newState = !messageHandlerInstance->getTestMode();
+      messageHandlerInstance->setTestMode(newState);
+      request->send(200, "application/json",
+        newState ? "{\"testMode\":true}" : "{\"testMode\":false}");
+    });
     server.on("/resetSystem", HTTP_GET, [this] (AsyncWebServerRequest *request){
       ESP_LOGI("WEB", "Resetting system");
       this->resetSystem(request);
       request->send(200, "text/html", "System reset command received");
+    });
+    server.on("/factoryReset", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      ESP_LOGI("WEB", "Factory reset");
+      request->send(200, "text/html", "Factory reset initiated");
+      this->factoryReset(request);
     });
       server.onNotFound([this](AsyncWebServerRequest *request) {
         this->serveOnNotFound(request);
@@ -367,8 +383,15 @@ void WebServer::setCalculationDone(bool done) {
 
 void WebServer::resetSystem(AsyncWebServerRequest *request) {
   ESP_LOGI("WEB", "Resetting system");
-  // Reset the system by restarting the ESP32
   messageHandlerInstance->resetSystem();
+}
+
+void WebServer::factoryReset(AsyncWebServerRequest *request) {
+  ESP_LOGI("WEB", "Factory reset — wiping client list, rebooting master");
+  if (LittleFS.exists("/clientAddress")) {
+    LittleFS.remove("/clientAddress");
+  }
+  ESP.restart();
 }
 
 void WebServer::commandStartCalibration(AsyncWebServerRequest *request) {
@@ -494,9 +517,10 @@ void WebServer::setMidiParams(AsyncWebServerRequest *request) {
   float rmsMax = request->getParam("maxRms")->value().toFloat();
   int mode = request->getParam("mode")->value().toInt();
   int distance = request->hasParam("distance") ? request->getParam("distance")->value().toInt() : 100; // default to 100 if not provided
-  bool distanceSwitch = request->hasParam("distanceSwitch") ? (request->getParam("distanceSwitch")->value() == "1" || request->getParam("distanceSwitch")->value() == "true") : false; // default to false if not provided
+  bool distanceSwitch = request->hasParam("distanceSwitch") ? (request->getParam("distanceSwitch")->value() == "1" || request->getParam("distanceSwitch")->value() == "true") : false;
+  int distanceMode = request->hasParam("distanceMode") ? request->getParam("distanceMode")->value().toInt() : 0;
   ESP_LOGI("WEB", "Set Midi Params minSat %d, maxSat %d, hue %d, saturation %d, rangeMin %d, rangeMax %d, mode %d", minSat, maxSat, hue, saturation, rangeMin, rangeMax, mode);
-  messageHandlerInstance->setMidiParams(minVal, maxVal, minSat, maxSat, hue, saturation, rangeMin, rangeMax, rmsMin, rmsMax, mode, distance, distanceSwitch);
+  messageHandlerInstance->setMidiParams(minVal, maxVal, minSat, maxSat, hue, saturation, rangeMin, rangeMax, rmsMin, rmsMax, mode, distance, distanceSwitch, distanceMode);
   request->send(200, "text/html", "MIDI parameters set");
 }
 
@@ -527,6 +551,8 @@ void WebServer::getMidiParams(AsyncWebServerRequest *request) {
   jsonString += String(midiParams.distance);
   jsonString += ",\"distanceSwitch\":";
   jsonString += String(midiParams.distanceSwitch);
+  jsonString += ",\"distanceMode\":";
+  jsonString += String(midiParams.distanceMode);
   jsonString += ",\"mode\":";
   jsonString += String(midiParams.mode);
   jsonString += "}";

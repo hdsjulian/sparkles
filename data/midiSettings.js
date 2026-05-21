@@ -71,10 +71,12 @@ if (submitMidiBtn) {
       // Get Distance switch
       const distanceSwitchEl = document.getElementById('distanceSwitch');
       const distanceSwitch = distanceSwitchEl ? (distanceSwitchEl.checked ? 1 : 0) : 0;
+      const distanceModeEl = document.querySelector('input[name="distanceMode"]:checked');
+      const distanceMode = distanceModeEl ? parseInt(distanceModeEl.value) : 0;
       // Add mode (0 for midi, 1 for frequency)
       let modeNum = (typeof mode !== 'undefined' && mode === 'frequency') ? 2 : 1;
-      // Build fetchUrl with RMS, distance, distanceSwitch, and midiHue
-      const fetchUrl = `/setMidiParams?minVal=${encodeURIComponent(minVal)}&maxVal=${encodeURIComponent(maxVal)}&minSat=${encodeURIComponent(minSat)}&maxSat=${encodeURIComponent(maxSat)}&midiSaturation=${encodeURIComponent(saturation)}&midiHue=${encodeURIComponent(midiHue)}&rangeMin=${encodeURIComponent(rangeMin)}&rangeMax=${encodeURIComponent(rangeMax)}&minRms=${encodeURIComponent(minRms)}&maxRms=${encodeURIComponent(maxRms)}${(typeof distance !== 'undefined') ? `&distance=${encodeURIComponent(distance)}` : ''}&distanceSwitch=${distanceSwitch}&mode=${modeNum}`;
+      // Build fetchUrl with RMS, distance, distanceSwitch, distanceMode, and midiHue
+      const fetchUrl = `/setMidiParams?minVal=${encodeURIComponent(minVal)}&maxVal=${encodeURIComponent(maxVal)}&minSat=${encodeURIComponent(minSat)}&maxSat=${encodeURIComponent(maxSat)}&midiSaturation=${encodeURIComponent(saturation)}&midiHue=${encodeURIComponent(midiHue)}&rangeMin=${encodeURIComponent(rangeMin)}&rangeMax=${encodeURIComponent(rangeMax)}&minRms=${encodeURIComponent(minRms)}&maxRms=${encodeURIComponent(maxRms)}${(typeof distance !== 'undefined') ? `&distance=${encodeURIComponent(distance)}` : ''}&distanceSwitch=${distanceSwitch}&distanceMode=${distanceMode}&mode=${modeNum}`;
       console.log(fetchUrl);
       fetchMe(fetchUrl);
     }
@@ -517,9 +519,23 @@ fetch('/getMidiParams')
     var distanceSwitchEl = document.getElementById('distanceSwitch');
     if (distanceSwitchEl && typeof data.distanceSwitch !== 'undefined') {
       distanceSwitchEl.checked = !!data.distanceSwitch;
+      document.getElementById('distanceModeGroup').style.display = data.distanceSwitch ? '' : 'none';
+    }
+    // Set Distance mode from params if available
+    if (typeof data.distanceMode !== 'undefined') {
+      const modeEl = document.querySelector(`input[name="distanceMode"][value="${data.distanceMode}"]`);
+      if (modeEl) modeEl.checked = true;
     }
   })
   .catch(e => console.error('Failed to fetch MIDI params or initialize sliders:', e));
+
+// Show/hide distance mode radios when the switch is toggled
+const distanceSwitchEl = document.getElementById('distanceSwitch');
+if (distanceSwitchEl) {
+  distanceSwitchEl.addEventListener('change', function() {
+    document.getElementById('distanceModeGroup').style.display = this.checked ? '' : 'none';
+  });
+}
 
 
 // Only fetch and set MIDI params after all sliders are initialized
