@@ -15,7 +15,7 @@ API_DIR    = os.path.join(REPO_DIR, "sparkles-api")
 UI_DIR     = os.path.join(REPO_DIR, "sparkles-ui")
 VENV_DIR   = os.path.join(API_DIR, ".venv")
 SERIAL_PORT = "/dev/ttyACM0"
-PORT        = 8080
+PORT        = 80
 
 
 def run(cmd, cwd=None, check=True):
@@ -102,6 +102,7 @@ Environment=SPARKLES_PORT={SERIAL_PORT}
 Restart=always
 RestartSec=5
 User={os.environ.get('USER', 'pi')}
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
