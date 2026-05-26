@@ -15,10 +15,11 @@
 
   onMount(async () => {
     try {
-      const list = await getAddressList();
+      const data = await getAddressList();
+      const list = data.addresses ?? [];
       devices.update(map => {
         const next = new Map(map);
-        list.forEach(d => next.set(d.boardId, d));
+        list.forEach(d => next.set(d.id, d));
         return next;
       });
     } catch (e) {
