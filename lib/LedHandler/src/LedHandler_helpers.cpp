@@ -177,7 +177,7 @@ void LedHandler::resetMicrosUntilEnd() {
 }
 
 bool LedHandler::isTimedAnimation(animationEnum type) {
-    if (type == STROBE || type == SYNC_ASYNC_BLINK || type == BLINK) {
+    if (type == STROBE || type == SYNC_ASYNC_BLINK || type == BLINK || type == BATTERY_BLINK) {
         ESP_LOGI("LED", "Animation %d is timed", type);
         return true;
     }

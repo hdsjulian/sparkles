@@ -173,8 +173,10 @@ void MessageHandler::writeStructsToFile(client_address* data, int count, const c
 
 float MessageHandler::getBatteryPercentage() {
     analogReadResolution(12);
-    analogSetPinAttenuation(BATTERY_PIN, ADC_11db);  
-    int adcValue = analogRead(BATTERY_PIN); // Read the ADC value
+    analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+    int adcValue = 0;
+    for (int i = 0; i < 8; i++) adcValue += analogRead(BATTERY_PIN);
+    adcValue /= 8;
     float voltage = adcValue * (4.2 / 2550.0);
     float percentage;
 
@@ -189,6 +191,16 @@ float MessageHandler::getBatteryPercentage() {
     } else {
         percentage = 0.0;
     }
+
+    batteryHistory[batteryHistoryIndex] = percentage;
+    batteryHistoryIndex = (batteryHistoryIndex + 1) % BATTERY_HISTORY_SIZE;
+    if (batteryHistoryIndex == 0) batteryHistoryFull = true;
+
+    int count = batteryHistoryFull ? BATTERY_HISTORY_SIZE : batteryHistoryIndex;
+    float sum = 0;
+    for (int i = 0; i < count; i++) sum += batteryHistory[i];
+    percentage = sum / count;
+
     percentage = round(percentage * 100) / 100;
     return percentage;
 }
@@ -277,13 +289,12 @@ void MessageHandler::setTestMode(bool on) {
 }
 
 void MessageHandler::resetSystem() {
-    File file;
     if (LittleFS.exists("/clientAddress")) {
         LittleFS.remove("/clientAddress");
         ESP_LOGI("FS", "File removed successfully");
     }
-    message_data commandResetMessage = createCommandMessage(CMD_RESET_SYSTEM, true);
-    esp_now_send(broadcastAddress, (uint8_t*)&commandResetMessage, sizeof(commandResetMessage));
-    delay(1000);
+    pendingBroadcastCommand = CMD_RESET_SYSTEM;
+    pendingBroadcastExpiry = millis() + 5000;
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
     ESP.restart();
 }

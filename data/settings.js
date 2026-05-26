@@ -21,6 +21,33 @@ fetchMe(fetchUrl);
 }
 setInterval(setTime, 1000);
 
+function updateSystemInfo() {
+  fetch('/getSystemInfo')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('info_systemTime').textContent = data.systemTime;
+      function toHMS(totalSecs) {
+        const h = Math.floor(totalSecs / 3600);
+        const m = Math.floor((totalSecs % 3600) / 60);
+        const s = totalSecs % 60;
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      }
+      if (data.sleepSet) {
+        document.getElementById('info_sleepIn').textContent = toHMS(data.sleepIn);
+        document.getElementById('info_sleepAt').textContent =
+          `${String(data.sleepAtH).padStart(2,'0')}:${String(data.sleepAtM).padStart(2,'0')}:${String(data.sleepAtS).padStart(2,'0')}`;
+        document.getElementById('info_sleepDuration').textContent = toHMS(data.sleepDuration);
+      } else {
+        document.getElementById('info_sleepIn').textContent = 'not set';
+        document.getElementById('info_sleepAt').textContent = 'not set';
+        document.getElementById('info_sleepDuration').textContent = 'not set';
+      }
+    })
+    .catch(e => console.error('getSystemInfo failed:', e));
+}
+updateSystemInfo();
+setInterval(updateSystemInfo, 5000);
+
 document.getElementById("setClock").addEventListener('click', function() {
   console.log("setClock called");
   sendTime();
@@ -34,6 +61,18 @@ document.getElementById("setClock").addEventListener('click', function() {
 function statusUpdate(obj) {
   document.getElementById('status').textContent = obj.status;
 }
+let logging = false;
+document.getElementById('toggleLogging').addEventListener('click', function() {
+  fetch('/toggleLogging')
+    .then(r => r.json())
+    .then(data => {
+      logging = data.logging;
+      const btn = document.getElementById('toggleLogging');
+      btn.textContent = logging ? 'LOGGING: ON' : 'LOGGING: OFF';
+      btn.classList.toggle('active', logging);
+    });
+});
+
 document.getElementById('toggleTestMode').addEventListener('click', function() {
   fetch('/toggleTestMode')
     .then(r => r.json())
@@ -54,6 +93,13 @@ document.getElementById('otaUpdateAll').addEventListener('click', function() {
   setTimeout(function() {
     clickButton.classList.remove('active');
   }, 1000);
+});
+
+document.getElementById('reannounce').addEventListener('click', function() {
+  fetch('/reannounce');
+  var btn = document.getElementById('reannounce');
+  btn.classList.add('active');
+  setTimeout(function() { btn.classList.remove('active'); }, 1000);
 });
 
 document.getElementById('resetSystem').addEventListener('click', function() {

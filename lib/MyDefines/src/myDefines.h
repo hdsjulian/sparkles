@@ -68,6 +68,10 @@
 #define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
 #define CLAP_TIMEOUT 10000
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+// Clients compiled before message_log was added to the payload union have sizeof(message_data)==80.
+// Their pushToRecvQueue strictly checks len==80 and drops anything else.
+// Send exactly this size to stay compatible until all clients are OTA-updated.
+static constexpr size_t ESPNOW_CLIENT_COMPAT_SIZE = 80;
 
 
 
@@ -129,6 +133,23 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define MSG_COMMAND 15
 #define MSG_MIDI_PARAMS 16
 #define MSG_DARKROOM_PARAMS 17
+#define MSG_LOG 18
+
+#if DEVICE_MODE == MASTER
+extern bool g_loggingEnabled;
+class MessageHandler;
+extern MessageHandler& getMessageHandlerInstance();
+#define LOG_I(tag, fmt, ...) do { \
+    ESP_LOGI(tag, fmt, ##__VA_ARGS__); \
+    if (g_loggingEnabled) { \
+        char _logbuf[180]; \
+        snprintf(_logbuf, sizeof(_logbuf), "[" tag "] " fmt, ##__VA_ARGS__); \
+        getMessageHandlerInstance().sendLogMessage(_logbuf); \
+    } \
+} while(0)
+#else
+#define LOG_I(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
+#endif
 
 #define CMD_START_CALIBRATION 1
 #define CMD_CONTINUE_CALIBRATION 2
@@ -236,7 +257,7 @@ struct message_midi_params {
   int distance; // New field for distance from center
   bool distanceSwitch; // New field for enabling/disabling distance-based effects
   int distanceMode; // 0 = brightness attenuation, 1 = timing delay
-  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(0.003f), rmsMax(1.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false), distanceMode(0) {}
+  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(-35.0f), rmsMax(-20.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false), distanceMode(0) {}
   message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), hue(other.hue), saturation(other.saturation), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode), distance(other.distance), distanceSwitch(other.distanceSwitch), distanceMode(other.distanceMode) {}
 
 };
@@ -407,6 +428,10 @@ struct message_command {
 };
 
 
+struct message_log {
+  char text[180];
+};
+
 union message_payload {
   struct message_address        address;
   struct message_timer          timer;
@@ -422,6 +447,7 @@ union message_payload {
   struct message_command        command;
   struct message_midi_params    midiParams;
   struct message_darkroom_params  darkroomParams;
+  struct message_log              log;
   message_payload() {}
   message_payload(const message_payload& other) {
       if (this != &other) memcpy(this, &other, sizeof(message_payload));

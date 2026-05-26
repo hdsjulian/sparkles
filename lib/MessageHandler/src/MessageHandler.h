@@ -15,7 +15,6 @@ public:
     uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
     bool isOTAUpdating = false;
     bool testMode = false;
-    bool xtalOk = false;
     bool nextOTAAddress = false;
     bool requestingOTAUpdate = false;
     bool calibrationTest = false;
@@ -23,6 +22,8 @@ public:
     bool hasClapHappened = false;
     unsigned long long offsetSum = 0;
     int offsetCount = 0;
+    uint8_t pendingBroadcastCommand = 0;
+    unsigned long pendingBroadcastExpiry = 0;
     
 
     //singleton
@@ -73,7 +74,7 @@ public:
     void setNumDevices(int num);
     int getNumDevices();
     void recordTimeOfDayBeforeSleep();
-    void setTimeOfDayAfterSleep();
+    void setTimeOfDayAfterSleep(unsigned long long sleepDurationMicros);
     message_data retrieveCommand(uint8_t * address);
     void setCommand(message_data command, uint8_t * address);
     void setAddressListInactive();
@@ -119,7 +120,7 @@ public:
     void setLastMidiTime(unsigned long long timeStamp);
     unsigned long getSleepTime();
     bool isInSleepPhase();
-    unsigned long setNextSleepMillis();
+
     unsigned long getSleepDuration();
     bool isSleepSet();
     unsigned long getAdminPresent();
@@ -129,12 +130,15 @@ public:
     void startBatterySyncTask();
     void startWiFiToggleTask();
     void startAllTimerSyncTask();
+    void startBroadcastSettleTask();
+    void runBroadcastSettle();
     void startClapTask();
     void startOTAUpdateTask();
     void startCalculatePositionsTask();
     void startAnnounceAddressTask();
     void startClapSyncTask();
     void startAnimationLoopTask();
+    bool isAnimationLoopRunning() { return animationLoopHandle != nullptr; }
     void startDarkroomTask();
     void handleSleepWakeup(message_data incomingData);
     void handleReceive();
@@ -187,7 +191,7 @@ public:
     void stopAllAnimations();
     void setTestMode(bool on);
     bool getTestMode();
-    void setXtalOk(bool ok) { xtalOk = ok; }
+    void sendLogMessage(const char* text);
 private:
     // Static Constants
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -199,7 +203,8 @@ private:
     //static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8e, 0xf8, 0x50};
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
-    uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8F, 0xBF, 0xF4};
+    uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};
+    uint8_t logDeviceAddress[6]   = {0x34, 0x85, 0x18, 0x8F, 0xC1, 0x48};
     // Static Members
     static MessageHandler* instance;
 
@@ -217,7 +222,7 @@ private:
     message_midi_params midiParams;
     message_darkroom_params darkroomParams;
     SemaphoreHandle_t configMutex, updateOTAMutex;
-    TaskHandle_t announceTaskHandle, timerSyncHandle, allTimerSyncHandle, batterySyncHandle, wifiToggleTask, otaUpdateHandle, clapTaskHandle = nullptr, calculatePositionsHandle, clapSyncHandle, handleSendHandle, handleReceiveHandle, animationLoopHandle, darkroomHandle;
+    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;
@@ -247,6 +252,10 @@ private:
     int wakeupTimeSeconds = 0;
     int clapDeviceDelay = 0;
     bool isBatteryLow = false;
+    static constexpr int BATTERY_HISTORY_SIZE = 10;
+    float batteryHistory[BATTERY_HISTORY_SIZE] = {-1.0f};
+    int batteryHistoryIndex = 0;
+    bool batteryHistoryFull = false;
     clap_table clapTable[NUM_CLAPS] = {0};
     unsigned long lastAdminPresent = 0;
     int clapIndex = 0;
@@ -270,6 +279,7 @@ private:
     static void runClapSyncWrapper(void *pvParameters);
     static void runAnimationLoopWrapper(void *pvParameters);
     static void runDarkroomTaskWrapper(void *pvParameters);
+    static void broadcastSettleWrapper(void *pvParameters);
     // Member Functions
     unsigned long long getLastSendTime();
     void setLastSendTime(unsigned long long time);

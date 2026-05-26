@@ -1,7 +1,5 @@
 
 #include "MessageHandler.h"
-#include "soc/rtc.h"
-#include "esp_private/rtc_ctrl.h"
 #if (DEVICE_MODE == CLIENT)
 #include "Arduino.h"
 #include "esp_now.h"
@@ -32,6 +30,14 @@ void MessageHandler::handleReceive() {
                 else {
                     message_animation animation = (message_animation)incomingData.payload.animation;
                     ESP_LOGI("MSG", "Received Animation type %d", animation.animationType);
+
+                    if (animation.animationType == BATTERY_BLINK) {
+                        float pct = constrain(getBatteryPercentage(), 0.0f, 100.0f);
+                        animation.animationParams.blink.hue        = 0;
+                        animation.animationParams.blink.saturation = (int)(255.0f * (1.0f - pct / 100.0f));
+                        animation.animationParams.blink.brightness = 255;
+                        animation.animationType = BLINK;
+                    }
 
                     ledInstance->pushToAnimationQueue(animation);
                 }
@@ -278,7 +284,6 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
     esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration);
     esp_light_sleep_start();
-    if (xtalOk) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); }
     Serial.begin(115200);
     vTaskDelay(200 / portTICK_PERIOD_MS);
     ESP_LOGI("MSG", "Woke up");
@@ -423,8 +428,7 @@ void MessageHandler::runBatterySync() {
                 esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
                 esp_sleep_enable_timer_wakeup(5 * 60 * 1000000ULL);
                 esp_light_sleep_start();
-                if (xtalOk) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); }
-                turnWifiOn();
+                            turnWifiOn();
             }
 
         }
@@ -432,7 +436,7 @@ void MessageHandler::runBatterySync() {
         setBatteryLow(false);
         message_data statusMessage = createStatusMessage();
         pushToSendQueue(statusMessage);
-        vTaskDelay(30 * 60 * 1000 / portTICK_PERIOD_MS); // 30 minutes
+        vTaskDelay(10 * 60 * 1000 / portTICK_PERIOD_MS); // 10 minutes
 
         }
 

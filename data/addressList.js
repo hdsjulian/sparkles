@@ -17,8 +17,8 @@ function syncUpdate(obj) {
 
 // Update animation button text
 function animateUpdate(obj) {
-  document.getElementById('cmd_animate').textContent = 
-    obj.status === "true" ? "END ANIM" : "ANIMATE";
+  document.getElementById('cmd_animate').textContent =
+    obj.status === "true" ? "END ANIMATION" : "ANIMATE";
 }
 
 // Update device count
@@ -123,7 +123,10 @@ function handleCommandBlinkAllClick() {
 }
 
 function handleCommandAnimateClick() {
-  fetchData('/commandAnimate');
+  fetch('/commandAnimate')
+    .then(r => r.json())
+    .then(data => animateUpdate(data))
+    .catch(console.error);
 }
 
 function handleCommandAnimationOffClick() {

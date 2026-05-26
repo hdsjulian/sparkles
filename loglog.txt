@@ -1,0 +1,801 @@
+********************************************************************************
+Obsolete PIO Core v6.1.16 is used (previous was 6.1.19)
+Please remove multiple PIO Cores from a system:
+https://docs.platformio.org/en/latest/core/installation/troubleshooting.html
+********************************************************************************
+--- Terminal on /dev/tty.usbmodem11301 | 115200 8-N-1
+--- Available filters and text transformations: colorize, debug, default, direct, esp32_exception_decoder, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+[  1829][V][esp32-hal-periman.c:235] perimanSetBusDeinit(): Deinit function for type LEDC (9) successfully set to 0x42016ba8
+  #0  0x42016ba8 in ledcDetachBus at /Users/julian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.c:65
+
+[  1841][V][esp32-hal-periman.c:160] perimanSetPinBus(): Pin 38 successfully set to type LEDC (9) with bus 0x3fcc79c4
+[  1851][I][esp32-hal-ledc.c:166] ledcAttachChannel(): LEDC attached to pin 38 (channel 0, resolution 8)
+[  1860][V][esp32-hal-periman.c:235] perimanSetBusDeinit(): Deinit function for type LEDC (9) successfully set to 0x42016ba8
+  #0  0x42016ba8 in ledcDetachBus at /Users/julian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.c:65
+
+[  1872][V][esp32-hal-periman.c:160] perimanSetPinBus(): Pin 17 successfully set to type LEDC (9) with bus 0x3fcc79e0
+[  1882][I][esp32-hal-ledc.c:166] ledcAttachChannel(): LEDC attached to pin 17 (channel 1, resolution 8)
+[  1892][V][esp32-hal-periman.c:235] perimanSetBusDeinit(): Deinit function for type LEDC (9) successfully set to 0x42016ba8
+  #0  0x42016ba8 in ledcDetachBus at /Users/julian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.c:65
+
+[  1903][V][esp32-hal-periman.c:160] perimanSetPinBus(): Pin 8 successfully set to type LEDC (9) with bus 0x3fcc7904
+[  1913][I][esp32-hal-ledc.c:166] ledcAttachChannel(): LEDC attached to pin 8 (channel 2, resolution 8)
+[  1923][V][esp32-hal-periman.c:235] perimanSetBusDeinit(): Deinit function for type LEDC (9) successfully set to 0x42016ba8
+  #0  0x42016ba8 in ledcDetachBus at /Users/julian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.c:65
+
+[  1934][V][esp32-hal-periman.c:160] perimanSetPinBus(): Pin 9 successfully set to type LEDC (9) with bus 0x3fcc7920
+[  1944][I][esp32-hal-ledc.c:166] ledcAttachChannel(): LEDC attached to pin 9 (channel 3, resolution 8)
+[  1953][V][esp32-hal-periman.c:235] perimanSetBusDeinit(): Deinit function for type LEDC (9) successfully set to 0x42016ba8
+  #0  0x42016ba8 in ledcDetachBus at /Users/julian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-ledc.c:65
+
+[  1965][V][esp32-hal-periman.c:160] perimanSetPinBus(): Pin 3 successfully set to type LEDC (9) with bus 0x3fcc793c
+[  1975][I][esp32-hal-ledc.c:166] ledcAttachChannel(): LEDC attached to pin 3 (channel 4, resolution 8)
+[  1984][I][LedHandler.cpp:39] setup(): [LED] LED SETUP ENDED
+[  1990][I][LedHandler.cpp:68] startLedTask(): [LED] Starting ledTask
+[  1996][I][LedHandler.cpp:74] ledTaskWrapper(): [LED] Starting ledTaskWraphab ich beper
+[  2004][I][LedHandler.cpp:77] ledTaskWrapper(): [LED] Starting ledTaskWrapper2
+[  2011][I][LedHandler.cpp:41] setup(): [LED] LED TASK STARTED
+[  2017][I][MessageHandler_master.cpp:51] handleReceive(): [MSG] handleReceive task started
+[  2017][I][MessageHandler.cpp:32] setup(): [MSG] Master setup
+[  2030][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:18
+[  2040][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:20
+[  2049][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:e8
+[  2057][E][MessageHandler_helpers.cpp:133] readStructsFromFile(): [FS] File size is too small
+[  2066][E][MessageHandler_master.cpp:32] handleAddressStruct(): [FS[]   F2a0i6l7e]d[ Dt]o[ Mreesasda gcelHiaenndtl eard_dmraesstseers. fcprpo:m 2f9i8]le o
+nDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:68
+[  2084][I][MessageHandler_master.cpp:36] handleAddressStruct(): [FS] Loaded 0 addresses from file
+[  2084][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:f4
+[  2101][I][MessageHandler_timer.cpp:42] runBro[a d c2a1s0t1S]e[tDt]l[eM(e)s:s a[gTeIHMaEnRd]l eArd_dmraesstse rl.icsptp :e2m9p8t]y ,on wDaaittaiRecnvg( )1:0s  [fMoSrG ] cRlieecnvt st ytpoe  1 afnrnoomun c3e4 :b85e:f1or8e: 8sfe:tbtfl:e94
+
+[  2118][I][WebServer.cpp:29] setWifi(): [WEB] Setting up WiFi in AP mode
+[  2118][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:f8
+[  2133][I][WebServer.cpp:30] setWifi(): [WEB] SSID: SPARKLES
+[  2133][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:78
+[  2147][I][WebServer.cpp:31] setWifi(): [WEB] Password: sparklesAdmin
+[  2148][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:94
+[  2163][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:14
+[  2172][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:b8
+=========== After Setup Start ============
+[  2182][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  2183][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:60
+INTERNAL Memory Info:
+------------------------------------------
+[  2204][I][LedHandler_gettersSetters.cpp:180] setNumDevices(): [LED] Setting number of devices: 1
+[  2216][I][MessageHandler_master.cpp:100] handleReceive(): [MSG  Total Size        ]:  A d d3r3e6s6s8 8f rBo m(  i3n2d8e.x8  0KB,) t
+otal 0
+[  2229][I][MessageHandler_master.cpp:54] handleReceive(): [MSG][  2229][I][MessageHandler_timer .Rcepcpe:i1v5e8d]  frruonmT iqmueuee 1rS
+ync(): [TIMER] Starting timer sync for index 0 with address 34:85:18:8f:c1:18
+[  2248][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.  
+Free Bytes        :    86088 B (  84.1 KB)
+[  2262][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+  Allocated Bytes   :   240112 B ( 234.5 KB)
+[  2274][I][MessageHandler_master.cpp:95] handleReceive(): [MSG]  Minimum Free Bytes:    85840 B (  83.8 KB)
+ Timer sync task already running, ignoring address message.
+[  2289][I][MessageHandler_master.cpp:54] handleReceive(): [MSG]  Largest Free Block:    77812 B (  76.0 KB)
+ Received from queue 1
+------------------------------------------
+[  2301][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+GPIO Info:
+[  2316][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+------------------------------------------
+[  2325][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+  GPIO : BUS_TYPE[bus/unit][chan]
+[  2339][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+  --------------------------------------  
+[  2350][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+     3 : [  2365][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+LEDC[  2373][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[0][  2385][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[4][  2392][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+
+[  2404][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+     8 : [  2411][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+LEDC[  2423][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[0][  2431][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[2][  2442][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+
+     9 : [  2450][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+LEDC[  2462][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[0][3][  2470][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+
+    17 : LEDC[0][1]
+    38 : LEDC[0][0]
+    43 : UART_TX[0]
+    44 : UART_RX[0]
+============ After Setup End =============
+[  4411][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 3 from 34:85:18:8f:c1:18
+[  4421][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 3
+[  4428][I][MessageHandler_master.cpp:107] handleReceive(): [MSG] Received got timer message
+[  4447][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 0 with address 34:85:18:8f:c1:18
+[  4459][I][MessageHandler_timer.cpp:200] runTimerSync(): [ESP-NOW] Peer does not exist, can't delete
+[  4469][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+[  4519][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:fc
+[  4528][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:2c
+[  4537][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:a4
+[  4579][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:b0
+[  4597][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8b:50
+[  4607][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:34
+[  4617][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:20
+[  4641][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:38
+[  4650][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:34
+[  4686][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:a8
+[  4699][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:c8
+[  5001][I][main.cpp:89] loop(): [TICK] Tick HOST ADDRESS34, 0x85, 0x18, 0x8f, 0xbf, 0xb8
+[  5011][I][main.cpp:90] loop(): [TICK] Ticks until end: 0
+[  5065][E][esp32-hal-adc.c:172] __analogChannelConfig(): Pin is not configured as analog channel
+[  5074][D][esp32-hal-adc.c:272] __analogRead(): Calling __analogInit! pin = 4
+[  5121][V][esp32-hal-periman.c:235] perimanSetBusDeinit(): Deinit function for type ADC_ONESHOT (7) successfully set to 0x42016684
+  #0  0x42016684 in adcDetachBus at /Users/julian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-adc.c:52
+
+[  5133][V][esp32-hal-periman.c:160] perimanSetPinBus(): Pin 4 successfully set to type ADC_ONESHOT (7) with bus 0x5
+[  5065][I][main.cpp:91] loop(): [] Battery: 83.45%
+[  5432][I][MessageHandler_master.cpp:319] sendSystemStatus(): [MSG] Sending system status message with 1 devices
+[  5442][I][MessageHandler.cpp:69] pushToSendQueue(): [MSG] Pushing to send queue
+[  5450][I][WebServer.cpp:321] jsonFromAddress(): [WEB] Active Status 0
+[  5452][I][MessageHandler_master.cpp:263] onDataSent(): [MSG] Message sent to ff:ff:ff:ff:ff:ff
+[  5466][I][WebServer.cpp:303] updateAddress(): [WEB] Address Update: {"id":"0","address":"34:85:18:8f:c1:18","status":"active","batteryPercentage":"72.70", "distance":"0.00", "xpos":"0.00", "ypos":"0.00", "lastUpdateTime":"4437", "timerOffset":"0", "delay":"3314"}
+[  5489][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5497][I][LedHandler_gettersSetters.cpp:180] setNumDevices(): [LED] Setting number of devices: 2
+[  5506][I][MessageHandler_master.cpp:100] handleReceive(): [MSG] Address from index 1, total 1
+[  5515][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5515][I][MessageHandler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 1 with address 34:85:18:8f:bf:fc
+[  5534][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5545][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5552][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5563][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5571][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5582][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5590][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5601][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5608][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5619][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5627][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5638][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5646][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5657][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5665][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5675][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5683][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  5694][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  5702][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  6896][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 3 from 34:85:18:8f:bf:fc
+[  6905][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 3
+[  6913][I][MessageHandler_master.cpp:107] handleReceive(): [MSG] Received got timer message
+[  6933][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 1 with address 34:85:18:8f:bf:fc
+[  6976][I][MessageHandler_timer.cpp:200] runTimerSync(): [ESP-NOW] Peer does not exist, can't delete
+[  6986][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+[  7035][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:eb:20
+[  7043][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:f8
+[  7052][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:20
+[  7061][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:e8
+[  7070][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:68
+[  7079][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:f4
+[  7087][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:94
+[  7096][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:f8
+[  7116][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:78
+[  7171][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:80
+[  7180][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:14
+[  7374][I][MessageHandler_master.cpp:319] sendSystemStatus(): [MSG] Sending system status message with 2 devices
+[  7384][I][MessageHandler.cpp:69] pushToSendQueue(): [MSG] Pushing to send queue
+[  7391][I][WebServer.cpp:321] jsonFromAddress(): [WEB] Active Status 0
+[  7393][I][MessageHandler_master.cpp:263] onDataSent(): [MSG] Message sent to ff:ff:ff:ff:ff:ff
+[  7407][I][WebServer.cpp:303] updateAddress(): [WEB] Address Update: {"id":"1","address":"34:85:18:8f:bf:fc","status":"active","batteryPercentage":"73.44", "distance":"0.00", "xpos":"0.00", "ypos":"0.00", "lastUpdateTime":"6921", "timerOffset":"0", "delay":"2282"}
+[  7430][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7438][I][LedHandler_gettersSetters.cpp:180] setNumDevices(): [LED] Setting number of devices: 3
+[  7446][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:4c
+[  7456][I][MessageHandler_master.cpp:100] handleReceive(): [MSG] Address from index 2, total 2
+[  7464][I][MessageHandler_master.cpp:54] handleReceive(): [MSG][  7 4R6e5c]e[iIv]e[dM efsrsoamg eqHuaenudel e1r_
+timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 2 with address 34:85:18:95:eb:20
+[  7483][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7494][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7502][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7513][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7521][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7532][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7540][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7550][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7558][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7569][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7577][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7588][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7596][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7607][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7614][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7625][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7633][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7644][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7652][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[  7663][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[  7670][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 11194][I][main.cpp:89] loop(): [TICK] Tick HOST ADDRESS34, 0x85, 0x18, 0x8f, 0xbf, 0xb8
+[ 11202][I][main.cpp:90] loop(): [TICK] Ticks until end: 0
+[ 11208][I][main.cpp:91] loop(): [] Battery: 88.64%
+[ 12117][I][MessageHandler_timer.cpp:45] runBroadcastSettle(): [TIMER] Unicast settle: sending timer to each known client
+[ 12130][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:c1:18
+[ 12150][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 12183][I][MessageHandler_timer.cpp:181] runTimerSync(): [ESP-NOW] Peer does not exist
+[ 12188][I][MessageHandler_timer.cpp:66] runBroadcastSettle(): [TIMER] Unicast settle done, waiting for announces to clear
+[ 12283][I][MessageHandler_timer.cpp:181] runTimerSync(): [ESP-NOW] Peer does not exist
+[ 12383][I][MessageHandler_timer.cpp:181] runTimerSync(): [ESP-NOW] Peer does not exist
+[ 12483][I][MessageHandler_timer.cpp:181] runTimerSync(): [ESP-NOW] Peer does not exist
+[ 12583][I][MessageHandler_timer.cpp:181] runTimerSync(): [ESP-NOW] Peer does not exist
+[ 12683][I][MessageHandler_timer.cpp:181] runTimerSync(): [ESP-NOW] Peer does not exist
+[ 12691][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+[ 12699][I][MessageHandler_timer.cpp:189] runTimerSync(): [TIMER] Setting unavailable. Last counter: 47, current counter: 53, index: 2
+[ 12783][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 2 with address 34:85:18:95:eb:20
+[ 12795][I][MessageHandler_timer.cpp:200] runTimerSync(): [ESP-NOW] Peer does not exist, can't delete
+[ 12804][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+[ 12818][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:94
+[ 12827][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 12834][I][LedHandler_gettersSetters.cpp:180] setNumDevices(): [LED] Setting number of devices: 4
+[ 12843][I][MessageHandler_master.cpp:100] handleReceive(): [MSG] Address from index 3, total 2
+[ 12852][I][MessageHandler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 3 with address 34:85:18:8f:c1:94
+[ 14426][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 3 from 34:85:18:8f:c1:94
+[ 14435][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 3
+[ 14443][I][MessageHandler_master.cpp:107] handleReceive(): [MSG] Received got timer message
+[ 14463][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 3 with address 34:85:18:8f:c1:94
+[ 14509][I][MessageHandler_timer.cpp:200] runTimerSync(): [ESP-NOW] Peer does not exist, can't delete
+[ 14518][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+[ 14563][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:2c
+[ 14578][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:b0
+[ 14587][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:a4
+[ 14597][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8b:50
+[ 14614][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:34
+[ 14622][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:20
+[ 14672][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:38
+[ 14680][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:34
+[ 14689][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:a8
+[ 14698][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:ac
+[ 14707][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:c8
+[ 14931][I][MessageHandler_master.cpp:319] sendSystemStatus(): [MSG] Sending system status message with 3 devices
+[ 14941][I][MessageHandler.cpp:69] pushToSendQueue(): [MSG] Pushing to send queue
+[ 14949][I][WebServer.cpp:321] jsonFromAddress(): [WEB] Active Status 0
+[ 14950][I][MessageHandler_master.cpp:263] onDataSent(): [MSG] Message sent to ff:ff:ff:ff:ff:ff
+[ 14965][I][WebServer.cpp:303] updateAddress(): [WEB] Address Update: {"id":"3","address":"34:85:18:8f:c1:94","status":"active","batteryPercentage":"79.37", "distance":"0.00", "xpos":"0.00", "ypos":"0.00", "lastUpdateTime":"14451", "timerOffset":"0", "delay":"2415"}
+[ 14988][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 14989][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:e4
+[ 15005][I][LedHandler_gettersSetters.cpp:180] setNumDevices(): [LED] Setting number of devices: 5
+[ 15014][I][MessageHandler_master.cpp:100] handleReceive(): [MSG] Address from index 4, total 3
+[ 15022][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Rec[e i1v5e0d2 2f]r[oIm] [qMueesusea g1eH
+andler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 4 with address 34:85:18:8e:f9:2c
+[ 15041][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15053][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15061][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15072][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15079][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15090][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15098][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15109][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15117][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15128][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15135][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15146][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15154][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15166][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15174][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15184][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15192][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15202][I][MessageHandler_timer.cpp:69] runBroadcastSettle(): [TIMER] Starting full timer sync
+[ 15212][I][[M e1s5sageHand2l1e2r]_[tIi]m[eMre.scspapg:e2H3a]n dsltearr_tmAalsltTeirm.ecrpSpy:n5c4T]a shka(n)d:l e[RTeIcMeEiRv]e (S)t: ar[tMSiGn]g  aRellc etiivmed efrr osmyn cq uteause k1
+
+[ 15226][I][MessageHandler_master.[c p1p5:29256]] [hIa]n[dMleesRseacgeeiHvaen(d)l:e r[_MtSiGm]e rT.icmpepr: 8s5y]n cr utnaAslkl alreaTdimy errSuynnnciWnrga,p ipgern(or):i n[gT IaMddERr]e sSst amretsisnagge .al
+ timer sync
+[ 15242][I][MessageHandler_[m a1s5t2e4r2.]c[pIp]:[5M4e]s shaagnedleReceive(): [MSG] Received from queue 1
+Handler_timer.cpp:98] runAllTimerSyncWrapper(): [TIMER] Syncing index 0
+[ 15250][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:b4
+[ 15266][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignor[i n1g5 2a6d6d]r[eIs]s[ MeesssasgaegHea.n
+dler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for i[ n1de5x2 703 ]w[iDt][h MeadsdsraegsesH a3n4dl:e85r:_1m8:astfe:rc.1c:p1p8:
+298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:bc
+[ 15294][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:00
+[ 15303][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:50
+[ 15312][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:70
+[ 15321][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15327][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:40
+[ 15338][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:e8
+[ 15346][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:d4
+[ 15355][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15357][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15375][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15383][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15394][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15402][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15413][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15414][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:08
+[ 15429][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:a0
+[ 15438][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15445][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15458][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:4c
+[ 15467][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:38
+[ 15476][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:30
+[ 15485][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15493][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15504][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15511][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15522][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15530][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15539][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:a4
+[ 15550][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15553][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15566][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15571][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:b0
+[ 15586][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15594][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15598][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8b:50
+[ 15614][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:34
+[ 15623][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:20
+[ 15631][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15639][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15641][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:38
+[ 15659][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:34
+[ 15668][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15670][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15685][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:a8
+[ 15694][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:ac
+[ 15703][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15714][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15722][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15733][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15741][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15744][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15760][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:74
+[ 15769][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:3c
+[ 15778][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15786][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15797][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15805][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15816][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15824][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15835][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15842][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15846][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15862][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:9c
+[ 15871][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:3c
+[ 15880][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:20
+[ 15889][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15897][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15908][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15909][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:b4
+[ 15925][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:00
+[ 15933][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:8c
+[ 15942][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15944][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 15962][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15970][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 15980][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:80
+[ 15990][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 15993][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:74
+[ 16007][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16018][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16026][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16027][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:20
+[ 16046][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:94
+[ 16055][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16046][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16072][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16082][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16090][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16092][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:f8
+[ 16110][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16114][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:78
+[ 16127][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16137][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16145][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16146][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16165][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:94
+[ 16174][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16178][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:2c
+[ 16192][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16203][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16207][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:1c
+[ 16219][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16230][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16238][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16248][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16258][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:b4
+[ 16267][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16274][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16285][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16293][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already [ 16294][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:00
+[ 16310][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:50
+running, ignoring address message.
+[ 16322][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16330][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16334][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:e8
+[ 16350][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16355][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16366][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16377][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16385][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16396][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16404][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16412][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:a0
+[ 16423][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:08
+[ 16432][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16440][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16446][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:4c
+[ 16460][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:38
+[ 16468][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16477][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16485][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16496][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16504][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16515][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16523][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16533][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16534][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:a4
+[ 16550][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16556][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16570][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16576][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:b0
+[ 16586][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16597][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16600][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8b:50
+[ 16614][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:34
+[ 16622][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:20
+[ 16631][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16639][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:38
+[ 16651][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16658][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:34
+[ 16668][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16676][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16687][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16691][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:ac
+[ 16704][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16715][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16723][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16734][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16742][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16747][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16762][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:74
+[ 16770][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:3c
+[ 16780][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16787][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16798][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16806][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16817][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16825][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16836][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16843][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16848][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:9c
+[ 16863][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:3c
+[ 16872][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16881][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:20
+[ 16890][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16898][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16909][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16911][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:b4
+[ 16925][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:00
+[ 16934][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:8c
+[ 16943][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16945][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 16963][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16971][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 16980][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:80
+[ 16991][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 16992][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:74
+[ 17007][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17018][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17026][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17027][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:20
+[ 17046][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17049][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17063][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17074][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17081][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17092][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17098][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:f8
+[ 17109][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17114][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:78
+[ 17128][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17133][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:80
+[ 17145][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:14
+[ 17154][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17157][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17174][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17177][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:90:3a:90
+[ 17191][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17202][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17206][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:1c
+[ 17219][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17223][I][main.cpp:89] loop(): [TICK] Tick HOST ADDRESS34, 0x85, 0x18, 0x8f, 0xbf, 0xb8
+[ 17238][I][main.[c p1p7:29308]] [lIo]o[pM(e)s:s a[gTeIHCaKn]d lTeirc_kmsa sutnetri.lc pepn:d5:4 ]0 h
+andleReceive(): [MSG] Received from queue 1
+[ 17244][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17259][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:b4
+[ 17259][I][main.cpp:91] loop(): [] Battery: 88.26%
+[ 17274][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17285][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17293][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17294][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:00
+[ 17313][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17320][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:40
+[ 17329][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17340][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17348][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17350][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17368][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17376][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17386][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17394][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17405][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17410][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:a0
+[ 17422][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:08
+[ 17431][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17442][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17445][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17459][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:4c
+[ 17467][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:38
+[ 17476][I][MessageHandler_master.cpp:95] handleReceive(): [MSG][ 17477][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:30
+ Timer sync task already running, ignoring address message.
+[ 17496][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17504][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17515][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17522][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17533][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17535][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:a4
+[ 17550][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17551][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17569][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17577][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17582][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:b0
+[ 17597][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17598][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8b:50
+[ 17614][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:34
+[ 17623][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:20
+[ 17632][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17643][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17645][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17660][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:34
+[ 17669][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17680][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17681][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:a8
+[ 17697][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17708][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17715][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17726][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17734][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17744][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17754][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:74
+[ 17763][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:3c
+[ 17772][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17780][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17790][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17798][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17809][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17817][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17828][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17836][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17847][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17852][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17863][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:9c
+[ 17872][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:3c
+[ 17881][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:20
+[ 17890][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17901][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17909][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:b4
+[ 17918][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:00
+[ 17927][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:8c
+[ 17936][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17945][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 17956][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17963][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17974][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 17982][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 17989][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:80
+[ 18002][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:e4
+[ 18011][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18014][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:f8
+[ 18028][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18039][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18043][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:f4
+[ 18055][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18064][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18075][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18083][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18094][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18095][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:f8
+[ 18110][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18114][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:78
+[ 18130][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18133][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:80
+[ 18147][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18149][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18167][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18172][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8a:f8
+[ 18184][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18195][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18203][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18211][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:1c
+[ 18222][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18224][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:28
+[ 18239][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18250][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18252][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:b4
+[ 18267][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18275][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18286][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18294][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18296][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:00
+[ 18314][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18319][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:40
+[ 18331][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18342][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18344][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18358][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18369][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18377][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18388][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18395][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18406][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18410][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:a0
+[ 18423][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:08
+[ 18432][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18443][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18446][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18459][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:4c
+[ 18468][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:38
+[ 18477][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:30
+[ 18486][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18497][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18505][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18516][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18523][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18534][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18538][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:a4
+[ 18551][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18553][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18571][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:b0
+[ 18580][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18588][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18599][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18600][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8b:50
+[ 18615][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:34
+[ 18624][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:20
+[ 18633][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18644][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18654][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18662][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18673][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18680][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18681][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:a8
+[ 18700][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:ac
+[ 18709][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18717][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18728][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18736][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18745][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18755][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:74
+[ 18764][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:3c
+[ 18774][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18781][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18792][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18800][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18811][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18819][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18830][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18838][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18845][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18857][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:9c
+[ 18866][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:3c
+[ 18875][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:20
+[ 18884][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18892][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18903][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18910][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:b4
+[ 18920][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f9:00
+[ 18929][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:8c
+[ 18937][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18945][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 18957][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18965][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 18976][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 18978][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c1:80
+[ 18992][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:e4
+[ 19002][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19013][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19014][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 3 from 34:85:18:8e:f9:2c
+[ 19029][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19031][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 4 from 34:85:18:8e:f9:2c
+[ 19050][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19051][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 19066][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19077][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19085][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19096][I][MessageHandler_master.cpp:54] handleReceive(): [MSG][ 19097][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8e:f8:f8
+ Received from queue 1
+[ 19113][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19115][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:78
+[ 19132][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19137][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:95:ea:80
+[ 19149][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19151][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 19170][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19173][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:8a:f8
+[ 19186][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19197][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19205][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19216][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19217][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:1c
+[ 19233][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:28
+[ 19241][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19245][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 19262][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19266][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:bf:bc
+[ 19278][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19289][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19294][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:00
+[ 19306][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19317][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19321][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 1 from 34:85:18:8f:c0:40
+[ 19334][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19345][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8e:f9:2c
+[ 19353][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 3
+[ 19361][I][MessageHandler_master.cpp:107] handleReceive(): [MSG] Received got timer message
+[ 19426][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 0 with address 34:85:18:8f:c1:18
+[ 19439][I][MessageHandler_timer.cpp:200] runTimerSync(): [ESP-NOW] Peer does not exist, can't delete
+[ 19442][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Time[ 19488][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+r sync finished for index 4 with address 34:85:18:8e:f9:2c
+[ 19501][I][MessageHandler_timer.cpp:98] runAllTimerSyncWrapper(): [TIMER] Syncing index 1
+[ 19548][I][MessageHandler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 1 with address 34:85:18:8f:bf:fc
+[ 19734][I][MessageHandler_master.cpp:319] sendSystemStatus(): [MSG] Sending system status message with 1 devices
+[ 19744][I][MessageHandler.cpp:69] pushToSendQueue(): [MSG] Pushing to send queue
+[ 19751][I][WebServer.cpp:321] jsonFromAddress(): [WEB] Active Status 0
+[ 19753][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to ff:ff:ff:ff:ff:ff
+[ 19768][I][WebServer.cpp:303] updateAddress(): [WEB] Address Update: {"id":"0","address":"34:85:18:8f:c1:18","status":"active","batteryPercentage":"81.84", "distance":"0.00", "xpos":"0.00", "ypos":"0.00", "lastUpdateTime":"19369", "timerOffset":"0", "delay":"3265"}
+[ 19791][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 4
+[ 19799][I][MessageHandler_master.cpp:131] handleReceive(): [MSG] Updating address 4
+[ 19807][I][WebServer.cpp:321] jsonFromAddress(): [WEB] Active Status 1
+[ 19814][I][WebServer.cpp:303] updateAddress(): [WEB] Address Update: {"id":"4","address":"34:85:18:8e:f9:2c","status":"inactive","batteryPercentage":"81.96", "distance":"0.00", "xpos":"0.00", "ypos":"0.00", "lastUpdateTime":"19799", "timerOffset":"0", "delay":"0"}
+[ 19837][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19845][I][LedHandler_gettersSetters.cpp:180] setNumDevices(): [LED] Setting number of devices: 6
+[ 19853][I][MessageHandler_master.cpp:100] handleReceive(): [MSG] Address from index 5, total 1
+[ 19862][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19862][I][MessageHandler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 5 with address 34:85:18:8e:f8:f8
+[ 19878][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 19890][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19901][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19909][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19920][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19928][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19939][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19947][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19958][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19965][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 19968][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 19986][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 19993][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 20004][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 20012][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 20023][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 1
+[ 20031][I][MessageHandler_master.cpp:95] handleReceive(): [MSG] Timer sync task already running, ignoring address message.
+[ 20064][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20164][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20264][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20364][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20464][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20564][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20665][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20771][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20866][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 20965][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 21064][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 21154][D][MessageHandler_master.cpp:298] onDataRecv(): [MSG] Recv type 3 from 34:85:18:8e:f8:f8
+[ 21163][I][MessageHandler_master.cpp:54] handleReceive(): [MSG] Received from queue 3
+[ 21165][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to 34:85:18:8f:bf:fc
+[ 21180][I][MessageHandler_master.cpp:107] handleReceive(): [MSG] Received got timer message
+[ 21189][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 5 with address 34:85:18:8e:f8:f8
+[ 21201][I][MessageHandler_timer.cpp:200] runTimerSync(): [ESP-NOW] Peer does not exist, can't delete
+[ 21210][I][MessageHandler_helpers.cpp:97] removePeer(): [peer] peer does not exist
+[ 21262][I][MessageHandler_timer.cpp:198] runTimerSync(): [TIMER] Timer sync finished for index 1 with address 34:85:18:8f:bf:fc
+[ 21311][I][MessageHandler_timer.cpp:98] runAllTimerSyncWrapper(): [TIMER] Syncing index 2
+[ 21320][I][MessageHandler_timer.cpp:158] runTimerSync(): [TIMER] Starting timer sync for index 2 with address 34:85:18:95:eb:20
+[ 21607][I][MessageHandler_master.cpp:319] sendSystemStatus(): [MSG] Sending system status message with 3 devices
+[ 21618][I][MessageHandler.cpp:69] pushToSendQueue(): [MSG] Pushing to send queue
+[ 21625][I][WebServer.cpp:321] jsonFromAddress(): [WEB] Active Status 0
+[ 21627][I][MessageHandler_master.cpp:250] onDataSent(): [MSG] Message sent to ff:ff:ff:ff:ff:ff
+[ 21641][I][WebServer.cpp:303] updateAddress(): [WEB] Address Update: {"id":"5","address":"34:85:18:8e:f8:f8","status":"active","batteryPercentage":"70.72", "distance":"0.00", "xpos":"0.00", "ypos":"0.00", "lastUpdateTime":"21189", "timerOffset":"0", "delay":"2567"}
+[ 23274][I][main.cpp:89] loop(): [TICK] Tick HOST ADDRESS34, 0x85, 0x18, 0x8f, 0xbf, 0xb8
+[ 23282][I][main.cpp:90] loop(): [TICK] Ticks until end: 0
+[ 23288][I][main.cpp:91] loop(): [] Battery: 88.76%

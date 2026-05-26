@@ -21,8 +21,8 @@ const float maxPitch = 1000.0;
 uint8_t hueStart = 22; // warm orange (candle)
 uint8_t hueEnd = 8; 
 uint8_t hue;
-const float minRms = 0.008;
-const float maxRms = 1.0;
+const float minDb = -38.0;
+const float maxDb = -20.0;  // loud
 int minVal = 0;
 int maxVal = 255;
 int minSat = 127;
@@ -62,7 +62,7 @@ void onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int 
         message_data midiParamsData;
         memcpy(&midiParamsData, incomingData, sizeof(message_data));
         memcpy (&midiParams, &midiParamsData.payload.midiParams, sizeof(message_midi_params));
-        ESP_LOGI("MIDI", "Received MIDI params: minVal=%d, maxVal=%d, minSat=%d, maxSat=%d, hue=%d, rangeMin=%d, rangeMax=%d, minRms=%.2f, maxRms=%.2f, mode=%d",
+        ESP_LOGI("MIDI", "Received MIDI params: minVal=%d, maxVal=%d, minSat=%d, maxSat=%d, hue=%d, rangeMin=%d, rangeMax=%d, minDb=%.2f, maxDb=%.2f, mode=%d",
                  midiParams.valMin, midiParams.valMax, midiParams.satMin, midiParams.satMax, midiParams.hue,  midiParams.rangeMin, midiParams.rangeMax, midiParams.rmsMin, midiParams.rmsMax, midiParams.mode);
         if (midiParams.mode == FREQUENCY_MODE) {
              messageData.payload.animation.animationType = BACKGROUND_SHIMMER;
@@ -72,7 +72,7 @@ void onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int 
     }
 }
 
-void outputMidi(float pitch, float rms) {
+void outputMidi(float pitch, float db) {
     static int lastMidiNote = -1;
     if (pitch <= 0) return;
 
@@ -88,21 +88,22 @@ void outputMidi(float pitch, float rms) {
     // Convert pitch to MIDI note number
     int midiNote = round(69 + 12 * log2(pitch / 440.0));
     if (midiNote < 0) midiNote = 0;
-    if (midiNote > 127) midiNote = 127; 
+    if (midiNote > 127) midiNote = 127;
 
     // Only send if note changed
     if (midiNote != lastMidiNote) {
         lastMidiNote = midiNote;
 
-        // Map rms to velocity (0–127)
-
+        // Map db to velocity (0–127)
+        float minDbParam = midiParams.rmsMin != 0.0 ? midiParams.rmsMin : minDb;
+        float maxDbParam = midiParams.rmsMax != 0.0 ? midiParams.rmsMax : maxDb;
         uint8_t velocity = 0;
-        if (rms <= minRms) {
+        if (db <= minDbParam) {
             velocity = 0;
-        } else if (rms >= maxRms) {
+        } else if (db >= maxDbParam) {
             velocity = 127;
         } else {
-            velocity = (uint8_t)(127.0 * (rms - minRms) / (maxRms - minRms));
+            velocity = (uint8_t)(127.0 * (db - minDbParam) / (maxDbParam - minDbParam));
         }
 
         messageData.payload.animation.animationType = MIDI;
@@ -115,20 +116,16 @@ void outputMidi(float pitch, float rms) {
         ESP_LOGI("MIDI", "MIDI note: %d, velocity: %d", midiNote, velocity);
     }
 }
-void outputFrequency(float pitch, float rms) {
+void outputFrequency(float pitch, float db) {
     // Use midiParams for dynamic mapping
     float minPitchParam = midiParams.rangeMin > 0 ? midiParams.rangeMin : minPitch;
     float maxPitchParam = midiParams.rangeMax > 0 ? midiParams.rangeMax : maxPitch;
-  // redder orange — higher pitch moves marginally toward red
     int valMin = midiParams.valMin > 0 ? midiParams.valMin : minVal;
     int valMax = midiParams.valMax > 0 ? midiParams.valMax : maxVal;
-    int satMin = midiParams.satMin > 0 ? midiParams.satMin : minSat;
-    int satMax = midiParams.satMax > 0 ? midiParams.satMax : maxSat;
-    float minRmsParam = midiParams.rmsMin > 0.0 ? midiParams.rmsMin : minRms;
-    float maxRmsParam = midiParams.rmsMax > 0.0 ? midiParams.rmsMax : maxRms;
+    float minDbParam = midiParams.rmsMin != 0.0 ? midiParams.rmsMin : minDb;
+    float maxDbParam = midiParams.rmsMax != 0.0 ? midiParams.rmsMax : maxDb;
 
-
-    if (rms < minRmsParam) {
+    if (db < minDbParam) {
         if (shimmerOn) {
             shimmerOn = false;
             messageData.payload.animation.animationParams.backgroundShimmer.hue = hueStart;
@@ -181,13 +178,13 @@ void outputFrequency(float pitch, float rms) {
     messageData.payload.animation.animationParams.backgroundShimmer.saturation = saturation;
     ESP_LOGI("MIDI", "Pitch updated: %f, Hue updated: %d, scale: %f, minPitch: %f, maxPitch: %f", pitch, hue, scale, minPitchParam, maxPitchParam);
 
-    // Map rms to value using continuous mapping; clamp rms to [minRmsParam, maxRmsParam]
+    // Map db to value using continuous mapping; clamp db to [minDbParam, maxDbParam]
     {
-        const float denom = (maxRmsParam - minRmsParam);
-        float rClamped = rms;
-        if (rClamped < minRmsParam) rClamped = minRmsParam;
-        if (rClamped > maxRmsParam) rClamped = maxRmsParam;
-        float norm = (denom > 0.0f) ? (rClamped - minRmsParam) / denom : 0.0f;
+        const float denom = (maxDbParam - minDbParam);
+        float rClamped = db;
+        if (rClamped < minDbParam) rClamped = minDbParam;
+        if (rClamped > maxDbParam) rClamped = maxDbParam;
+        float norm = (denom > 0.0f) ? (rClamped - minDbParam) / denom : 0.0f;
         float valF = valMin + norm * (valMax - valMin);
         value = (uint8_t)(valF + 0.5f); // round to nearest 0..255
     }
@@ -231,15 +228,15 @@ void outputMidi(float pitch, float rms) {
         lastMidiNote = midiNote;
 
         // Map rms to velocity (0–127)
-        const float minRms = 0.5;
+        const float minDb = 0.5;
         const float maxRms = 8.0;
         uint8_t velocity = 0;
-        if (rms <= minRms) {
+        if (rms <= minDb) {
             velocity = 0;
         } else if (rms >= maxRms) {
             velocity = 127;
         } else {
-            velocity = (uint8_t)(127.0 * (rms - minRms) / (maxRms - minRms));
+            velocity = (uint8_t)(127.0 * (rms - minDb) / (maxRms - minDb));
         }
 
         messageData.payload.animation.animationType = MIDI;
@@ -282,7 +279,6 @@ void setup() {
   Serial.begin(115200); // Native USB CDC or UART0 (GPIO 43/44)
   //Serial1.begin(115200, SERIAL_8N1, RX_PIN, TX_PIN); // UART1 on GPIO 17/18
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     while (true) delay(1000);
@@ -303,8 +299,8 @@ void setup() {
     }
     lastTick = millis();
     rgbLedWrite(RGB_BUILTIN, 0, 0, 0);  // Off / black
-    midiParams.rmsMin = minRms;
-    midiParams.rmsMax = maxRms;
+    midiParams.rmsMin = minDb;
+    midiParams.rmsMax = maxDb;
     midiParams.valMin = minVal;
     midiParams.valMax = maxVal;
     midiParams.satMin = minSat;
@@ -334,32 +330,34 @@ void loop() {
     ESP_LOGI("MAC", "Device MAC: %02X:%02X:%02X:%02X:%02X:%02X",
              address[0], address[1], address[2], address[3], address[4], address[5]);
     lastTick = millis();
-    ESP_LOGI("MIDI", "MIDI params: minVal=%d, maxVal=%d, minSat=%d, maxSat=%d, rangeMin=%d, rangeMax=%d, minRms=%.2f, maxRms=%.2f, mode=%d",
+    ESP_LOGI("MIDI", "MIDI params: minVal=%d, maxVal=%d, minSat=%d, maxSat=%d, rangeMin=%d, rangeMax=%d, minDb=%.2f, maxDb=%.2f, mode=%d",
              midiParams.valMin, midiParams.valMax, midiParams.satMin, midiParams.satMax, midiParams.rangeMin, midiParams.rangeMax, midiParams.rmsMin, midiParams.rmsMax, midiParams.mode);
              
  }
   if (Serial.available() ) {
      String line = Serial.readStringUntil('\n');
-    //ESP_LOGV("Serial", "Received line: %s", line.c_str());
     line.trim();
     if (line.length() == 0) return;
 
-    // Parse CSV: counter,elapsed_ms,pitch,rms
+    // Parse CSV: pitch,db,vol
     int firstComma = line.indexOf(',');
 
-
-    if (firstComma > 0 ) {
-      // Extract values
-      String pitchStr = line.substring(0, firstComma);
-      String rmsStr = line.substring(firstComma + 1);
-      float pitch = pitchStr.toFloat();
-      float rms = rmsStr.toFloat();
+    if (line == "STARTED") {
+      for (int i = 0; i < 3; i++) {
+        writeLeds(CRGB(0, 80, 0));
+        delay(300);
+        writeLeds(CRGB(0, 0, 0));
+        delay(300);
+      }
+    } else if (firstComma > 0) {
+      int secondComma = line.indexOf(',', firstComma + 1);
+      float pitch = line.substring(0, firstComma).toFloat();
+      float db = line.substring(firstComma + 1, secondComma).toFloat();
       if (midiParams.mode == FREQUENCY_MODE) {
-        outputFrequency(pitch, rms);
+        outputFrequency(pitch, db);
       } else if (midiParams.mode == MIDI_MODE) {
-        outputMidi(pitch, rms);
-        // Convert pitch to MIDI note
-      }  
+        outputMidi(pitch, db);
+      }
     }
     }
 

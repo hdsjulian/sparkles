@@ -167,6 +167,9 @@ void WebServer::configRoutes() {
       this->setWakeupTime(request);
       request->send(200, "text/html", "Good morning command received");
     });
+    server.on("/getSystemInfo", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      this->getSystemInfo(request);
+    });
     //get all addresses
     server.on("/getAddressList", HTTP_GET, [this] (AsyncWebServerRequest *request){
       this->getAddressList(request);
@@ -176,6 +179,16 @@ void WebServer::configRoutes() {
       messageHandlerInstance->setTestMode(newState);
       request->send(200, "application/json",
         newState ? "{\"testMode\":true}" : "{\"testMode\":false}");
+    });
+    server.on("/toggleLogging", HTTP_GET, [] (AsyncWebServerRequest *request){
+      extern bool g_loggingEnabled;
+      g_loggingEnabled = !g_loggingEnabled;
+      request->send(200, "application/json",
+        g_loggingEnabled ? "{\"logging\":true}" : "{\"logging\":false}");
+    });
+    server.on("/reannounce", HTTP_GET, [this] (AsyncWebServerRequest *request){
+      messageHandlerInstance->broadcastReannounce();
+      request->send(200, "text/html", "Reannounce broadcast sent");
     });
     server.on("/resetSystem", HTTP_GET, [this] (AsyncWebServerRequest *request){
       ESP_LOGI("WEB", "Resetting system");
@@ -207,16 +220,17 @@ void WebServer::serveOnNotFound(AsyncWebServerRequest *request) {
 }
 
 void WebServer::commandAnimate(AsyncWebServerRequest *request) {
-  String jsonString;
-  message_animation animation;
-  if (request->hasParam("brightness")) {
-    int brightness = request->getParam("brightness")->value().toInt();
-    animation.animationParams.strobe.brightness = brightness/255.0f;
+  bool running = messageHandlerInstance->isAnimationLoopRunning();
+  if (running) {
+    messageHandlerInstance->stopAllAnimations();
+  } else {
+    messageHandlerInstance->startAnimationLoopTask();
   }
-
-  jsonString = "{\"status\" : \"true\"}";
-  request->send(200, "text/html", "{\"status\" : \"true\"}");
-  }
+  bool nowRunning = messageHandlerInstance->isAnimationLoopRunning();
+  String status = nowRunning ? "{\"status\":\"true\"}" : "{\"status\":\"false\"}";
+  events.send(status.c_str(), "animateStatus");
+  request->send(200, "application/json", status);
+}
 
 
 void WebServer::commandSyncAll(AsyncWebServerRequest *request) {
@@ -338,7 +352,7 @@ void WebServer::commandBlink(AsyncWebServerRequest *request) {
   }
   int boardId = request->getParam("boardId")->value().toInt();
   message_animation animation;
-  animation.animationType = BATTERY_BLINK;
+  animation.animationType = BLINK;
   animation.animationParams.blink.brightness = 255;
   animation.animationParams.blink.duration = 500;
   animation.animationParams.blink.repetitions = 3;
@@ -493,7 +507,7 @@ void WebServer::clapReceivedClient(int clapId, int boardId, float clapDistance) 
 
 void WebServer::setMidiParams(AsyncWebServerRequest *request) {
   // Check for all required parameters
-  const char* requiredParams[] = {"minVal", "maxVal", "minSat", "maxSat", "midiHue", "midiSaturation", "rangeMin", "rangeMax", "minRms", "maxRms", "mode"};
+  const char* requiredParams[] = {"minVal", "maxVal", "minSat", "maxSat", "midiHue", "midiSaturation", "rangeMin", "rangeMax", "minDb", "maxDb", "mode"};
   for (int i = 0; i < 11; ++i) {
     if (!request->hasParam(requiredParams[i])) {
       String msg = "Missing parameter: ";
@@ -513,8 +527,8 @@ void WebServer::setMidiParams(AsyncWebServerRequest *request) {
   int saturation = request->getParam("midiSaturation")->value().toInt();
   int rangeMin = request->getParam("rangeMin")->value().toInt();
   int rangeMax = request->getParam("rangeMax")->value().toInt();
-  float rmsMin = request->getParam("minRms")->value().toFloat();
-  float rmsMax = request->getParam("maxRms")->value().toFloat();
+  float rmsMin = request->getParam("minDb")->value().toFloat();
+  float rmsMax = request->getParam("maxDb")->value().toFloat();
   int mode = request->getParam("mode")->value().toInt();
   int distance = request->hasParam("distance") ? request->getParam("distance")->value().toInt() : 100; // default to 100 if not provided
   bool distanceSwitch = request->hasParam("distanceSwitch") ? (request->getParam("distanceSwitch")->value() == "1" || request->getParam("distanceSwitch")->value() == "true") : false;
@@ -522,6 +536,40 @@ void WebServer::setMidiParams(AsyncWebServerRequest *request) {
   ESP_LOGI("WEB", "Set Midi Params minSat %d, maxSat %d, hue %d, saturation %d, rangeMin %d, rangeMax %d, mode %d", minSat, maxSat, hue, saturation, rangeMin, rangeMax, mode);
   messageHandlerInstance->setMidiParams(minVal, maxVal, minSat, maxSat, hue, saturation, rangeMin, rangeMax, rmsMin, rmsMax, mode, distance, distanceSwitch, distanceMode);
   request->send(200, "text/html", "MIDI parameters set");
+}
+
+void WebServer::getSystemInfo(AsyncWebServerRequest *request) {
+  struct tm timeinfo;
+  char timeBuf[32] = "not set";
+  if (getLocalTime(&timeinfo)) {
+    snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  }
+  unsigned long sleepDuration = messageHandlerInstance->getSleepDuration() / 1000; // ms -> s
+  bool sleepSet = messageHandlerInstance->isSleepSet();
+  unsigned long sleepInSecs = messageHandlerInstance->getSleepTime() / 1000;
+  // sleep time of day comes from the stored hours/minutes/seconds via setSleepTime
+  // re-derive from getSleepTime: compute absolute target by adding sleepInSecs to now
+  int sleepAtH = -1, sleepAtM = -1, sleepAtS = -1;
+  if (sleepSet && getLocalTime(&timeinfo)) {
+    time_t now;
+    time(&now);
+    time_t sleepAt = now + sleepInSecs;
+    struct tm* sat = localtime(&sleepAt);
+    sleepAtH = sat->tm_hour;
+    sleepAtM = sat->tm_min;
+    sleepAtS = sat->tm_sec;
+  }
+
+  String json = "{";
+  json += "\"systemTime\":\""; json += timeBuf; json += "\"";
+  json += ",\"sleepSet\":"; json += sleepSet ? "true" : "false";
+  json += ",\"sleepIn\":"; json += String(sleepInSecs);
+  json += ",\"sleepAtH\":"; json += String(sleepAtH);
+  json += ",\"sleepAtM\":"; json += String(sleepAtM);
+  json += ",\"sleepAtS\":"; json += String(sleepAtS);
+  json += ",\"sleepDuration\":"; json += String(sleepDuration);
+  json += "}";
+  request->send(200, "application/json", json);
 }
 
 void WebServer::getMidiParams(AsyncWebServerRequest *request) {
@@ -543,9 +591,9 @@ void WebServer::getMidiParams(AsyncWebServerRequest *request) {
   jsonString += String(midiParams.rangeMin);
   jsonString += ",\"rangeMax\":";
   jsonString += String(midiParams.rangeMax);
-  jsonString += ",\"minRms\":";
+  jsonString += ",\"minDb\":";
   jsonString += String(midiParams.rmsMin, 2);
-  jsonString += ",\"maxRms\":";
+  jsonString += ",\"maxDb\":";
   jsonString += String(midiParams.rmsMax, 2);
   jsonString += ",\"distance\":";
   jsonString += String(midiParams.distance);

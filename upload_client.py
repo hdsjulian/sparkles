@@ -2,6 +2,7 @@ import subprocess
 import threading
 import time
 import os
+import signal
 import argparse
 
 PORTS = [
@@ -10,7 +11,12 @@ PORTS = [
     "/dev/tty.usbmodem11301"
 ]
 
-VALID_ENVS = ["Master_Device", "Client_Device", "Clap_Device", "Raspi-Device", "Test_Device"]
+# ANSI colors per port index
+PORT_COLORS = ["\033[92m", "\033[96m", "\033[95m"]  # green, cyan, magenta
+RESET = "\033[0m"
+BOLD  = "\033[1m"
+
+VALID_ENVS = ["Master_Device", "Client_Device", "Clap_Device", "Raspi-Device", "Test_Device", "Log_Device"]
 
 
 def build_firmware(env):
@@ -22,7 +28,7 @@ def build_firmware(env):
     print("Build complete.")
 
 
-def monitor_and_upload(port, env):
+def monitor_and_upload(port, env, color):
     last_connected = False
     while True:
         connected = os.path.exists(port)
@@ -32,28 +38,7 @@ def monitor_and_upload(port, env):
                 "pio", "run", "-e", env, "-t", "upload", "--upload-port", port
             ], capture_output=True, text=True)
             if upload.returncode == 0:
-                print(f"Upload complete, monitoring for battery info on {port}...")
-                monitor_cmd = ["pio", "device", "monitor", "--port", port, "--baud", "115200"]
-                try:
-                    with subprocess.Popen(monitor_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
-                        battery_line = None
-                        start_time = time.time()
-                        while True:
-                            line = proc.stdout.readline()
-                            if not line:
-                                break
-                            if "Battery:" in line:
-                                battery_line = line.strip()
-                                print(f"{port} {battery_line}")
-                                break
-                            if time.time() - start_time > 15:
-                                break
-                        proc.terminate()
-                        if not battery_line:
-                            print(f"{port} Battery info not found.")
-                except Exception as e:
-                    print(f"Error monitoring device on {port}: {e}")
-                print(f"Done: {port}")
+                print(f"{color}{BOLD}✔ DONE: {port}{RESET}")
             else:
                 print(f"Upload failed on {port}:\n", upload.stdout, upload.stderr)
             while os.path.exists(port):
@@ -67,15 +52,19 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--device", required=True,
                         choices=VALID_ENVS,
                         help=f"PlatformIO environment to build and upload ({', '.join(VALID_ENVS)})")
+    parser.add_argument("--no-compile", action="store_true",
+                        help="Skip the build step and upload existing firmware")
     args = parser.parse_args()
 
-    build_firmware(args.device)
+    if not args.no_compile:
+        build_firmware(args.device)
 
     threads = []
-    for port in PORTS:
-        t = threading.Thread(target=monitor_and_upload, args=(port, args.device), daemon=True)
+    for i, port in enumerate(PORTS):
+        color = PORT_COLORS[i % len(PORT_COLORS)]
+        t = threading.Thread(target=monitor_and_upload, args=(port, args.device, color), daemon=True)
         t.start()
         threads.append(t)
-    print(f"Monitoring ports for {args.device}. Plug in devices to upload firmware.")
-    while True:
-        time.sleep(1)
+    print(f"Monitoring ports for {args.device}. Plug in devices to upload firmware. Press Enter to exit.")
+    input()
+    os._exit(0)

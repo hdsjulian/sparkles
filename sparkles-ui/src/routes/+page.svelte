@@ -1,0 +1,146 @@
+<script>
+  import { onMount } from 'svelte';
+  import { devices, animating, numDevices, syncStatus, animateStatus } from '$lib/stores.js';
+  import {
+    getAddressList,
+    commandSyncAll,
+    commandBlinkAll,
+    commandAnimate,
+    commandAnimationOff
+  } from '$lib/api.js';
+  import DeviceCard from '$lib/components/DeviceCard.svelte';
+
+  let error = '';
+  let actionMsg = '';
+
+  onMount(async () => {
+    try {
+      const list = await getAddressList();
+      devices.update(map => {
+        const next = new Map(map);
+        list.forEach(d => next.set(d.boardId, d));
+        return next;
+      });
+    } catch (e) {
+      error = `Failed to load devices: ${e.message}`;
+    }
+  });
+
+  async function handleSyncAll() {
+    error = '';
+    try {
+      await commandSyncAll();
+      actionMsg = 'Sync All sent';
+      setTimeout(() => { actionMsg = ''; }, 2000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleBlinkAll() {
+    error = '';
+    try {
+      await commandBlinkAll();
+      actionMsg = 'Blink All sent';
+      setTimeout(() => { actionMsg = ''; }, 2000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleAnimate() {
+    error = '';
+    try {
+      const result = await commandAnimate();
+      animating.set(true);
+      actionMsg = `Animate: ${result.status ?? 'started'}`;
+      setTimeout(() => { actionMsg = ''; }, 3000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleAnimationOff() {
+    error = '';
+    try {
+      await commandAnimationOff();
+      animating.set(false);
+      actionMsg = 'Animation stopped';
+      setTimeout(() => { actionMsg = ''; }, 2000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  $: deviceList = Array.from($devices.values());
+</script>
+
+<div class="page-content">
+  <h1 class="page-title">Dashboard</h1>
+
+  <!-- Status row -->
+  <div class="status-row">
+    <div class="card stat-card">
+      <div class="card-title">Devices</div>
+      <div class="devicenum">{$numDevices || deviceList.length}</div>
+    </div>
+    <div class="card stat-card">
+      <div class="card-title">Sync Status</div>
+      <div class="reading" style="font-size:1.1rem;">{$syncStatus || '—'}</div>
+    </div>
+    <div class="card stat-card">
+      <div class="card-title">Animation</div>
+      <div class="reading" style="font-size:1.1rem; color: {$animating ? 'var(--color-ok)' : 'var(--color-text-muted)'}">
+        {$animating ? 'Running' : 'Off'}
+      </div>
+    </div>
+  </div>
+
+  <!-- Global actions -->
+  <div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-title">Global Commands</div>
+    {#if error}
+      <div class="status-msg error">{error}</div>
+    {/if}
+    {#if actionMsg}
+      <div class="status-msg success">{actionMsg}</div>
+    {/if}
+    <div class="btn-row">
+      <button class="btn btn-secondary" on:click={handleSyncAll}>⟳ Sync All</button>
+      <button class="btn btn-ghost" on:click={handleBlinkAll}>⚡ Blink All</button>
+      <button class="btn btn-primary" on:click={handleAnimate} disabled={$animating}>▶ Animate</button>
+      <button class="btn btn-ghost" on:click={handleAnimationOff} disabled={!$animating}>■ Stop Animation</button>
+    </div>
+  </div>
+
+  <!-- Device grid -->
+  <h2 style="font-size:1rem; color:var(--color-text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">
+    Devices ({deviceList.length})
+  </h2>
+
+  {#if deviceList.length === 0}
+    <div class="card" style="text-align:center; color:var(--color-text-muted); padding:2rem;">
+      No devices discovered yet. Waiting for SSE events...
+    </div>
+  {:else}
+    <div class="card-grid">
+      {#each deviceList as device (device.boardId)}
+        <DeviceCard {device} />
+      {/each}
+    </div>
+  {/if}
+</div>
+
+<style>
+  .status-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .stat-card {
+    flex: 1;
+    min-width: 140px;
+  }
+</style>

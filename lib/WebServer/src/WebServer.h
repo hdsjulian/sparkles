@@ -62,6 +62,7 @@ class WebServer {
         void factoryReset(AsyncWebServerRequest *request);
         void setMidiParams(AsyncWebServerRequest *request);
         void getMidiParams(AsyncWebServerRequest *request);
+        void getSystemInfo(AsyncWebServerRequest *request);
         void getDarkroomParams(AsyncWebServerRequest *request);
         void setDarkroomParams(AsyncWebServerRequest *request);
         void setSleepTime(AsyncWebServerRequest *request);

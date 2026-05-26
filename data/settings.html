@@ -28,6 +28,13 @@
         </p>
       </div>
       <div class="card deviceList">
+        <h4>System Info</h4>
+        <p>Time: <span id="info_systemTime">—</span></p>
+        <p>Sleep at: <span id="info_sleepAt">—</span></p>
+        <p>Sleep in: <span id="info_sleepIn">—</span></p>
+        <p>Sleep duration: <span id="info_sleepDuration">—</span></p>
+      </div>
+      <div class="card deviceList">
         <h4><i class="fas fa-wifi"></i> NUM DEVICES</h4>
         <p>
           <span class="reading">
@@ -141,6 +148,14 @@
         <div class="card deviceList">
           <p>
               <span class="reading">
+                  <span id="toggleLogging" class="devicenum">LOGGING: OFF</span>
+              </span>
+          </p>
+        </div>
+        <div class="card deviceList">
+          <p>
+              <span class="reading">
+                  <span id="reannounce" class="devicenum">REANNOUNCE</span>
                   <span id="resetSystem" class="devicenum red-background">RESET ENTIRE SYSTEM</span>
               </span>
           </p>

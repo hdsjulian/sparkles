@@ -1,8 +1,8 @@
 // On page load, fetch current MIDI params and update UI
 
 // Handle MIDI settings submit button
-const minRMS = 0.003;
-const maxRMS = 1.0;
+const minDB = -50.0;
+const maxDB = -10.0;
 const submitMidiBtn = document.getElementById('submit_settingsMidi');
 if (submitMidiBtn) {
   submitMidiBtn.onclick = function() {
@@ -51,13 +51,13 @@ if (submitMidiBtn) {
           rangeMin = rangeMax = range;
         }
       }
-      // Get RMS
+      // Get dB
       const midiRmsSlider = document.getElementById('midiRms');
-      var minRms = minRMS, maxRms = maxRMS;
+      var minDb = minDB, maxDb = maxDB;
       if (midiRmsSlider && midiRmsSlider.noUiSlider) {
-        let rmsRange = midiRmsSlider.noUiSlider.get();
-        minRms = Number(rmsRange[0]);
-        maxRms = Number(rmsRange[1]);
+        let dbRange = midiRmsSlider.noUiSlider.get();
+        minDb = Number(dbRange[0]);
+        maxDb = Number(dbRange[1]);
       }
       // Get Distance (10–100)
       let distance = undefined;
@@ -76,7 +76,7 @@ if (submitMidiBtn) {
       // Add mode (0 for midi, 1 for frequency)
       let modeNum = (typeof mode !== 'undefined' && mode === 'frequency') ? 2 : 1;
       // Build fetchUrl with RMS, distance, distanceSwitch, distanceMode, and midiHue
-      const fetchUrl = `/setMidiParams?minVal=${encodeURIComponent(minVal)}&maxVal=${encodeURIComponent(maxVal)}&minSat=${encodeURIComponent(minSat)}&maxSat=${encodeURIComponent(maxSat)}&midiSaturation=${encodeURIComponent(saturation)}&midiHue=${encodeURIComponent(midiHue)}&rangeMin=${encodeURIComponent(rangeMin)}&rangeMax=${encodeURIComponent(rangeMax)}&minRms=${encodeURIComponent(minRms)}&maxRms=${encodeURIComponent(maxRms)}${(typeof distance !== 'undefined') ? `&distance=${encodeURIComponent(distance)}` : ''}&distanceSwitch=${distanceSwitch}&distanceMode=${distanceMode}&mode=${modeNum}`;
+      const fetchUrl = `/setMidiParams?minVal=${encodeURIComponent(minVal)}&maxVal=${encodeURIComponent(maxVal)}&minSat=${encodeURIComponent(minSat)}&maxSat=${encodeURIComponent(maxSat)}&midiSaturation=${encodeURIComponent(saturation)}&midiHue=${encodeURIComponent(midiHue)}&rangeMin=${encodeURIComponent(rangeMin)}&rangeMax=${encodeURIComponent(rangeMax)}&minDb=${encodeURIComponent(minDb)}&maxDb=${encodeURIComponent(maxDb)}${(typeof distance !== 'undefined') ? `&distance=${encodeURIComponent(distance)}` : ''}&distanceSwitch=${distanceSwitch}&distanceMode=${distanceMode}&mode=${modeNum}`;
       console.log(fetchUrl);
       fetchMe(fetchUrl);
     }
@@ -394,35 +394,33 @@ fetch('/getMidiParams')
       }
     }
 
-    // Initialize midiRms slider as a range (two handles)
+    // Initialize midiRms (dB) slider as a range (two handles)
     var midiRmsSlider = document.getElementById('midiRms');
     if (window.noUiSlider && midiRmsSlider && !midiRmsSlider.noUiSlider) {
       window.noUiSlider.create(midiRmsSlider, {
-        start: [typeof data.minRms !== 'undefined' ? data.minRms : minRMS, typeof data.maxRms !== 'undefined' ? data.maxRms : maxRMS],
+        start: [typeof data.minDb !== 'undefined' ? data.minDb : minDB, typeof data.maxDb !== 'undefined' ? data.maxDb : maxDB],
         connect: true,
         range: {
-          'min': minRMS,
-          'max': maxRMS
+          'min': minDB,
+          'max': maxDB
         },
-        step: 0.001,
+        step: 0.5,
         tooltips: [true, true],
         format: {
-          to: function (value) { return parseFloat(value).toFixed(3); },
+          to: function (value) { return parseFloat(value).toFixed(1); },
           from: function (value) { return Number(value); }
         }
       });
     }
     if (midiRmsSlider && midiRmsSlider.noUiSlider) {
-      let rmsVals = midiRmsSlider.noUiSlider.get();
-      document.getElementById('midiRmsValue').textContent = `${rmsVals[0]} - ${rmsVals[1]}`;
+      let dbVals = midiRmsSlider.noUiSlider.get();
+      document.getElementById('midiRmsValue').textContent = `${dbVals[0]} - ${dbVals[1]}`;
       midiRmsSlider.noUiSlider.on('update', function(values) {
         document.getElementById('midiRmsValue').textContent = `${values[0]} - ${values[1]}`;
         midiRmsSlider.value = values;
-        console.log("Updated midiRms values:", values);
       });
       midiRmsSlider.noUiSlider.on('set', function(values) {
         midiRmsSlider.value = values;
-        console.log("Set midiRms values:", values);
       });
     }
 

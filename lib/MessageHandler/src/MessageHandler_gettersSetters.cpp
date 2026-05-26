@@ -261,7 +261,7 @@ activeStatus MessageHandler::getActiveStatus(int index) {
 }
 
 void MessageHandler::setNumDevices(int num) {
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(configMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         ledInstance->setNumDevices(num);
         numDevices = num;
         xSemaphoreGive(configMutex);
@@ -523,7 +523,7 @@ void MessageHandler::setWakeupTime(int hours, int minutes, int seconds) {
 
 unsigned long MessageHandler::getSleepTime() {
     unsigned long sleepTime;
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(configMutex, 0) == pdTRUE) {
         if (sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) {
             sleepTime = 0; // No sleep time set
             xSemaphoreGive(configMutex);
@@ -549,9 +549,14 @@ unsigned long MessageHandler::getSleepTime() {
     return sleepTime;
 }
 
+bool MessageHandler::isSleepSet() {
+    return !(sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) &&
+           !(wakeupTimeHours == 0 && wakeupTimeMinutes == 0 && wakeupTimeSeconds == 0);
+}
+
 bool MessageHandler::isInSleepPhase() {
     bool inSleep = false;
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(configMutex, 0) == pdTRUE) {
         if ((sleepTimeHours == 0 && sleepTimeMinutes == 0 && sleepTimeSeconds == 0) ||
             (wakeupTimeHours == 0 && wakeupTimeMinutes == 0 && wakeupTimeSeconds == 0)) {
             // No sleep/wakeup time set
@@ -579,7 +584,7 @@ bool MessageHandler::isInSleepPhase() {
 
 unsigned long MessageHandler::getSleepDuration() {
     unsigned long duration = 0;
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(configMutex, 0) == pdTRUE) {
         if (wakeupTimeHours == 0 && wakeupTimeMinutes == 0 && wakeupTimeSeconds == 0) {
             xSemaphoreGive(configMutex);
             return 0; // No wakeup time set
@@ -638,10 +643,8 @@ void MessageHandler::recordTimeOfDayBeforeSleep() {
 }
 
 
-void MessageHandler::setTimeOfDayAfterSleep() {
-    unsigned long long afterSleepMillis = millis();
-    unsigned long elapsedMillis = afterSleepMillis - beforeSleepMillis;
-    int elapsedSeconds = elapsedMillis / 1000;
+void MessageHandler::setTimeOfDayAfterSleep(unsigned long long sleepDurationMicros) {
+    int elapsedSeconds = (int)(sleepDurationMicros / 1000000ULL);
     int afterSleepSecondsOfDay = (beforeSleepSecondsOfDay + elapsedSeconds) % (24 * 3600);
 
     struct tm newTimeinfo = beforeSleepTimeinfo;
@@ -744,8 +747,8 @@ void MessageHandler::setLastMidiTime(unsigned long long timeStamp) {
     }
 }
 unsigned long long MessageHandler::getLastMidiTime() {
-    unsigned long long returnLastMidiTime;
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+    unsigned long long returnLastMidiTime = 0;
+    if (xSemaphoreTake(configMutex, 0) == pdTRUE) {
         returnLastMidiTime = lastMidiTime;
         xSemaphoreGive(configMutex);
     }

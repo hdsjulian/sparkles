@@ -33,7 +33,7 @@ void LedHandler::setup()
     ledcAttach(LEDPINGREEN1, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
     ledcAttach(LEDPINRED2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
     ledcAttach(LEDPINGREEN2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
-    //ledcAttach(LEDPINBLUE2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
+    ledcAttach(LEDPINBLUE2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
     
     ledsOff();
     ESP_LOGI("LED", "LED SETUP ENDED");
@@ -218,8 +218,8 @@ void LedHandler::ledTask()
                     xTaskCreatePinnedToCore(runStrobeWrapper, "runStrobe", 10000, this, 2, &animationTaskHandle, 1);
                 }
             }
-        else if (getCurrentAnimation() == BLINK)
-            {   
+        else if (getCurrentAnimation() == BLINK || getCurrentAnimation() == BATTERY_BLINK)
+            {
                 if (animationTaskHandle == NULL || eTaskGetState(animationTaskHandle) == eDeleted) {
                     xTaskCreatePinnedToCore(runBlinkWrapper, "runBlink", 10000, this, 2, &animationTaskHandle, 1);
                 }
@@ -508,20 +508,78 @@ static float applyDistanceAttenuation(float val, float d, float maxDist) {
 }
 
 void LedHandler::runBackgroundShimmer() {
-    const TickType_t frameDelay = (1000 / FPS) / portTICK_PERIOD_MS;
+    const TickType_t frameDelay      = (1000 / FPS) / portTICK_PERIOD_MS;
+    const int        FADE_STEPS      = 10;
+    const uint32_t   FADE_IN_MS      = 50  + (esp_random() % 80);   // 50–130ms
+    const uint32_t   FADE_OUT_MS     = 100 + (esp_random() % 150);  // 100–250ms
+    const uint32_t   INACTIVITY_MS   = 500;
+    const uint32_t   INACTIVITY_FADE_MS = 300;
+
     message_animation animation = getAnimation();
     float hue        = animation.animationParams.backgroundShimmer.hue;
     float saturation = animation.animationParams.backgroundShimmer.saturation;
     float value      = animation.animationParams.backgroundShimmer.value;
 
     TickType_t lastUpdateTick = xTaskGetTickCount();
-    const uint32_t inactivityMs   = 2000;
-    const uint32_t inactivityFadeMs = 300;
 
     // Pending update slot for delay mode
     message_animation pendingAnimation = {};
     TickType_t        pendingApplyAt   = 0;
     bool              pendingValid     = false;
+
+    // Fade from current value to targetVal over durationMs.
+    // Writes to LEDs each step. Returns true if interrupted by a queue message,
+    // in which case *interruptedBy is filled.
+    auto doFade = [&](float targetVal, uint32_t durationMs,
+                      message_animation* interruptedBy) -> bool {
+        float startVal  = value;
+        float range     = targetVal - startVal;
+        TickType_t stepTicks = pdMS_TO_TICKS(durationMs / FADE_STEPS);
+        for (int i = 1; i <= FADE_STEPS; ++i) {
+            message_animation upd;
+            if (xQueueReceive(backgroundShimmerQueue, &upd, stepTicks) == pdTRUE) {
+                if (interruptedBy) *interruptedBy = upd;
+                return true;
+            }
+            float v = startVal + range * ((float)i / FADE_STEPS);
+            if (v < 0) v = 0;
+            writeLeds(CHSV(hue, saturation, v));
+        }
+        value = targetVal;
+        return false;
+    };
+
+    // Apply an incoming update, handling fade-in and fade-out.
+    // Returns true if another update arrived mid-fade (stored in *next).
+    auto applyUpdate = [&](message_animation& upd, bool inDelayMode,
+                           message_animation* next) -> bool {
+        float newHue = upd.animationParams.backgroundShimmer.hue;
+        float newSat = upd.animationParams.backgroundShimmer.saturation;
+        float newVal = upd.animationParams.backgroundShimmer.value;
+
+        if (!inDelayMode && getDistanceFromCenter() > 0.0f && getUseDistanceSwitch()) {
+            newVal = applyDistanceAttenuation(newVal,
+                getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+        }
+
+        hue = newHue; saturation = newSat;
+
+        if (newVal == 0 && value > 0) {
+            // fade out
+            bool interrupted = doFade(0, FADE_OUT_MS, next);
+            if (!interrupted) value = 0;
+            return interrupted;
+        } else if (newVal > 0 && value == 0) {
+            // fade in
+            value = 0;
+            bool interrupted = doFade(newVal, FADE_IN_MS, next);
+            if (!interrupted) value = newVal;
+            return interrupted;
+        } else {
+            value = newVal;
+            return false;
+        }
+    };
 
     while (getCurrentAnimation() == BACKGROUND_SHIMMER) {
         message_animation newAnimation;
@@ -540,44 +598,16 @@ void LedHandler::runBackgroundShimmer() {
                 pendingAnimation = newAnimation;
                 pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
                 pendingValid     = true;
-                // continue rendering current state until delay expires
             } else {
-                // Brightness mode: apply immediately
-                float newHue = newAnimation.animationParams.backgroundShimmer.hue;
-                float newSat = newAnimation.animationParams.backgroundShimmer.saturation;
-                float newVal = newAnimation.animationParams.backgroundShimmer.value;
-
-                if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch()) {
-                    newVal = applyDistanceAttenuation(newVal,
-                        getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
-                }
-
-                if (newVal == 0 && value > 0) {
-                    const int fadeSteps = 12;
-                    const TickType_t stepTicks = pdMS_TO_TICKS(200 / fadeSteps);
-                    float stepVal = value / fadeSteps;
-                    bool interrupted = false;
-                    for (int i = 1; i <= fadeSteps; ++i) {
-                        message_animation fadeUpdate;
-                        if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, stepTicks) == pdTRUE) {
-                            newAnimation = fadeUpdate;
-                            hue = newAnimation.animationParams.backgroundShimmer.hue;
-                            saturation = newAnimation.animationParams.backgroundShimmer.saturation;
-                            value = newAnimation.animationParams.backgroundShimmer.value;
-                            if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch()) {
-                                value = applyDistanceAttenuation(value,
-                                    getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
-                            }
-                            interrupted = true;
-                            break;
-                        }
-                        float fadeVal = value - stepVal * i;
-                        if (fadeVal < 0) fadeVal = 0;
-                        writeLeds(CHSV(hue, saturation, fadeVal));
-                    }
-                    if (!interrupted) value = 0;
-                } else {
-                    hue = newHue; saturation = newSat; value = newVal;
+                message_animation interrupted;
+                if (applyUpdate(newAnimation, false, &interrupted)) {
+                    // interrupted mid-fade — process the new update next iteration
+                    lastUpdateTick = xTaskGetTickCount();
+                    hue        = interrupted.animationParams.backgroundShimmer.hue;
+                    saturation = interrupted.animationParams.backgroundShimmer.saturation;
+                    value      = interrupted.animationParams.backgroundShimmer.value;
+                    if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch())
+                        value = applyDistanceAttenuation(value, getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
                 }
             }
         }
@@ -585,65 +615,33 @@ void LedHandler::runBackgroundShimmer() {
         // Apply a delayed update once its time has come
         if (pendingValid && xTaskGetTickCount() >= pendingApplyAt) {
             pendingValid = false;
-            float newHue = pendingAnimation.animationParams.backgroundShimmer.hue;
-            float newSat = pendingAnimation.animationParams.backgroundShimmer.saturation;
-            float newVal = pendingAnimation.animationParams.backgroundShimmer.value;
-
-            if (newVal == 0 && value > 0) {
-                const int fadeSteps = 12;
-                const TickType_t stepTicks = pdMS_TO_TICKS(200 / fadeSteps);
-                float stepVal = value / fadeSteps;
-                bool interrupted = false;
-                for (int i = 1; i <= fadeSteps; ++i) {
-                    message_animation fadeUpdate;
-                    if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, stepTicks) == pdTRUE) {
-                        // New update during delayed fade — reschedule it
-                        float d = getDistanceFromCenter();
-                        uint32_t delayMs = (uint32_t)((d / 343.0f) * 1000.0f);
-                        pendingAnimation = fadeUpdate;
-                        pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
-                        pendingValid     = true;
-                        interrupted = true;
-                        break;
-                    }
-                    float fadeVal = value - stepVal * i;
-                    if (fadeVal < 0) fadeVal = 0;
-                    writeLeds(CHSV(hue, saturation, fadeVal));
-                }
-                if (!interrupted) value = 0;
-            } else {
-                hue = newHue; saturation = newSat; value = newVal;
+            message_animation interrupted;
+            if (applyUpdate(pendingAnimation, true, &interrupted)) {
+                // reschedule the interrupting update
+                float d = getDistanceFromCenter();
+                uint32_t delayMs = (uint32_t)((d / 343.0f) * 1000.0f);
+                pendingAnimation = interrupted;
+                pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
+                pendingValid     = true;
             }
         }
 
         // Inactivity decay
         if (!gotUpdate && !pendingValid && value > 0) {
             TickType_t now = xTaskGetTickCount();
-            if ((now - lastUpdateTick) >= pdMS_TO_TICKS(inactivityMs)) {
-                const int fadeSteps = 12;
-                const TickType_t stepTicks = pdMS_TO_TICKS(inactivityFadeMs / fadeSteps);
-                float startVal = value;
-                float stepVal  = startVal / fadeSteps;
-                bool interrupted = false;
-                for (int i = 1; i <= fadeSteps; ++i) {
-                    message_animation fadeUpdate;
-                    if (xQueueReceive(backgroundShimmerQueue, &fadeUpdate, stepTicks) == pdTRUE) {
-                        lastUpdateTick = xTaskGetTickCount();
-                        hue        = fadeUpdate.animationParams.backgroundShimmer.hue;
-                        saturation = fadeUpdate.animationParams.backgroundShimmer.saturation;
-                        value      = fadeUpdate.animationParams.backgroundShimmer.value;
-                        if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch() && getDistanceMode() == 0) {
-                            value = applyDistanceAttenuation(value,
-                                getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
-                        }
-                        interrupted = true;
-                        break;
-                    }
-                    float fadeVal = startVal - stepVal * i;
-                    if (fadeVal < 0) fadeVal = 0;
-                    writeLeds(CHSV(hue, saturation, fadeVal));
+            if ((now - lastUpdateTick) >= pdMS_TO_TICKS(INACTIVITY_MS)) {
+                message_animation interrupted;
+                bool interr = doFade(0, INACTIVITY_FADE_MS, &interrupted);
+                if (interr) {
+                    lastUpdateTick = xTaskGetTickCount();
+                    hue        = interrupted.animationParams.backgroundShimmer.hue;
+                    saturation = interrupted.animationParams.backgroundShimmer.saturation;
+                    value      = interrupted.animationParams.backgroundShimmer.value;
+                    if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch() && getDistanceMode() == 0)
+                        value = applyDistanceAttenuation(value, getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                } else {
+                    value = 0;
                 }
-                if (!interrupted) value = 0;
             }
         }
 

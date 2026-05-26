@@ -9,7 +9,7 @@ void MessageHandler::startTimerSyncTask() {
     if (timerSyncHandle == NULL)
         {
 
-            xTaskCreatePinnedToCore(runTimerSyncWrapper, "runTimerSync", 10000, this, 2, &timerSyncHandle, 0);
+            xTaskCreatePinnedToCore(runTimerSyncWrapper, "runTimerSync", 10000, this, 2, &timerSyncHandle, 1);
         }
 }
 void MessageHandler::startClapSyncTask() {
@@ -23,8 +23,52 @@ void MessageHandler::startAllTimerSyncTask() {
     ESP_LOGI("TIMER", "Starting all timer sync task");
     if (allTimerSyncHandle == NULL)
         {
-            xTaskCreatePinnedToCore(runAllTimerSyncWrapper, "runAllTimerSync", 10000, this, 2, &allTimerSyncHandle, 0);
+            xTaskCreatePinnedToCore(runAllTimerSyncWrapper, "runAllTimerSync", 10000, this, 2, &allTimerSyncHandle, 1);
         }
+}
+
+void MessageHandler::startBroadcastSettleTask() {
+    xTaskCreatePinnedToCore(broadcastSettleWrapper, "broadcastSettle", 4000, this, 2, NULL, 1);
+}
+
+void MessageHandler::broadcastSettleWrapper(void* pv) {
+    MessageHandler* self = (MessageHandler*)pv;
+    self->runBroadcastSettle();
+}
+
+void MessageHandler::runBroadcastSettle() {
+    // If address list is empty (e.g. after reset), wait for clients to announce first
+    if (memcmp(addressList[0].address, emptyAddress, 6) == 0) {
+        ESP_LOGI("TIMER", "Address list empty, waiting 10s for clients to announce before settle");
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+    }
+    ESP_LOGI("TIMER", "Unicast settle: sending timer to each known client");
+
+    message_data msg;
+    msg.messageType = MSG_TIMER;
+    message_timer t;
+    t.counter = 0;
+    t.lastDelay = 0;
+    t.reset = false;
+    t.addressId = -1;
+
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+        t.sendTime = micros();
+        memcpy(&msg.payload.timer, &t, sizeof(t));
+        memcpy(msg.targetAddress, addressList[i].address, 6);
+        addPeer(addressList[i].address);
+        esp_now_send(addressList[i].address, (uint8_t*)&msg, ESPNOW_CLIENT_COMPAT_SIZE);
+        removePeer(addressList[i].address);
+        vTaskDelay(20 / portTICK_PERIOD_MS);
+    }
+
+    ESP_LOGI("TIMER", "Unicast settle done, waiting for announces to clear");
+    vTaskDelay(3000 / portTICK_PERIOD_MS);
+
+    ESP_LOGI("TIMER", "Starting full timer sync");
+    startAllTimerSyncTask();
+    vTaskDelete(NULL);
 }
 void MessageHandler::runTimerSyncWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
@@ -38,35 +82,26 @@ void MessageHandler::runClapSyncWrapper(void *pvParameters) {
 void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
     messageHandlerInstance->setAddressListInactive();
-    ESP_LOGI("TIMER", "Starting all timer sync wrapper");
+    ESP_LOGI("TIMER", "Starting all timer sync");
     int numAdresses = 0;
     for (int j = 0; j < 3; j++) {
-        ESP_LOGI("TIMER", "Starting all timer sync, iteration %d", j);
         numAdresses = 0;
         for (int i = 0; i < NUM_DEVICES; i++) {
             if (memcmp(messageHandlerInstance->getItemFromAddressList(i).address, messageHandlerInstance->emptyAddress, 6) == 0) {
-                ESP_LOGI("TIMER", "Empty address found at %d, skipping", i);
-
                 break;
-
             }
             else {
                 numAdresses++;
             }
-            ESP_LOGI("TIMER", "Checking address %02x:%02x:%02x:%02x:%02x:%02x", messageHandlerInstance->addressList[i].address[0], messageHandlerInstance->addressList[i].address[1], messageHandlerInstance->addressList[i].address[2], messageHandlerInstance->addressList[i].address[3], messageHandlerInstance->addressList[i].address[4], messageHandlerInstance->addressList[i].address[5]);
             activeStatus status = messageHandlerInstance->getActiveStatus(i);
             if (status == INACTIVE) {
-                ESP_LOGI("TIMER", "Starting timer sync for index %d with address %02x:%02x:%02x:%02x:%02x:%02x", i, messageHandlerInstance->addressList[i].address[0], messageHandlerInstance->addressList[i].address[1], messageHandlerInstance->addressList[i].address[2], messageHandlerInstance->addressList[i].address[3], messageHandlerInstance->addressList[i].address[4], messageHandlerInstance->addressList[i].address[5]);
+                ESP_LOGI("TIMER", "Syncing index %d", i);
                 messageHandlerInstance->setCurrentTimerIndex(i);
                 messageHandlerInstance->setTimerReset(true);
                 messageHandlerInstance->runTimerSync();
             }
-            else {
-                ESP_LOGI("TIMER", "Skipping timer sync for index %d with address %02x:%02x:%02x:%02x:%02x:%02x, status: %d", i, messageHandlerInstance->addressList[i].address[0], messageHandlerInstance->addressList[i].address[1], messageHandlerInstance->addressList[i].address[2], messageHandlerInstance->addressList[i].address[3], messageHandlerInstance->addressList[i].address[4], messageHandlerInstance->addressList[i].address[5], status);
-                
-                continue;
-            }
         }
+        ESP_LOGI("TIMER", "All timer sync iteration %d done, %d devices", j, numAdresses);
     }
     if (numAdresses > 0) {
         ESP_LOGI("TIMER", "RUNNING ANIMATION LOOP TASK FROM ALL TIMER SYNC");
@@ -94,7 +129,7 @@ void MessageHandler::runClapSync() {
         ESP_LOGI("CLAP", "Last delay: %d", getLastDelay());
         lastWakeTime = xTaskGetTickCount();
          setLastSendTime(micros());
-        esp_now_send(clapDeviceAddress, (uint8_t *) &messageData, sizeof(messageData));
+        esp_now_send(clapDeviceAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
          vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY/portTICK_PERIOD_MS);
     }
     removePeer(clapDeviceAddress);
@@ -138,10 +173,10 @@ void MessageHandler::runTimerSync() {
         timerMessage.sendTime = micros();
         setLastSendTime(timerMessage.sendTime);
         if (timerIndex == -1) {
-            esp_now_send(broadcastAddress, (uint8_t *) &messageData, sizeof(messageData));
+            esp_now_send(broadcastAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
         }
         else if (timerIndex > -1) {
-            esp_now_send(addressList[timerIndex].address, (uint8_t *) &messageData, sizeof(messageData));
+            esp_now_send(addressList[timerIndex].address, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
             if (!esp_now_is_peer_exist(addressList[timerIndex].address)) {
                 ESP_LOGI("ESP-NOW", "Peer does not exist");
             }

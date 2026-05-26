@@ -9,7 +9,6 @@
 #include <Version.h>
 #include <WebServer.h>
 #include "esp_sleep.h"
-#include "driver/rtc_io.h"
 #include "soc/rtc.h"
 //#include <Elog.h>
 
@@ -19,6 +18,9 @@
 LedHandler& ledInstance = LedHandler::getInstance();
 MessageHandler& msgHandler = MessageHandler::getInstance();
 uint8_t myAddress[6];
+bool g_loggingEnabled = false;
+
+MessageHandler& getMessageHandlerInstance() { return msgHandler; }
 
 // state
 bool lfs_started = true;
@@ -59,20 +61,7 @@ void setup()
     lfs_started = false;
   }
 
-  // Init external 32kHz xtal for accurate light sleep timing; falls back to internal RC if xtal is dead
-  rtc_clk_32k_enable(true);
-  rtc_clk_32k_bootstrap(512);
-  delay(500);
-  int xtalConsecutive = 0;
-  uint32_t xtalCal = 0;
-  for (int i = 0; i < 20 && xtalConsecutive < 3; i++) {
-    xtalCal = rtc_clk_cal(RTC_CAL_32K_XTAL, 1000);
-    xtalConsecutive = (xtalCal != 0) ? xtalConsecutive + 1 : 0;
-    delay(10);
-  }
-  bool xtalOk = (xtalConsecutive >= 3);
-  if (xtalOk) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); ESP_LOGI("XTAL", "32kHz xtal OK (cal=%u)", xtalCal); }
-  else { rtc_clk_32k_enable(false); ESP_LOGW("XTAL", "32kHz xtal failed, using internal RC"); }
+  rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256);
   WiFi.mode(WIFI_AP_STA);
   if (esp_now_init() != ESP_OK)
 
@@ -83,7 +72,6 @@ void setup()
     delay(1000);
     ledInstance.setup();
     msgHandler.setup(ledInstance);
-    msgHandler.setXtalOk(xtalOk);
     WebServer& webServer = WebServer::getInstance(&LittleFS);
     webServer.setup(msgHandler);
 
@@ -134,7 +122,7 @@ void loop()
 
   if (msgHandler.isInSleepPhase()) {
     ESP_LOGI("Sleep", "Going to sleep for %lu ms", msgHandler.getSleepDuration());
-    unsigned long long sleepDuration = (unsigned long long)(msgHandler.getSleepDuration()-1)*1000;
+    unsigned long long sleepDuration = ((unsigned long long)msgHandler.getSleepDuration() - 1ULL) * 1000ULL;
     ESP_LOGI("Sleep", "Sleep duration in micros: %llu", sleepDuration);
     ESP_LOGI("Sleep", "Sleep duration in seconds, hours and minutes: %02llu:%02llu:%02llu", sleepDuration/1000000/3600, (sleepDuration/1000000%3600)/60, (sleepDuration/1000000%3600)%60);
     esp_sleep_enable_timer_wakeup(sleepDuration);
@@ -146,28 +134,21 @@ void loop()
         ESP_LOGI("Sleep", "Failed to obtain time");
     }
     ESP_LOGI("Sleep", "Time in micros: %llu", micros());
+    // Wait for sendQueue to drain so the sleep broadcast is actually transmitted
+    vTaskDelay(500 / portTICK_PERIOD_MS);
     msgHandler.turnWifiOff();
     Serial.end();
     msgHandler.recordTimeOfDayBeforeSleep();
     esp_light_sleep_start();
-    if (xtalOk) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); }
     Serial.begin(115200);
     delay(200);
-    msgHandler.setTimeOfDayAfterSleep();
+    msgHandler.setTimeOfDayAfterSleep(sleepDuration);
     msgHandler.turnWifiOn();
-    ESP_LOGI("Sleep", "Delaying for 1200 seconds");
-    vTaskDelay(1200000 / portTICK_PERIOD_MS);
-    ESP_LOGI("Sleep", "Continuing");
+    // Wait for WiFi/ESP-NOW to stabilize before re-syncing
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
     msgHandler.setAddressListInactive();
-    msgHandler.startAllTimerSyncTask();
-    
-    
-   // msgHandler.sendSleepWakeupMessage(wbmsgHandler.getSleepDuration());
-
-   // esp_sleep_enable_timer_wakeup(msgHandler.getSleepDuration() - 2000); // Sleep for 24 hours
-   // esp_light_sleep_start();
-    // Get the RTC slow clock source
-
+    msgHandler.startBroadcastSettleTask();
+    msgHandler.broadcastReannounce();
   };
   // put your main code here, to run repeatedly:
 }

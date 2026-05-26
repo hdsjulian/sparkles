@@ -3,7 +3,7 @@ MessageHandler* MessageHandler::instance = nullptr;
 
 MessageHandler::MessageHandler() {
     configMutex = xSemaphoreCreateMutex();
-    receiveQueue = xQueueCreate(100, sizeof(message_data));
+    receiveQueue = xQueueCreate(300, sizeof(message_data));
     if (receiveQueue == NULL) {
         ESP_LOGE("ERROR", "Failed to create receiveQueue");
     }
@@ -15,8 +15,8 @@ MessageHandler::MessageHandler() {
 
 void MessageHandler::setup(LedHandler &globalLedInstance) {
     ledInstance = &globalLedInstance;
-    xTaskCreatePinnedToCore(handleReceiveWrapper, "handleReceive", 10000, this, 10, &handleReceiveHandle, 0);
-    xTaskCreatePinnedToCore(handleSendWrapper, "handleSegnd", 10000, this, 10, &handleSendHandle, 0);
+    xTaskCreatePinnedToCore(handleReceiveWrapper, "handleReceive", 10000, this, 5, &handleReceiveHandle, 0);
+    xTaskCreatePinnedToCore(handleSendWrapper, "handleSegnd", 10000, this, 5, &handleSendHandle, 1);
     addPeer(const_cast<uint8_t*>(broadcastAddress));
     version= VERSION;
     #if (DEVICE_MODE == MASTER) 
@@ -32,7 +32,7 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
         ESP_LOGI("MSG", "Master setup");
         bool noClientList = !LittleFS.exists("/clientAddress");
         handleAddressStruct();
-        startAllTimerSyncTask();
+        startBroadcastSettleTask();
         if (noClientList) {
             ESP_LOGI("MSG", "No client list found — broadcasting CMD_REANNOUNCE");
             delay(500);
@@ -50,14 +50,17 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
 
 
 void MessageHandler::pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
-    if (len != sizeof(message_data)) return;
-    message_data *msg = (message_data *)incomingData;
-     if (msg->messageType == MSG_TIMER) {
-        msg->payload.timer.receiveTime = micros();
-     }
-
-    if (xQueueSend(receiveQueue, msg, portMAX_DELAY) != pdTRUE) {
-        ESP_LOGE("MSG", "Failed to send data to receive queue");
+    if (len < 1 || len > (int)sizeof(message_data)) {
+        ESP_LOGW("RECV", "Bad size len=%d sizeof=%d, dropping", len, (int)sizeof(message_data));
+        return;
+    }
+    message_data msg;
+    memcpy(&msg, incomingData, len);
+    if (msg.messageType == MSG_TIMER) {
+        msg.payload.timer.receiveTime = micros();
+    }
+    if (xQueueSend(receiveQueue, &msg, 0) != pdTRUE) {
+        ESP_LOGW("MSG", "Receive queue full, dropping message type %d", msg.messageType);
     }
 }
 
