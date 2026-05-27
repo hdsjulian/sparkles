@@ -41,12 +41,14 @@ class SerialBridge:
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
+        import subprocess as _sp, time as _time
+        # disable hangup-on-open (prevents DTR reset of ESP32)
+        _sp.run(["stty", "-F", self._port, "-hupcl"], check=False)
         self._serial = serial.Serial(timeout=1, dsrdtr=False, rtscts=False)
         self._serial.port = self._port
         self._serial.baudrate = self._baud
         self._serial.dtr = False
         self._serial.open()
-        import time as _time; _time.sleep(3)  # wait for ESP32 to boot after DTR reset
         self._serial.reset_input_buffer()
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
