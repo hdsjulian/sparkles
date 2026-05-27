@@ -253,13 +253,7 @@ static void handleSerialCommand(const String& line) {
 void setup()
 {
     Serial.begin(115200);
-    esp_log_level_set("*",      ESP_LOG_INFO);
-    esp_log_level_set("MSG",    ESP_LOG_NONE);
-    esp_log_level_set("LED",    ESP_LOG_NONE);
-    esp_log_level_set("Sleep",  ESP_LOG_NONE);
-    esp_log_level_set("TIMER",  ESP_LOG_NONE);
-    esp_log_level_set("CLAP",   ESP_LOG_INFO);
-    esp_log_level_set("Tick",   ESP_LOG_INFO);
+    esp_log_level_set("*", ESP_LOG_NONE);
 
     unsigned long long startTime = millis();
     while (!Serial) {

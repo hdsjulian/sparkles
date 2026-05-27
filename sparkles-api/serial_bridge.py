@@ -46,6 +46,8 @@ class SerialBridge:
         self._serial.baudrate = self._baud
         self._serial.dtr = False
         self._serial.open()
+        import time as _time; _time.sleep(3)  # wait for ESP32 to boot after DTR reset
+        self._serial.reset_input_buffer()
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
         self._thread.start()
