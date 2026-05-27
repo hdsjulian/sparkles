@@ -15,6 +15,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Query, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from serial_bridge import bridge
 
@@ -416,3 +417,8 @@ async def factory_reset():
 async def command_message(boardId: int = Query(...)):
     _send({"cmd": "command_message", "boardId": boardId})
     return _ok()
+
+
+_build_dir = os.path.join(os.path.dirname(__file__), "..", "sparkles-ui", "build")
+if os.path.isdir(_build_dir):
+    app.mount("/", StaticFiles(directory=_build_dir, html=True), name="static")

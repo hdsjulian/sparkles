@@ -66,27 +66,6 @@ run("npx svelte-kit sync", cwd=UI_DIR)
 run("npm run build", cwd=UI_DIR)
 
 
-# ── 5. Patch main.py to serve static frontend ────────────────────
-step("Patching FastAPI to serve static files")
-main_py = os.path.join(API_DIR, "main.py")
-static_patch = """
-# ── Serve built SvelteKit frontend ───────────────────────────────
-import os as _os
-_build_dir = _os.path.join(_os.path.dirname(__file__), "..", "sparkles-ui", "build")
-if _os.path.isdir(_build_dir):
-    from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=_build_dir, html=True), name="static")
-"""
-with open(main_py, "r") as f:
-    content = f.read()
-
-if "StaticFiles" not in content:
-    with open(main_py, "a") as f:
-        f.write(static_patch)
-    print("Static file serving added to main.py")
-else:
-    print("main.py already has static file serving — skipping")
-
 
 # ── 6. udev rule for stable ESP32 device name ────────────────────
 step("Installing udev rule for ESP32 (303a:1001 → /dev/sparkles)")
