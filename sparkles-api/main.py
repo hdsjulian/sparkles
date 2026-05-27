@@ -92,6 +92,34 @@ async def sse_events(request: Request) -> StreamingResponse:
 
 
 # ---------------------------------------------------------------------------
+# Serial log SSE  /serialLog
+# ---------------------------------------------------------------------------
+
+@app.get("/serialLog")
+async def serial_log(request: Request) -> StreamingResponse:
+    snapshot, queue = bridge.subscribe_log()
+
+    async def generator() -> AsyncGenerator[str, None]:
+        # send buffered lines first
+        for line in snapshot:
+            yield f"event: serial_log\ndata: {json.dumps(line)}\n\n"
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    line = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield f"event: serial_log\ndata: {json.dumps(line)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            bridge.unsubscribe_log(queue)
+
+    return StreamingResponse(generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------------------------------------------------------------------------
 # Animation
 # ---------------------------------------------------------------------------
 
@@ -105,6 +133,11 @@ async def command_animate():
 async def command_animation_off():
     _send({"cmd": "animation_off"})
     return _ok()
+
+
+@app.get("/getAnimateStatus")
+async def get_animate_status():
+    return await _request({"cmd": "get_animate_status"}, "animate_status")
 
 
 @app.get("/commandBlink")

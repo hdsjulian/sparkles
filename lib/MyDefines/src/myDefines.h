@@ -65,7 +65,7 @@
 #define OTA_WIFI_SSID "fogscreen"
 #define OTA_WIFI_PASSWORD ""
 #define OTA_UPDATE_URL "http://192.168.4.1/firmware.bin" // Update URL for OTA updates
-#define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
+#define BATTERY_LOW_THRESHOLD 7.0 // Percentage below which battery is considered low
 #define CLAP_TIMEOUT 10000
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // Clients compiled before message_log was added to the payload union have sizeof(message_data)==80.

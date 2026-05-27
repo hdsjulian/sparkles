@@ -29,6 +29,25 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
 
 unsigned long lastTick = 0;
 
+#define SLEEP_BROADCAST_INTERVAL_MS 1000
+#define SLEEP_BROADCAST_DURATION_MS (5 * 60 * 1000)  // 5 minutes in ms
+
+static TaskHandle_t sleepBroadcastTaskHandle = NULL;
+
+static void sleepBroadcastTask(void* pvParameters) {
+    unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
+    while (msgHandler.isInSleepPhase()) {
+        msgHandler.sendSleepWakeupMessage(durationMicros);
+        vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
+    }
+    // Sleep phase ended — reannounce so clients that are awake can re-pair
+    msgHandler.setAddressListInactive();
+    msgHandler.startBroadcastSettleTask();
+    msgHandler.broadcastReannounce();
+    sleepBroadcastTaskHandle = NULL;
+    vTaskDelete(NULL);
+}
+
 // ── Serial bridge ─────────────────────────────────────────────────────────────
 
 static String serialLineBuffer;
@@ -56,6 +75,12 @@ static void handleSerialCommand(const String& line) {
 
     } else if (strcmp(cmd, "animation_off") == 0) {
         msgHandler.stopAllAnimations();
+
+    } else if (strcmp(cmd, "get_animate_status") == 0) {
+        JsonDocument r;
+        r["event"]  = "animate_status";
+        r["status"] = msgHandler.isAnimationLoopRunning();
+        serialSendDoc(r);
 
     } else if (strcmp(cmd, "blink") == 0) {
         message_animation a{};
@@ -354,28 +379,7 @@ void loop()
         }
     }
 
-    if (msgHandler.isInSleepPhase()) {
-        ESP_LOGI("Sleep", "Going to sleep for %lu ms", msgHandler.getSleepDuration());
-        unsigned long long sleepDuration = ((unsigned long long)msgHandler.getSleepDuration() - 1ULL) * 1000ULL;
-        ESP_LOGI("Sleep", "Sleep duration in micros: %llu", sleepDuration);
-        esp_sleep_enable_timer_wakeup(sleepDuration);
-        msgHandler.sendSleepWakeupMessage(sleepDuration);
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo)) {
-            ESP_LOGI("Sleep", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        }
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        msgHandler.turnWifiOff();
-        Serial.end();
-        msgHandler.recordTimeOfDayBeforeSleep();
-        esp_light_sleep_start();
-        Serial.begin(115200);
-        delay(200);
-        msgHandler.setTimeOfDayAfterSleep(sleepDuration);
-        msgHandler.turnWifiOn();
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-        msgHandler.setAddressListInactive();
-        msgHandler.startBroadcastSettleTask();
-        msgHandler.broadcastReannounce();
+    if (msgHandler.isInSleepPhase() && sleepBroadcastTaskHandle == NULL) {
+        xTaskCreatePinnedToCore(sleepBroadcastTask, "sleepBroadcast", 4096, NULL, 1, &sleepBroadcastTaskHandle, 1);
     }
 }

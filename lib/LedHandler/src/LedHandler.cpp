@@ -520,6 +520,8 @@ void LedHandler::runBackgroundShimmer() {
     float saturation = animation.animationParams.backgroundShimmer.saturation;
     float value      = animation.animationParams.backgroundShimmer.value;
 
+    float flickerValue = value;  // autonomous flicker tracks baseValue
+
     TickType_t lastUpdateTick = xTaskGetTickCount();
 
     // Pending update slot for delay mode
@@ -577,6 +579,7 @@ void LedHandler::runBackgroundShimmer() {
             return interrupted;
         } else {
             value = newVal;
+            flickerValue = newVal;  // re-center flicker on new base
             return false;
         }
     };
@@ -651,7 +654,13 @@ void LedHandler::runBackgroundShimmer() {
             break;
         }
         if (value > 0) {
-            writeLeds(CHSV(hue, saturation, value));
+            // autonomous random-walk flicker around current base value
+            float variance = value * 0.10f;
+            float step     = variance * 0.3f;
+            float delta    = ((float)(esp_random() % 1001) / 1000.0f) * 2.0f * step - step;
+            flickerValue  += delta;
+            flickerValue   = constrain(flickerValue, value - variance, value + variance);
+            writeLeds(CHSV(hue, saturation, (uint8_t)flickerValue));
         }
     }
     ledsOff();

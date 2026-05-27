@@ -46,6 +46,9 @@ export const commandSync = (boardId) =>
 export const getSystemInfo = () =>
   fetch(`${BASE}/getSystemInfo`).then(r => r.json());
 
+export const getAnimateStatus = () =>
+  fetch(`${BASE}/getAnimateStatus`).then(r => r.json());
+
 export const setTime = (year, month, day, hour, minute, second) =>
   fetch(`${BASE}/setTime?year=${year}&month=${month}&day=${day}&hour=${hour}&minute=${minute}&second=${second}`).then(r => r.json());
 

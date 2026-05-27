@@ -11,6 +11,7 @@
     { href: '/midi',        label: 'MIDI',         icon: '🎵' },
     { href: '/darkroom',    label: 'Darkroom',     icon: '🌑' },
     { href: '/calibration', label: 'Calibration',  icon: '📐' },
+    { href: '/log',         label: 'Serial Log',   icon: '📋' },
   ];
 
   function toggle() {

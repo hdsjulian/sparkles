@@ -4,6 +4,7 @@
   import {
     getAddressList,
     getSystemInfo,
+    getAnimateStatus,
     commandSyncAll,
     commandBlinkAll,
     commandAnimate,
@@ -19,6 +20,11 @@
     try {
       const info = await getSystemInfo();
       masterMac = info.macAddress ?? '—';
+    } catch (_) {}
+
+    try {
+      const status = await getAnimateStatus();
+      animating.set(status.status === true || status.status === 'true');
     } catch (_) {}
 
     try {

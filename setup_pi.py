@@ -58,6 +58,13 @@ run(f"{pip} install --upgrade pip")
 run(f"{pip} install fastapi 'uvicorn[standard]' pyserial")
 
 
+# ── 3b. PlatformIO CLI (for flashing firmware from the Pi) ────────
+step("Installing PlatformIO CLI")
+run(f"{pip} install platformio")
+pio = os.path.join(VENV_DIR, "bin", "pio")
+run(f"{pio} platform install espressif32")
+
+
 # ── 4. Build SvelteKit frontend ───────────────────────────────────
 step("Building SvelteKit frontend")
 run(f"rm -rf {os.path.join(UI_DIR, 'node_modules')}")
@@ -89,6 +96,7 @@ After=network.target
 ExecStart={uvicorn} main:app --host 0.0.0.0 --port {PORT}
 WorkingDirectory={API_DIR}
 Environment=SPARKLES_PORT={SERIAL_PORT}
+# Optional: set SPARKLES_TBEAM_PORT=/dev/ttyUSB0 to forward events to a T-Beam via Meshtastic SerialModule
 Restart=always
 RestartSec=5
 User={os.environ.get('USER', 'pi')}
