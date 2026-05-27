@@ -248,8 +248,8 @@ class SerialBridge:
 
     def _reader(self):
         import time as _time
-        # Drain boot noise for 5s without dispatching, so ESP32 is ready
-        deadline = _time.monotonic() + 5.0
+        # Drain boot noise for 2s without dispatching, so ESP32 is ready
+        deadline = _time.monotonic() + 2.0
         while self._running and _time.monotonic() < deadline:
             try:
                 self._serial.readline()

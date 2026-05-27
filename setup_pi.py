@@ -98,7 +98,9 @@ WorkingDirectory={API_DIR}
 Environment=SPARKLES_PORT={SERIAL_PORT}
 # Optional: set SPARKLES_TBEAM_PORT=/dev/ttyUSB0 to forward events to a T-Beam via Meshtastic SerialModule
 Restart=always
-RestartSec=5
+RestartSec=2
+TimeoutStopSec=8
+KillSignal=SIGTERM
 User={os.environ.get('USER', 'pi')}
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 

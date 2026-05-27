@@ -10,9 +10,6 @@
     "sourceMap": true,
     "strict": false,
     "moduleResolution": "bundler",
-    "paths": {
-      "$lib": ["./src/lib"],
-      "$lib/*": ["./src/lib/*"]
-    }
+
   }
 }
