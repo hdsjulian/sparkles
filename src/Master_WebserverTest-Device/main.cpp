@@ -192,9 +192,14 @@ static void handleSerialCommand(const String& line) {
         struct tm ti;
         char buf[32] = "not set";
         if (getLocalTime(&ti)) snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+        uint8_t mac[6]; WiFi.macAddress(mac);
+        char macStr[18];
+        snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         JsonDocument r;
         r["event"]        = "system_info";
         r["systemTime"]   = buf;
+        r["macAddress"]   = macStr;
         r["sleepSet"]     = msgHandler.isSleepSet();
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);
         r["sleepDuration"]= (long)(msgHandler.getSleepDuration() / 1000);
