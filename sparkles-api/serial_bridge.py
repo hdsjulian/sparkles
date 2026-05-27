@@ -41,20 +41,10 @@ class SerialBridge:
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
-        import os as _os, termios as _termios
-        # Open with O_NOCTTY|O_NONBLOCK so the kernel never asserts DTR,
-        # preventing the ESP32 from resetting when we connect.
-        fd = _os.open(self._port, _os.O_RDWR | _os.O_NOCTTY | _os.O_NONBLOCK)
-        attrs = _termios.tcgetattr(fd)
-        attrs[2] &= ~_termios.HUPCL   # clear HUPCL — no DTR drop on close
-        _termios.tcsetattr(fd, _termios.TCSANOW, attrs)
-        _os.set_blocking(fd, True)
-        self._serial = serial.Serial(timeout=1)
-        self._serial.fd = fd
-        self._serial._port = self._port
-        self._serial._baudrate = self._baud
-        self._serial._isOpen = True
-        self._serial.baudrate = self._baud  # applies baud to already-open fd
+        import time as _time
+        self._serial = serial.Serial(self._port, self._baud, timeout=1)
+        _time.sleep(5)  # wait for ESP32 to finish booting after DTR reset
+        self._serial.reset_input_buffer()
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
         self._thread.start()
