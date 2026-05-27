@@ -91,7 +91,7 @@ class SerialBridge:
         self._event_listeners[response_event].append(fut)
         self.send(cmd)
         try:
-            return await asyncio.wait_for(asyncio.shield(fut), timeout)
+            return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError:
             logger.warning("Timeout waiting for event '%s'", response_event)
             return None
