@@ -41,10 +41,7 @@ class SerialBridge:
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
-        import time as _time
         self._serial = serial.Serial(self._port, self._baud, timeout=1)
-        _time.sleep(5)  # wait for ESP32 to finish booting after DTR reset
-        self._serial.reset_input_buffer()
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
         self._thread.start()
@@ -106,6 +103,16 @@ class SerialBridge:
     # ------------------------------------------------------------------
 
     def _reader(self):
+        import time as _time
+        # Drain boot noise for 5s without dispatching, so ESP32 is ready
+        deadline = _time.monotonic() + 5.0
+        while self._running and _time.monotonic() < deadline:
+            try:
+                self._serial.readline()
+            except Exception:
+                break
+        self._serial.reset_input_buffer()
+
         buffer = ""
         while self._running:
             try:

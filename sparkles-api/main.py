@@ -56,7 +56,7 @@ def _ok(msg: str = "OK"):
     return JSONResponse({"status": True, "msg": msg})
 
 
-async def _request(cmd: dict, event: str, timeout: float = 5.0):
+async def _request(cmd: dict, event: str, timeout: float = 10.0):
     result = await bridge.request(cmd, event, timeout)
     if result is None:
         raise HTTPException(504, detail=f"No response from device (timeout waiting for '{event}')")
