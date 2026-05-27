@@ -41,7 +41,8 @@ class SerialBridge:
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
-        self._serial = serial.Serial(self._port, self._baud, timeout=1)
+        self._serial = serial.Serial(self._port, self._baud, timeout=1, dsrdtr=False, rtscts=False)
+        self._serial.dtr = False
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
         self._thread.start()

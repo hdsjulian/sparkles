@@ -14,7 +14,7 @@ REPO_DIR    = os.path.expanduser("~/sparkles")
 API_DIR    = os.path.join(REPO_DIR, "sparkles-api")
 UI_DIR     = os.path.join(REPO_DIR, "sparkles-ui")
 VENV_DIR   = os.path.join(API_DIR, ".venv")
-SERIAL_PORT = "/dev/ttyACM0"
+SERIAL_PORT = "/dev/sparkles"
 PORT        = 80
 
 
@@ -88,7 +88,18 @@ else:
     print("main.py already has static file serving — skipping")
 
 
-# ── 6. Write systemd service ──────────────────────────────────────
+# ── 6. udev rule for stable ESP32 device name ────────────────────
+step("Installing udev rule for ESP32 (303a:1001 → /dev/sparkles)")
+udev_rule = 'SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", SYMLINK+="sparkles"\n'
+udev_path = "/tmp/99-sparkles.rules"
+with open(udev_path, "w") as f:
+    f.write(udev_rule)
+run(f"sudo cp {udev_path} /etc/udev/rules.d/99-sparkles.rules")
+run("sudo udevadm control --reload-rules")
+run("sudo udevadm trigger")
+
+
+# ── 7. Write systemd service ──────────────────────────────────────
 step("Installing systemd service")
 uvicorn = os.path.join(VENV_DIR, "bin", "uvicorn")
 service = f"""[Unit]
@@ -117,7 +128,7 @@ run("sudo systemctl enable sparkles")
 run("sudo systemctl restart sparkles")
 
 
-# ── 7. Done ───────────────────────────────────────────────────────
+# ── 8. Done ───────────────────────────────────────────────────────
 step("Done")
 print(f"""
 Sparkles is running at http://localhost:{PORT}
