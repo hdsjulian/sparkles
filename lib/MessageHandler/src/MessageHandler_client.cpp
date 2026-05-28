@@ -173,8 +173,14 @@ void MessageHandler::handleReceive() {
                     ledInstance->blink(micros(), 100, 5, 200, 255, 127);
                     vTaskDelete(announceTaskHandle);
                     announceTaskHandle = NULL;
-                    OTAHandler::getInstance().setup();
-                    OTAHandler::getInstance().performUpdate();
+                    OTAHandler& ota = OTAHandler::getInstance();
+                    // use URL from message if provided, else fall back to compile-time define
+                    if (updateVersionMessage.otaUrl[0] != '\0') {
+                        ota.setup(updateVersionMessage.otaUrl);
+                    } else {
+                        ota.setup();
+                    }
+                    ota.performUpdate();
                 }
                 else {
                     ESP_LOGI("MSG", "Received update version message with lower version, ignoring");

@@ -11,7 +11,8 @@ class MessageHandler
 {
 public:
     static constexpr uint8_t emptyAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
+    uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    char _otaUrl[64] = {};   // set via serial "set_ota_url" from Pi
     bool isOTAUpdating = false;
     bool testMode = false;
     bool nextOTAAddress = false;
@@ -133,6 +134,7 @@ public:
     void runBroadcastSettle();
     void startClapTask();
     void startOTAUpdateTask();
+    void setOtaUrl(const char* url);
     void startCalculatePositionsTask();
     void startAnnounceAddressTask();
     void startClapSyncTask();

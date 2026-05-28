@@ -172,6 +172,19 @@ class SerialBridge:
     # Sending
     # ------------------------------------------------------------------
 
+    def _send_ota_url(self):
+        import socket as _socket
+        try:
+            s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            url = f"http://{ip}/firmware.bin"
+            self.send({"cmd": "set_ota_url", "url": url})
+            logger.info("Sent OTA URL to master: %s", url)
+        except Exception as exc:
+            logger.warning("Could not detect Pi IP for OTA URL: %s", exc)
+
     def send(self, payload: dict):
         if not self._serial or not self._serial.is_open:
             logger.warning("Serial not open, dropping: %s", payload)
@@ -256,6 +269,7 @@ class SerialBridge:
             except Exception:
                 break
         self._serial.reset_input_buffer()
+        self._send_ota_url()
 
         buffer = ""
         while self._running:

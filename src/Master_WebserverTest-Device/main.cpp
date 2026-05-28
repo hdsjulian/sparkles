@@ -243,6 +243,10 @@ static void handleSerialCommand(const String& line) {
     else if (strcmp(cmd, "dist_cal_cancel") == 0)        { msgHandler.cancelCalibration(); }
     else if (strcmp(cmd, "dist_cal_abort") == 0)         { msgHandler.abortDistanceCalibration(); }
     else if (strcmp(cmd, "ota_update") == 0)             { msgHandler.startOTAUpdateTask(); }
+    else if (strcmp(cmd, "set_ota_url") == 0) {
+        const char* url = doc["url"] | "";
+        msgHandler.setOtaUrl(url);
+    }
     else if (strcmp(cmd, "reannounce") == 0)             { msgHandler.broadcastReannounce(); }
     else if (strcmp(cmd, "reset_system") == 0)           { msgHandler.resetSystem(); }
 

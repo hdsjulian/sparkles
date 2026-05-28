@@ -18,7 +18,9 @@ const config = {
         '/animations',
         '/midi',
         '/darkroom',
-        '/calibration'
+        '/calibration',
+        '/log',
+        '/login'
       ]
     }
   }

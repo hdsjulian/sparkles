@@ -11,6 +11,7 @@ public:
     static OTAHandler& getInstance();
 
     void setup();
+    void setup(const char* url);
     void performUpdate();
 
 private:

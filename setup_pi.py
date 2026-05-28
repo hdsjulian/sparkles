@@ -55,7 +55,7 @@ step("Setting up Python virtualenv")
 run(f"python3 -m venv {VENV_DIR}")
 pip = os.path.join(VENV_DIR, "bin", "pip")
 run(f"{pip} install --upgrade pip")
-run(f"{pip} install fastapi 'uvicorn[standard]' pyserial")
+run(f"{pip} install fastapi 'uvicorn[standard]' pyserial 'python-jose[cryptography]' 'passlib[bcrypt]' pyyaml")
 
 
 # ── 3b. PlatformIO CLI (for flashing firmware from the Pi) ────────

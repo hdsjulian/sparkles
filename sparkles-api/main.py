@@ -12,21 +12,31 @@ import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Query, Request, HTTPException
+from fastapi import FastAPI, Query, Request, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
+import auth
+import compile as fw_compile
 from serial_bridge import bridge
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("sparkles")
 
-SERIAL_PORT = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
+SERIAL_PORT   = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
+FIRMWARE_PATH = os.path.join(os.path.dirname(__file__), "firmware.bin")
+
+# Public paths that never require a token
+_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico"}
+_PUBLIC_PREFIXES = ("/_app/", "/login")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    auth.bootstrap()
     loop = asyncio.get_event_loop()
     bridge._port = SERIAL_PORT
     try:
@@ -45,6 +55,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # always allow public paths
+        if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        user = auth.get_current_user(request)
+        accepts_html = "text/html" in request.headers.get("accept", "")
+
+        if user is None:
+            if accepts_html:
+                return RedirectResponse("/login", status_code=302)
+            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+
+        role = user.get("role", "")
+
+        # static page access check
+        if accepts_html or path == "/" or "." not in path.split("/")[-1]:
+            if not auth.check_page_access(path, role):
+                if accepts_html:
+                    return RedirectResponse("/login", status_code=302)
+                return JSONResponse({"detail": "Forbidden"}, status_code=403)
+        else:
+            # API / asset access check
+            if not auth.check_api_access(path, request.method, role):
+                return JSONResponse({"detail": "Forbidden"}, status_code=403)
+
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -62,6 +107,50 @@ async def _request(cmd: dict, event: str, timeout: float = 10.0):
     if result is None:
         raise HTTPException(504, detail=f"No response from device (timeout waiting for '{event}')")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Auth  /api/login  /api/logout  /api/me
+# ---------------------------------------------------------------------------
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/login")
+async def login(body: LoginRequest):
+    role = auth.authenticate(body.username, body.password)
+    if role is None:
+        raise HTTPException(401, detail="Invalid credentials")
+    token = auth.create_token(body.username, role)
+    response = JSONResponse({"status": True, "role": role, "username": body.username})
+    response.set_cookie(
+        auth.COOKIE_NAME, token,
+        httponly=True, samesite="lax", max_age=60 * 60 * 24 * 7,
+    )
+    return response
+
+
+@app.post("/api/logout")
+async def logout():
+    response = JSONResponse({"status": True})
+    response.delete_cookie(auth.COOKIE_NAME)
+    return response
+
+
+@app.get("/api/me")
+async def me(request: Request):
+    user = auth.get_current_user(request)
+    if user is None:
+        raise HTTPException(401, detail="Not authenticated")
+    cfg = auth.load_config()
+    page_rules = cfg.get("access", {}).get("pages", {})
+    allowed_pages = [
+        p for p in page_rules
+        if p != "*" and auth.check_page_access(p, user["role"])
+    ]
+    return {"username": user["sub"], "role": user["role"], "allowedPages": allowed_pages}
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +539,87 @@ async def factory_reset():
 async def command_message(boardId: int = Query(...)):
     _send({"cmd": "command_message", "boardId": boardId})
     return _ok()
+
+
+# ---------------------------------------------------------------------------
+# Firmware — OTA serve, upload, compile
+# ---------------------------------------------------------------------------
+
+@app.get("/current-version")
+async def current_version():
+    try:
+        return {"version": fw_compile.read_version()}
+    except Exception as e:
+        raise HTTPException(500, detail=str(e))
+
+
+@app.get("/compile-stream")
+async def compile_stream(
+    request: Request,
+    target: str = Query(..., regex="^(client|master|both)$"),
+    incrementVersion: bool = Query(default=False),
+) -> StreamingResponse:
+    """SSE stream of PlatformIO compile output."""
+
+    async def generator() -> AsyncGenerator[str, None]:
+        def emit(line: str) -> str:
+            return f"event: compile_log\ndata: {json.dumps(line)}\n\n"
+
+        try:
+            if incrementVersion and target in ("master", "both"):
+                old, new = fw_compile.increment_version()
+                yield emit(f"[version bumped {old} → {new}]")
+
+            if target in ("client", "both"):
+                yield emit("[compiling client…]")
+                async for line in fw_compile.compile_client():
+                    if await request.is_disconnected():
+                        return
+                    yield emit(line)
+                yield emit("[client done]")
+
+            if target in ("master", "both"):
+                yield emit("[compiling & flashing master…]")
+                async for line in fw_compile.compile_master():
+                    if await request.is_disconnected():
+                        return
+                    yield emit(line)
+                yield emit("[master done]")
+
+            yield f"event: compile_done\ndata: {json.dumps({'success': True})}\n\n"
+
+        except Exception as exc:
+            yield emit(f"[ERROR] {exc}")
+            yield f"event: compile_done\ndata: {json.dumps({'success': False, 'error': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Firmware OTA
+# ---------------------------------------------------------------------------
+
+@app.get("/firmware.bin")
+async def get_firmware():
+    if not os.path.isfile(FIRMWARE_PATH):
+        raise HTTPException(404, detail="No firmware uploaded yet")
+    return FileResponse(FIRMWARE_PATH, media_type="application/octet-stream",
+                        filename="firmware.bin")
+
+
+@app.post("/upload-firmware")
+async def upload_firmware(file: UploadFile = File(...)):
+    if not file.filename.endswith(".bin"):
+        raise HTTPException(400, detail="Expected a .bin file")
+    data = await file.read()
+    with open(FIRMWARE_PATH, "wb") as f:
+        f.write(data)
+    logger.info("Firmware uploaded: %d bytes → %s", len(data), FIRMWARE_PATH)
+    return JSONResponse({"status": True, "size": len(data)})
 
 
 _build_dir = os.path.join(os.path.dirname(__file__), "..", "sparkles-ui", "build")

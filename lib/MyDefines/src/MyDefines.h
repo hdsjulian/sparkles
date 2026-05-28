@@ -414,8 +414,10 @@ struct message_config_data {
 
 struct message_update_version {
   Version version;
-  message_update_version() : version(VERSION) {}
+  char otaUrl[55];  // fits within 80-byte compat frame (59-byte payload - 4 byte Version)
+  message_update_version() : version(VERSION) { otaUrl[0] = '\0'; }
   message_update_version(const message_update_version& other) : version(other.version) {
+    memcpy(otaUrl, other.otaUrl, sizeof(otaUrl));
   }
 };
 

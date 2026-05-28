@@ -365,9 +365,17 @@ message_data MessageHandler::createUpdateVersionMessage(Version version) {
     memcpy(updateMessage.targetAddress, broadcastAddress, 6);
     message_update_version updatePayload;
     updatePayload.version = version;
+    strncpy(updatePayload.otaUrl, _otaUrl, sizeof(updatePayload.otaUrl) - 1);
+    updatePayload.otaUrl[sizeof(updatePayload.otaUrl) - 1] = '\0';
     memcpy(&updateMessage.payload.updateVersion, &updatePayload, sizeof(updatePayload));
     WiFi.macAddress(updateMessage.senderAddress);
     return updateMessage;
+}
+
+void MessageHandler::setOtaUrl(const char* url) {
+    strncpy(_otaUrl, url, sizeof(_otaUrl) - 1);
+    _otaUrl[sizeof(_otaUrl) - 1] = '\0';
+    ESP_LOGI("OTA", "OTA URL set to: %s", _otaUrl);
 }
 
 
