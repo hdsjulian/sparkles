@@ -78,7 +78,7 @@
       ⚠ Master is connected but not responding — it may be hung
     </div>
   {/if}
-  <div class="page-wrapper">
+  <div class="page-wrapper" class:has-warning={!serialConnected || serialStale}>
     <slot />
   </div>
 {:else if !authChecked}
@@ -87,6 +87,11 @@
 
 <style>
   .serial-warning {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    z-index: 199;
     background: rgba(244, 152, 0, 0.15);
     border-bottom: 1px solid rgba(244, 152, 0, 0.5);
     color: #f98000;
@@ -95,5 +100,9 @@
     padding: 0.5rem 1.25rem;
     text-align: center;
     letter-spacing: 0.02em;
+  }
+
+  :global(.page-wrapper.has-warning) {
+    padding-top: 91px; /* 56px nav + 35px warning */
   }
 </style>
