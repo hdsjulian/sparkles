@@ -11,13 +11,21 @@ REPO_DIR = os.path.expanduser("~/sparkles")
 UI_DIR   = os.path.join(REPO_DIR, "sparkles-ui")
 
 
+SUDO_PASS = "raspi"
+
+
 def run(cmd, cwd=None):
     print(f"\n$ {cmd}")
     subprocess.run(cmd, shell=True, cwd=cwd, check=True)
 
 
+def sudo(cmd, cwd=None):
+    print(f"\n$ sudo {cmd}")
+    subprocess.run(f"echo {SUDO_PASS} | sudo -S {cmd}", shell=True, cwd=cwd, check=True)
+
+
 run("git pull origin feature/serial-bridge", cwd=REPO_DIR)
 run("npm run build", cwd=UI_DIR)
-run("sudo systemctl restart sparkles")
+sudo("systemctl restart sparkles")
 
 print("\nDone. Service restarted.")
