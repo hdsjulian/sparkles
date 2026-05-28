@@ -269,14 +269,14 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
             instance.setTimerReset(false);
             instance.setLastTimerCounter();
             if (memcmp(mac_addr, instance.getItemFromAddressList(instance.getCurrentTimerIndex()).address, 6) == 0) {
-                instance.setLastDelay(micros() - instance.getLastSendTime());   
+                instance.setLastDelay(esp_timer_get_time() - instance.getLastSendTime());   
             }
             else {
                 ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             }
         }
         else if (instance.getSettingClapSync() == true) {
-            int lastDelay = micros() - instance.getLastSendTime();
+            int lastDelay = esp_timer_get_time() - instance.getLastSendTime();
             ESP_LOGI("CLAP", "Last delay: %d", lastDelay);
             instance.setLastDelay(lastDelay);
         }
@@ -361,7 +361,7 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     }
     // Master blinks immediately when queued; clients use the original startTime
     message_animation masterAnimation = animationMessage;
-    masterAnimation.animationParams.blink.startTime = micros() + 10000;
+    masterAnimation.animationParams.blink.startTime = esp_timer_get_time() + 10000;
     ledInstance->setAnimation(masterAnimation);
     ESP_LOGI("MSG", "Sending animation message to %02x:%02x:%02x:%02x:%02x:%02x", message.targetAddress[0], message.targetAddress[1], message.targetAddress[2], message.targetAddress[3], message.targetAddress[4], message.targetAddress[5]);
     ESP_LOGI("MSG", "Animation type: %d", animationMessage.animationType);
@@ -652,7 +652,7 @@ void MessageHandler::runAnimationLoop() {
         }
         message_animation newAnimation;
         newAnimation = ledInstance->createSyncAsyncBlinkRandom();
-        newAnimation.animationParams.syncAsyncBlink.startTime = micros()+1000000;
+        newAnimation.animationParams.syncAsyncBlink.startTime = esp_timer_get_time() + 1000000;
         ESP_LOGI("MSG", "Starting animation loop with start time %lu", newAnimation.animationParams.syncAsyncBlink.startTime);
         sendAnimation(newAnimation, -1);
 
@@ -687,12 +687,12 @@ void MessageHandler::runDarkroomTaskWrapper(void *pvParameters) {
 void MessageHandler::runDarkroomTask() {
     ESP_LOGI("MSG", "Running darkroom task");
     while (true) {
-        message_animation darkroomStrobe = ledInstance->createFlash(micros()+100000, 150, 1, 255, 0, 255);
+        message_animation darkroomStrobe = ledInstance->createFlash(esp_timer_get_time() + 100000, 150, 1, 255, 0, 255);
         sendAnimation(darkroomStrobe, -1);
         ESP_LOGI("LED", "Strobe happening");
         vTaskDelay(200 / portTICK_PERIOD_MS);
         int nextBlink = random(darkroomParams.strobeMin, darkroomParams.strobeMax);
-        message_animation darkroomCandle = ledInstance->createCandle(micros()+100000+150, nextBlink*1000, 255, 255, darkroomParams.redlightMax);
+        message_animation darkroomCandle = ledInstance->createCandle(esp_timer_get_time() + 100000 + 150, nextBlink * 1000, 255, 255, darkroomParams.redlightMax);
         sendAnimation(darkroomCandle, -1);
         ESP_LOGI("MSG", "Next darkroom blink in %d seconds", nextBlink);
         vTaskDelay(nextBlink * 1000 / portTICK_PERIOD_MS);

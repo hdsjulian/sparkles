@@ -139,7 +139,7 @@ void LedHandler::batteryBlink(float batteryPercentage) {
         // Red
         hue = 0; sat = 255;
     }
-    blink(micros(), 100, 1, hue, sat, val);
+    blink(esp_timer_get_time(), 100, 1, hue, sat, val);
 }
 
 TickType_t LedHandler::getNextAnimationTicks() {
@@ -157,7 +157,7 @@ TickType_t LedHandler::getNextAnimationTicks() {
 void LedHandler::setMicrosUntilEnd(message_animation& animationData) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         unsigned long long endTime = calculateAnimation(animationData);
-        microsUntilEnd = endTime - micros();
+        microsUntilEnd = endTime - esp_timer_get_time();
         xSemaphoreGive(configMutex);
     }
     else {
@@ -167,7 +167,7 @@ void LedHandler::setMicrosUntilEnd(message_animation& animationData) {
 
 void LedHandler::resetMicrosUntilEnd() {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        microsUntilEnd = micros()+1000000; // Set to 1 second in the future
+        microsUntilEnd = esp_timer_get_time() + 1000000;
         ESP_LOGI("LED", "Reset micros until end to %llu", microsUntilEnd);
         xSemaphoreGive(configMutex);
     }

@@ -103,7 +103,7 @@ void LedHandler::setAnimation(message_animation& animationData) {
 #elif DEVICE_MODE == MASTER
 void LedHandler::setAnimation(message_animation& animationData) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-    unsigned long long now = micros();
+    unsigned long long now = esp_timer_get_time();
     switch (animationData.animationType) {
         case BACKGROUND_SHIMMER:
         case MIDI:
@@ -137,7 +137,7 @@ message_animation LedHandler::getAnimation() {
 }
 
 void LedHandler::setMicrosUntilStart(unsigned long long masterStartTime) {
-    unsigned long long clientNow = micros();
+    unsigned long long clientNow = esp_timer_get_time();
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         if (timerOffset < 0) {
         microsUntilStart = masterStartTime - ((long long)clientNow - timerOffset);
@@ -150,7 +150,7 @@ void LedHandler::setMicrosUntilStart(unsigned long long masterStartTime) {
 }
 
 unsigned long long LedHandler::calculateMicrosUntilStart(unsigned long long masterStartTime) {
-    unsigned long long clientNow = micros();
+    unsigned long long clientNow = esp_timer_get_time();
     long long microsUntilStartCalc;
     ESP_LOGI("LED", "Calculating micros until start. Master start time: %llu, client now: %llu, timer offset: %lld", masterStartTime, clientNow, timerOffset);
     if (timerOffset < 0) {

@@ -170,7 +170,7 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
                 message_update_version updateVersionMessage = incomingData.payload.updateVersion;
                 if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
-                    ledInstance->blink(micros(), 100, 5, 200, 255, 127);
+                    ledInstance->blink(esp_timer_get_time(), 100, 5, 200, 255, 127);
                     vTaskDelete(announceTaskHandle);
                     announceTaskHandle = NULL;
                     OTAHandler& ota = OTAHandler::getInstance();
@@ -234,7 +234,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
             long long correctedOffset = offsetMultiplier * (offsetSum / offsetCount) + offsetMultiplier * (delayAverage / 2);
             setTimeOffset(correctedOffset);
             message_data gotTimerMessage;
-            unsigned long long now = micros();
+            unsigned long long now = esp_timer_get_time();
             long long timeOffset = getTimeOffset();
             gotTimerMessage.messageType = MSG_GOT_TIMER;
             gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
@@ -244,7 +244,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
             ESP_LOGI("MSG", "Sending got timer message with perceived time: %lld, delay average: %d, battery percentage: %f", gotTimerMessage.payload.gotTimer.perceivedTime, gotTimerMessage.payload.gotTimer.delayAverage, gotTimerMessage.payload.gotTimer.batteryPercentage);
             xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
             setTimerSet(true);
-            ledInstance->blink(micros(), 300, 3, 100, 255, 127);
+            ledInstance->blink(esp_timer_get_time(), 300, 3, 100, 255, 127);
             ESP_LOGI("MSG", "Timer set. time offset: %lld", getTimeOffset());
             startBatterySyncTask();
             delayCounter = 0;
@@ -281,7 +281,7 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
     ESP_LOGI("MSG", "Going to sleep for %llu microseconds", sleepWakeupMessage.duration);
     vTaskDelay(1000/portTICK_PERIOD_MS);
-    ledInstance->blink(micros(), 100, 4, 160, 255, 127);
+    ledInstance->blink(esp_timer_get_time(), 100, 4, 160, 255, 127);
     vTaskDelay(1000/portTICK_PERIOD_MS);
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
@@ -295,7 +295,7 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     ESP_LOGI("MSG", "Woke up");
     turnWifiOn();
     ledInstance->resetLedTask();
-    ledInstance->blink(micros(), 150, 2, 160, 255, 127);
+    ledInstance->blink(esp_timer_get_time(), 150, 2, 160, 255, 127);
     ESP_LOGI("MSG", "Woke up from sleep, current time: %llu", micros());
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     ESP_LOGI("MSG", "Should be back up");
@@ -316,7 +316,7 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
 }
 
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-    unsigned long long receiveTime = micros();
+    unsigned long long receiveTime = esp_timer_get_time();
     MessageHandler& instance = getInstance();
     if (incomingData[0] == MSG_TIMER) {
         // Learn master MAC from the first MSG_TIMER we receive
@@ -384,7 +384,7 @@ void MessageHandler::handleSend() {
             addPeer(messageData.targetAddress);
             switch (messageData.messageType) {
                 case MSG_GOT_TIMER:
-                    now = micros();
+                    now = esp_timer_get_time();
                     messageData.payload.gotTimer.sendTime = now;
                     messageData.payload.gotTimer.perceivedTime = (long long)now + getTimeOffset();
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));

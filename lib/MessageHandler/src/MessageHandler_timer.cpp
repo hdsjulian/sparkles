@@ -54,7 +54,7 @@ void MessageHandler::runBroadcastSettle() {
 
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
-        t.sendTime = micros();
+        t.sendTime = esp_timer_get_time();
         memcpy(&msg.payload.timer, &t, sizeof(t));
         memcpy(msg.targetAddress, addressList[i].address, 6);
         addPeer(addressList[i].address);
@@ -128,7 +128,7 @@ void MessageHandler::runClapSync() {
         }
         ESP_LOGI("CLAP", "Last delay: %d", getLastDelay());
         lastWakeTime = xTaskGetTickCount();
-         setLastSendTime(micros());
+         setLastSendTime(esp_timer_get_time());
         esp_now_send(clapDeviceAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
          vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY/portTICK_PERIOD_MS);
     }
@@ -165,12 +165,12 @@ void MessageHandler::runTimerSync() {
     while (getSettingTimer() == true) {
         lastWakeTime = xTaskGetTickCount();
         timerMessage.counter = incrementTimerCounter();
-        timerMessage.sendTime = micros();
+        timerMessage.sendTime = esp_timer_get_time();
         timerMessage.lastDelay = getLastDelay();
         timerMessage.reset = getTimerReset();
         timerMessage.addressId = getCurrentTimerIndex();
         memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
-        timerMessage.sendTime = micros();
+        timerMessage.sendTime = esp_timer_get_time();
         setLastSendTime(timerMessage.sendTime);
         if (timerIndex == -1) {
             esp_now_send(broadcastAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);

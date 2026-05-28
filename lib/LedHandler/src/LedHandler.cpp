@@ -153,10 +153,10 @@ void LedHandler::ledTask()
                             startTime = animationData.animationParams.syncAsyncBlink.startTime;
                             break;
                         default:
-                            startTime = micros();
+                            startTime = esp_timer_get_time();
                             break;
                     }
-                    if (startTime > micros() + 1000) {
+                    if (startTime > esp_timer_get_time() + 1000) {
                         startTime -= 500;
                     }
                     unsigned long long microsUntilStart = calculateMicrosUntilStart(startTime);
@@ -481,15 +481,16 @@ unsigned long long LedHandler::calculateSyncAsyncBlink(message_animation& animat
 
 unsigned long long LedHandler::calculateBlinkTime(message_animation& animationData) {
     const auto& params = animationData.animationParams.blink;
-    unsigned long long microsUntilStart = params.startTime - micros();
+    unsigned long long now = esp_timer_get_time();
+    unsigned long long microsUntilStart = (params.startTime > now) ? params.startTime - now : 0;
     return (microsUntilStart + params.duration * 2 * params.repetitions);
 }
 
 unsigned long long LedHandler::calculateStrobeTime(message_animation& animationData) {
     const auto& params = animationData.animationParams.strobe;
     unsigned long long microsUntilStart = 0;
-    if (micros() < params.startTime) {
-        microsUntilStart = params.startTime - micros();
+    if (esp_timer_get_time() < params.startTime) {
+        microsUntilStart = params.startTime - esp_timer_get_time();
     }
     // strobeDurationMicros matches runStrobe logic
     unsigned long long strobeDurationMicros = params.duration * 1000ULL;
