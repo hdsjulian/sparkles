@@ -50,7 +50,7 @@ export const getAnimateStatus = () =>
   fetch(`${BASE}/getAnimateStatus`).then(r => r.json());
 
 export const setTime = (year, month, day, hour, minute, second) =>
-  fetch(`${BASE}/setTime?year=${year}&month=${month}&day=${day}&hour=${hour}&minute=${minute}&second=${second}`).then(r => r.json());
+  fetch(`${BASE}/setTime?year=${year}&month=${month}&day=${day}&hours=${hour}&minutes=${minute}&seconds=${second}`).then(r => r.json());
 
 export const setSleepTime = (hours, minutes, seconds) =>
   fetch(`${BASE}/setSleepTime?hours=${hours}&minutes=${minutes}&seconds=${seconds}`).then(r => r.json());
