@@ -623,5 +623,16 @@ async def upload_firmware(file: UploadFile = File(...)):
 
 
 _build_dir = os.path.join(os.path.dirname(__file__), "..", "sparkles-ui", "build")
+_index_html = os.path.join(_build_dir, "index.html")
+
 if os.path.isdir(_build_dir):
-    app.mount("/", StaticFiles(directory=_build_dir, html=True), name="static")
+    # Serve static assets normally
+    app.mount("/_app", StaticFiles(directory=os.path.join(_build_dir, "_app")), name="assets")
+
+    # SPA catch-all: serve the file if it exists, otherwise index.html
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        candidate = os.path.join(_build_dir, full_path)
+        if os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(_index_html)
