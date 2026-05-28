@@ -42,6 +42,12 @@ export const commandMessage = (boardId) =>
 export const commandSync = (index) =>
   fetch(`${BASE}/commandSync?index=${index}`).then(r => r.json());
 
+export const setMaintenanceMode = (active) =>
+  fetch(`${BASE}/setMaintenanceMode?active=${active}`, { method: 'POST' }).then(r => r.json());
+
+export const commandShimmer = (boardId = -1) =>
+  fetch(`${BASE}/commandShimmer?boardId=${boardId}`).then(r => r.json());
+
 // ---- System info & settings ----
 export const getSystemInfo = () =>
   fetch(`${BASE}/getSystemInfo`).then(r => r.json());

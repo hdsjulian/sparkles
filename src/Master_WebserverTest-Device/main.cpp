@@ -276,6 +276,26 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "factory_reset") == 0) {
         if (LittleFS.exists("/clientAddress")) LittleFS.remove("/clientAddress");
         ESP.restart();
+
+    } else if (strcmp(cmd, "set_maintenance_mode") == 0) {
+        bool active = doc["active"].as<bool>();
+        msgHandler.setAdminPresent(active ? millis() : 0);
+        if (!active) {
+            // tell all clients to stop shimmering
+            message_animation stopAnim;
+            stopAnim.animationType = OFF;
+            msgHandler.sendAnimation(stopAnim, -1);
+        }
+        JsonDocument r;
+        r["event"]  = "maintenance_mode";
+        r["active"] = active;
+        serialSendDoc(r);
+
+    } else if (strcmp(cmd, "shimmer") == 0) {
+        int boardId = doc["boardId"] | -1;
+        message_animation anim;
+        anim.animationType = BACKGROUND_SHIMMER;
+        msgHandler.sendAnimation(anim, boardId);
     }
 }
 

@@ -552,6 +552,18 @@ async def factory_reset():
     return _ok()
 
 
+@app.post("/setMaintenanceMode")
+async def set_maintenance_mode(active: bool = Query(...)):
+    _send({"cmd": "set_maintenance_mode", "active": active})
+    return _ok()
+
+
+@app.get("/commandShimmer")
+async def command_shimmer(boardId: int = Query(default=-1)):
+    _send({"cmd": "shimmer", "boardId": boardId})
+    return _ok()
+
+
 @app.get("/commandMessage")
 async def command_message(boardId: int = Query(...)):
     _send({"cmd": "command_message", "boardId": boardId})

@@ -1,10 +1,11 @@
 <script>
   import { onMount } from 'svelte';
   import { devices } from '$lib/stores.js';
-  import { getAddressList, commandBlink, commandSync } from '$lib/api.js';
+  import { getAddressList, commandBlink, commandSync, setMaintenanceMode, commandShimmer } from '$lib/api.js';
 
   let error = '';
   let blinkMsg = '';
+  let maintenanceMode = false;
 
   onMount(async () => {
     try {
@@ -64,13 +65,45 @@
     }
   }
 
+  async function toggleMaintenanceMode() {
+    const next = !maintenanceMode;
+    try {
+      await setMaintenanceMode(next);
+      maintenanceMode = next;
+      blinkMsg = next ? 'Maintenance mode ON' : 'Maintenance mode OFF';
+      setTimeout(() => { blinkMsg = ''; }, 2000);
+    } catch (e) {
+      error = `Failed: ${e.message}`;
+    }
+  }
+
+  async function handleShimmer(boardId) {
+    try {
+      await commandShimmer(boardId);
+      blinkMsg = boardId === -1 ? 'Shimmer sent to all' : `Shimmer sent to #${boardId}`;
+      setTimeout(() => { blinkMsg = ''; }, 2000);
+    } catch (e) {
+      error = `Shimmer failed: ${e.message}`;
+    }
+  }
+
   $: sortedDevices = Array.from($devices.values()).sort(
     (a, b) => (a.batteryPercentage ?? 0) - (b.batteryPercentage ?? 0)
   );
 </script>
 
 <div class="page-content">
-  <h1 class="page-title">Battery Status</h1>
+  <div class="page-header">
+    <h1 class="page-title">Battery Status</h1>
+    <button
+      class="btn btn-sm"
+      class:btn-active={maintenanceMode}
+      class:btn-ghost={!maintenanceMode}
+      on:click={toggleMaintenanceMode}
+    >
+      {maintenanceMode ? '🔧 Maintenance ON' : 'Maintenance Mode'}
+    </button>
+  </div>
 
   {#if error}
     <div class="status-msg error">{error}</div>
@@ -118,9 +151,12 @@
                 </span>
               </td>
               <td>{device.delay ?? '—'} ms</td>
-              <td style="display:flex; gap:0.4rem;">
+              <td style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                 <button class="btn btn-ghost btn-sm" on:click={() => handleBlink(device.boardId)}>Blink</button>
                 <button class="btn btn-ghost btn-sm" on:click={() => handleSync(device.boardId)}>Sync</button>
+                {#if maintenanceMode}
+                  <button class="btn btn-ghost btn-sm btn-shimmer" on:click={() => handleShimmer(device.boardId)}>Shimmer</button>
+                {/if}
               </td>
             </tr>
           {/each}
@@ -137,6 +173,24 @@
 </div>
 
 <style>
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .page-header .page-title {
+    margin-bottom: 0;
+  }
+  .btn-active {
+    background: rgba(255,152,0,0.2);
+    border: 1px solid var(--color-mid);
+    color: var(--color-mid);
+  }
+  .btn-shimmer {
+    color: #a78bfa;
+    border-color: #a78bfa;
+  }
   .legend {
     display: flex;
     gap: 1rem;
