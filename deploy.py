@@ -24,6 +24,7 @@ def sudo(cmd, cwd=None):
     subprocess.run(f"echo {SUDO_PASS} | sudo -S {cmd}", shell=True, cwd=cwd, check=True)
 
 
+run("git update-index --skip-worktree sparkles-api/auth_config.yaml", cwd=REPO_DIR)
 run("git pull origin feature/serial-bridge", cwd=REPO_DIR)
 run("npm run build", cwd=UI_DIR)
 sudo("systemctl restart sparkles")
