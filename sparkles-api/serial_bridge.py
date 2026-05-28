@@ -122,6 +122,8 @@ class SerialBridge:
         # serial log buffer + subscribers
         self._log_buffer: collections.deque[str] = collections.deque(maxlen=_LOG_BUFFER_SIZE)
         self._log_subscribers: list[asyncio.Queue] = []
+        # watchdog: timestamp of last received JSON frame
+        self._last_frame_time: float = 0.0
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -305,6 +307,8 @@ class SerialBridge:
                         frame = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    import time as _time
+                    self._last_frame_time = _time.monotonic()
                     self._dispatch(frame)
                 except serial.SerialException as exc:
                     logger.error("Serial disconnected: %s — reconnecting in %.0fs", exc, RECONNECT_DELAY)
