@@ -48,6 +48,11 @@ export const setMaintenanceMode = (active) =>
 export const commandShimmer = (boardId = -1) =>
   fetch(`${BASE}/commandShimmer?boardId=${boardId}`).then(r => r.json());
 
+export const commandBreath = (params) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/commandBreath?${qs}`).then(r => r.json());
+};
+
 // ---- System info & settings ----
 export const getSystemInfo = () =>
   fetch(`${BASE}/getSystemInfo`).then(r => r.json());

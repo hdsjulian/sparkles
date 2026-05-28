@@ -198,7 +198,8 @@ enum animationEnum {
     CONCENTRIC, 
     MIDI, 
     BACKGROUND_SHIMMER,
-    STROBE, 
+    STROBE,
+    BREATH,
 };
 
 
@@ -332,6 +333,17 @@ struct animation_background_shimmer {
   animation_background_shimmer() : hue(0), saturation(0), value(0) {}
 };
 
+struct animation_breath {
+  unsigned long long startTime; // master clock time the first cycle starts
+  uint32_t cycleDuration;       // ms for one full in+out breath
+  uint32_t spreadDelay;         // max phase offset across all lamps in ms
+  uint16_t repetitions;         // 0 = infinite
+  uint8_t hue;
+  uint8_t saturation;
+  uint8_t brightness;
+  animation_breath() : startTime(0), cycleDuration(4000), spreadDelay(2000), repetitions(0), hue(96), saturation(180), brightness(200) {}
+};
+
 union animation_params {
   struct animation_strobe strobe;
   struct animation_midi midi;
@@ -339,6 +351,7 @@ union animation_params {
   struct animation_sync_async_blink syncAsyncBlink;
   struct animation_background_shimmer backgroundShimmer;
   struct animation_candle candle;
+  struct animation_breath breath;
   animation_params() {}
   ~animation_params() {}
 };

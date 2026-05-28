@@ -564,6 +564,20 @@ async def command_shimmer(boardId: int = Query(default=-1)):
     return _ok()
 
 
+@app.get("/commandBreath")
+async def command_breath(
+    cycleDuration: int = Query(default=4000),
+    spreadDelay: int = Query(default=2000),
+    repetitions: int = Query(default=0),
+    hue: int = Query(default=96),
+    saturation: int = Query(default=180),
+    brightness: int = Query(default=200),
+):
+    _send({"cmd": "breath", "cycleDuration": cycleDuration, "spreadDelay": spreadDelay,
+           "repetitions": repetitions, "hue": hue, "saturation": saturation, "brightness": brightness})
+    return _ok()
+
+
 @app.get("/commandMessage")
 async def command_message(boardId: int = Query(...)):
     _send({"cmd": "command_message", "boardId": boardId})

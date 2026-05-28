@@ -1,5 +1,5 @@
 <script>
-  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff } from '$lib/api.js';
+  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath } from '$lib/api.js';
 
   let error = '';
   let successMsg = '';
@@ -148,6 +148,20 @@
       };
       await setSyncAsyncParams(params);
       successMsg = 'Colors + Spatial params saved';
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  // ----- Breath -----
+  let breath = { cycleDuration: 4000, spreadDelay: 2000, hue: 96, saturation: 180, brightness: 200, repetitions: 0 };
+
+  async function submitBreath() {
+    error = ''; successMsg = '';
+    try {
+      await commandBreath(breath);
+      successMsg = 'Breath started';
       setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
@@ -303,6 +317,23 @@
     </div>
 
     <button class="btn btn-primary" on:click={submitColorsSpatial}>Save Colors + Spatial</button>
+  </div>
+
+  <!-- Breath -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Breath</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      All lamps fade in and out like breathing. Lamps farther from center start slightly later, creating a ripple across the forest.
+    </p>
+    <div class="form-row">
+      <div class="form-group"><label>Cycle (ms)</label><input type="number" min="500" max="30000" step="500" bind:value={breath.cycleDuration} /></div>
+      <div class="form-group"><label>Spread (ms)</label><input type="number" min="0" max="10000" step="250" bind:value={breath.spreadDelay} /></div>
+      <div class="form-group"><label>Hue</label><input type="number" min="0" max="255" bind:value={breath.hue} /></div>
+      <div class="form-group"><label>Saturation</label><input type="number" min="0" max="255" bind:value={breath.saturation} /></div>
+      <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={breath.brightness} /></div>
+      <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={breath.repetitions} /></div>
+    </div>
+    <button class="btn btn-primary" on:click={submitBreath}>Start Breath</button>
   </div>
 
   <!-- Good Morning / Good Night -->

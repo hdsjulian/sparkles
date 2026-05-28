@@ -296,6 +296,18 @@ static void handleSerialCommand(const String& line) {
         message_animation anim;
         anim.animationType = BACKGROUND_SHIMMER;
         msgHandler.sendAnimation(anim, boardId);
+
+    } else if (strcmp(cmd, "breath") == 0) {
+        message_animation anim;
+        anim.animationType = BREATH;
+        anim.animationParams.breath.startTime   = esp_timer_get_time() + 2000000ULL;
+        anim.animationParams.breath.cycleDuration = doc["cycleDuration"] | 4000;
+        anim.animationParams.breath.spreadDelay   = doc["spreadDelay"]   | 2000;
+        anim.animationParams.breath.repetitions   = doc["repetitions"]   | 0;
+        anim.animationParams.breath.hue           = doc["hue"]           | 96;
+        anim.animationParams.breath.saturation    = doc["saturation"]    | 180;
+        anim.animationParams.breath.brightness    = doc["brightness"]    | 200;
+        msgHandler.sendAnimation(anim, -1);
     }
 }
 

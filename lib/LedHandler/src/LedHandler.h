@@ -86,6 +86,7 @@ private:
     static void runSyncAsyncBlinkWrapper(void *pvParameters);
     static void runBackgroundShimmerWrapper(void *pvParameters);
     static void runCandleWrapper(void *pvParameters);
+    static void runBreathWrapper(void *pvParameters);
     void ledTask();
     void runMidi();
     void runBlink();
@@ -93,6 +94,7 @@ private:
     void runSyncAsyncBlink();
     void runBackgroundShimmer();
     void runCandle();
+    void runBreath();
     
     static void ledsOff();
     float midiHue = 25.0f / 360.0f;

@@ -239,6 +239,11 @@ void LedHandler::ledTask()
                 xTaskCreatePinnedToCore(runCandleWrapper, "runCandle", 10000, this, 2, &animationTaskHandle, 1);
             }
         }
+        else if (getCurrentAnimation() == BREATH) {
+            if (animationTaskHandle == NULL || eTaskGetState(animationTaskHandle) == eDeleted) {
+                xTaskCreatePinnedToCore(runBreathWrapper, "runBreath", 10000, this, 2, &animationTaskHandle, 1);
+            }
+        }
         else {
             ledsOff();
             setCurrentAnimation(OFF);
@@ -921,4 +926,54 @@ void LedHandler::candleLight(unsigned long long duration, float hue, float satur
         vTaskDelay(fadeTime / steps);
     }
     ledsOff();
+}
+
+void LedHandler::runBreathWrapper(void *pvParameters) {
+    LedHandler *instance = (LedHandler *)pvParameters;
+    instance->runBreath();
+}
+
+void LedHandler::runBreath() {
+    message_animation anim = getAnimation();
+    animation_breath& p = anim.animationParams.breath;
+
+    // Wait until startTime
+    unsigned long long microsUntil = calculateMicrosUntilStart(p.startTime);
+    if (microsUntil > 0 && microsUntil < 30000000ULL) {
+        vTaskDelay(pdMS_TO_TICKS(microsUntil / 1000));
+    }
+
+    // Phase offset based on distance from center
+    float dist = getDistanceFromCenter();
+    int maxDist = getMaxDistanceFromCenter();
+    uint32_t phaseOffsetMs = (maxDist > 0)
+        ? (uint32_t)((dist / (float)maxDist) * (float)p.spreadDelay)
+        : 0;
+
+    uint32_t cycleMs = p.cycleDuration > 0 ? p.cycleDuration : 4000;
+    uint32_t count = 0;
+
+    while (getCurrentAnimation() == BREATH) {
+        if (p.repetitions > 0 && count >= p.repetitions) break;
+
+        // Each cycle: sine fade in then out over cycleMs
+        uint32_t stepMs = 20;
+        uint32_t steps = cycleMs / stepMs;
+        for (uint32_t i = 0; i < steps; i++) {
+            if (getCurrentAnimation() != BREATH) break;
+
+            // Apply phase offset by shifting the position in the cycle
+            uint32_t effectiveMs = (i * stepMs + phaseOffsetMs) % cycleMs;
+            float phase = (float)effectiveMs / (float)cycleMs; // 0.0 – 1.0
+            float brightness = sinf(phase * M_PI) * (float)p.brightness;
+            if (brightness < 0) brightness = 0;
+
+            CRGB color = CHSV(p.hue, p.saturation, (uint8_t)brightness);
+            writeLeds(color);
+            vTaskDelay(pdMS_TO_TICKS(stepMs));
+        }
+        count++;
+    }
+    ledsOff();
+    setCurrentAnimation(OFF);
 }
