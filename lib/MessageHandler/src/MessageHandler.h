@@ -193,6 +193,7 @@ public:
     void setTestMode(bool on);
     bool getTestMode();
     void sendLogMessage(const char* text);
+    void tickInactiveTimeout();
 private:
     // Static Constants
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};

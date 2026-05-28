@@ -327,6 +327,7 @@ void loop()
 
     if (lastTick + 5000 < millis()) {
         lastTick = millis();
+        msgHandler.tickInactiveTimeout();
 
         uint8_t address[6];
         WiFi.macAddress(address);

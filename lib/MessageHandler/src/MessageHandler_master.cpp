@@ -338,6 +338,21 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
 
 
 
+void MessageHandler::tickInactiveTimeout() {
+    static constexpr unsigned long INACTIVE_TIMEOUT_MS = 25UL * 60UL * 1000UL; // 25 minutes
+    unsigned long now = millis();
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+        if (addressList[i].active == ACTIVE &&
+            addressList[i].lastUpdateTime > 0 &&
+            now - addressList[i].lastUpdateTime > INACTIVE_TIMEOUT_MS) {
+            addressList[i].active = INACTIVE;
+            ESP_LOGW("MSG", "Device %d timed out after 25 min, marking inactive", i);
+            serialEmitBoard(i, addressList[i]);
+        }
+    }
+}
+
 void MessageHandler::sendSystemStatus() {
     message_system_status systemStatus;
     systemStatus.numDevices = getNumDevices();
