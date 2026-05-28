@@ -19,8 +19,7 @@ const config = {
         '/midi',
         '/darkroom',
         '/calibration',
-        '/log',
-        '/login'
+        '/log'
       ],
       handleHttpError: ({ path, message }) => {
         if (path.startsWith('/favicon')) return;
