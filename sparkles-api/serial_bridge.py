@@ -154,11 +154,10 @@ class SerialBridge:
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
-        self._serial = serial.Serial(self._port, self._baud, timeout=1)
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
         self._thread.start()
-        logger.info("Serial bridge started on %s @ %d", self._port, self._baud)
+        logger.info("Serial bridge started, will connect to %s @ %d", self._port, self._baud)
 
     def stop(self):
         self._running = False
@@ -167,6 +166,9 @@ class SerialBridge:
         if self._tbeam and self._tbeam.is_open:
             self._tbeam.close()
         logger.info("Serial bridge stopped")
+
+    def _emit_serial_status(self, connected: bool):
+        self._dispatch({"event": "serial_status", "connected": connected})
 
     # ------------------------------------------------------------------
     # Sending
@@ -261,37 +263,60 @@ class SerialBridge:
 
     def _reader(self):
         import time as _time
-        # Drain boot noise for 2s without dispatching, so ESP32 is ready
-        deadline = _time.monotonic() + 2.0
-        while self._running and _time.monotonic() < deadline:
-            try:
-                self._serial.readline()
-            except Exception:
-                break
-        self._serial.reset_input_buffer()
-        self._send_ota_url()
 
-        buffer = ""
+        RECONNECT_DELAY = 3.0
+
         while self._running:
+            # --- connect ---
             try:
-                raw = self._serial.readline()
-                if not raw:
-                    continue
-                line = raw.decode(errors="replace").strip()
-                if not line:
-                    continue
-                logger.debug("RX ← %s", line)
-                self._append_log(line)
-                try:
-                    frame = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                self._dispatch(frame)
-            except serial.SerialException as exc:
-                logger.error("Serial error: %s", exc)
-                break
+                self._serial = serial.Serial(self._port, self._baud, timeout=1)
+                logger.info("Serial connected on %s", self._port)
             except Exception as exc:
-                logger.exception("Unexpected reader error: %s", exc)
+                logger.warning("Serial open failed (%s), retrying in %.0fs", exc, RECONNECT_DELAY)
+                self._emit_serial_status(False)
+                _time.sleep(RECONNECT_DELAY)
+                continue
+
+            # Drain boot noise for 2s
+            deadline = _time.monotonic() + 2.0
+            while self._running and _time.monotonic() < deadline:
+                try:
+                    self._serial.readline()
+                except Exception:
+                    break
+            if not self._running:
+                break
+            self._serial.reset_input_buffer()
+            self._emit_serial_status(True)
+            self._send_ota_url()
+
+            # --- read loop ---
+            while self._running:
+                try:
+                    raw = self._serial.readline()
+                    if not raw:
+                        continue
+                    line = raw.decode(errors="replace").strip()
+                    if not line:
+                        continue
+                    logger.debug("RX ← %s", line)
+                    self._append_log(line)
+                    try:
+                        frame = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    self._dispatch(frame)
+                except serial.SerialException as exc:
+                    logger.error("Serial disconnected: %s — reconnecting in %.0fs", exc, RECONNECT_DELAY)
+                    self._emit_serial_status(False)
+                    try:
+                        self._serial.close()
+                    except Exception:
+                        pass
+                    _time.sleep(RECONNECT_DELAY)
+                    break
+                except Exception as exc:
+                    logger.exception("Unexpected reader error: %s", exc)
 
     def _dispatch(self, frame: dict):
         if self._loop is None:

@@ -545,6 +545,12 @@ async def command_message(boardId: int = Query(...)):
 # Firmware — OTA serve, upload, compile
 # ---------------------------------------------------------------------------
 
+@app.get("/serial-status")
+async def serial_status():
+    connected = bridge._serial is not None and bridge._serial.is_open
+    return {"connected": connected}
+
+
 @app.get("/current-version")
 async def current_version():
     try:

@@ -6,8 +6,10 @@
   import '../app.css';
 
   let cleanupSSE;
-  let authUser = null;   // { username, role, allowedPages }
+  let authUser = null;
   let authChecked = false;
+  let serialConnected = true;
+  let serialEs;
 
   $: isLoginPage = $page.url.pathname === '/login';
 
@@ -19,6 +21,7 @@
       if (res.ok) {
         authUser = await res.json();
         cleanupSSE = setupSSE();
+        initSerialStatus();
       } else {
         window.location.href = '/login';
       }
@@ -28,8 +31,21 @@
     authChecked = true;
   });
 
+  function initSerialStatus() {
+    // poll once on load
+    fetch('/serial-status').then(r => r.json()).then(d => { serialConnected = d.connected; }).catch(() => {});
+
+    // listen for live status changes via SSE
+    serialEs = new EventSource('/events');
+    serialEs.addEventListener('serial_status', (e) => {
+      const d = JSON.parse(e.data);
+      serialConnected = d.connected;
+    });
+  }
+
   onDestroy(() => {
     if (cleanupSSE) cleanupSSE();
+    if (serialEs) serialEs.close();
   });
 
   async function logout() {
@@ -42,9 +58,27 @@
   <slot />
 {:else if authChecked && authUser}
   <Nav {authUser} on:logout={logout} />
+  {#if !serialConnected}
+    <div class="serial-warning">
+      ⚠ No serial connection to master — commands will not reach the device
+    </div>
+  {/if}
   <div class="page-wrapper">
     <slot />
   </div>
 {:else if !authChecked}
   <!-- waiting for auth check -->
 {/if}
+
+<style>
+  .serial-warning {
+    background: rgba(244, 152, 0, 0.15);
+    border-bottom: 1px solid rgba(244, 152, 0, 0.5);
+    color: #f98000;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.5rem 1.25rem;
+    text-align: center;
+    letter-spacing: 0.02em;
+  }
+</style>

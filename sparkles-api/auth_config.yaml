@@ -20,6 +20,7 @@ access:
     "GET /firmware.bin":                  [admin]
     "GET /compile-stream":                [admin]
     "GET /current-version":               [admin, user]
+    "GET /serial-status":                 [admin, user]
     "GET /commandOTAUpdate":              [admin]
     "GET /factoryReset":                  [admin]
     "GET /resetSystem":                   [admin]
