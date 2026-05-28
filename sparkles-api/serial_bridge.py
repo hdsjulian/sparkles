@@ -210,10 +210,11 @@ class SerialBridge:
     def send(self, payload: dict):
         """Enqueue a command for the reader thread to write — never blocks the event loop."""
         try:
-            self._send_queue.put_nowait(json.dumps(payload) + "\n")
+            line = json.dumps(payload) + "\n"
+            self._send_queue.put_nowait(line)
+            logger.debug("TX → %s", line.strip())
         except queue.Full:
             logger.warning("Send queue full, dropping: %s", payload)
-        logger.debug("TX → %s", line.strip())
 
     # ------------------------------------------------------------------
     # Subscriptions (for SSE fan-out)
