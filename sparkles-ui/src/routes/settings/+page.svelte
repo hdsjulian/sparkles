@@ -28,6 +28,7 @@
   let clockHour = new Date().getHours();
   let clockMinute = new Date().getMinutes();
   let clockSecond = new Date().getSeconds();
+  let clockInterval;
 
   // Sleep / wakeup time forms (HH:MM:SS strings)
   let sleepHours = '22';
@@ -46,13 +47,26 @@
     }
   }
 
+  function syncClock() {
+    const now = new Date();
+    clockYear = now.getFullYear();
+    clockMonth = now.getMonth() + 1;
+    clockDay = now.getDate();
+    clockHour = now.getHours();
+    clockMinute = now.getMinutes();
+    clockSecond = now.getSeconds();
+  }
+
   onMount(() => {
     loadSystemInfo();
     pollInterval = setInterval(loadSystemInfo, 5000);
+    syncClock();
+    clockInterval = setInterval(syncClock, 1000);
   });
 
   onDestroy(() => {
     clearInterval(pollInterval);
+    clearInterval(clockInterval);
   });
 
   async function handleSetTime() {
