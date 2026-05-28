@@ -18,6 +18,16 @@
   onMount(async () => {
     if (isLoginPage) { authChecked = true; return; }
 
+    // Tell other tabs to close their SSE connections
+    const bc = new BroadcastChannel('sparkles_tab');
+    bc.postMessage('claim');
+    bc.onmessage = (e) => {
+      if (e.data === 'claim') {
+        if (cleanupSSE) { cleanupSSE(); cleanupSSE = null; }
+        if (serialEs) { serialEs.close(); serialEs = null; }
+      }
+    };
+
     try {
       const res = await fetch('/api/me');
       if (res.ok) {

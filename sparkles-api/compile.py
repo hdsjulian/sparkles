@@ -5,6 +5,7 @@ Streams build output line-by-line via an async generator.
 """
 
 import asyncio
+import hashlib
 import os
 import re
 import shutil
@@ -17,7 +18,37 @@ DEFINES_PATH = REPO_DIR / "lib" / "MyDefines" / "src" / "MyDefines.h"
 CLIENT_ENV   = "Client_Device"
 MASTER_ENV   = "Master_WebserverTest_Pi"
 CLIENT_BIN   = REPO_DIR / ".pio" / "build" / CLIENT_ENV / "firmware.bin"
+MASTER_BIN   = REPO_DIR / ".pio" / "build" / MASTER_ENV / "firmware.bin"
 FIRMWARE_OUT = API_DIR / "firmware.bin"
+MASTER_HASH_FILE = API_DIR / ".master_src_hash"
+
+_MASTER_SRC_DIRS = ["src/Master_WebserverTest-Device", "lib"]
+_MASTER_SRC_EXTS = {".cpp", ".h", ".c", ".ini"}
+
+
+def _hash_master_sources() -> str:
+    """SHA-256 of all master source files, stable across runs."""
+    h = hashlib.sha256()
+    for d in _MASTER_SRC_DIRS:
+        base = REPO_DIR / d
+        for path in sorted(base.rglob("*")):
+            if path.is_file() and path.suffix in _MASTER_SRC_EXTS:
+                h.update(path.relative_to(REPO_DIR).as_posix().encode())
+                h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+def master_sources_changed() -> bool:
+    """True if source files differ from the last successful upload."""
+    current = _hash_master_sources()
+    if MASTER_HASH_FILE.exists():
+        return MASTER_HASH_FILE.read_text().strip() != current
+    return True
+
+
+def record_master_upload():
+    """Store current source hash after a successful upload."""
+    MASTER_HASH_FILE.write_text(_hash_master_sources())
 
 
 def read_version() -> str:
@@ -92,11 +123,21 @@ def _dtr_reset(port: str = "/dev/sparkles"):
 
 
 async def compile_master():
-    """Compile and flash master firmware via USB, then hard-reset."""
-    async for line in _stream_process(
-        [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload", "-j", "1"],
-        cwd=REPO_DIR,
-    ):
-        yield line
+    """Compile (if sources changed) and flash master firmware via USB, then hard-reset."""
+    if not master_sources_changed() and MASTER_BIN.exists():
+        yield "[sources unchanged — skipping compile, uploading existing binary]"
+        async for line in _stream_process(
+            [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload",
+             "--disable-auto-clean", "-j", "1"],
+            cwd=REPO_DIR,
+        ):
+            yield line
+    else:
+        async for line in _stream_process(
+            [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload", "-j", "1"],
+            cwd=REPO_DIR,
+        ):
+            yield line
+        record_master_upload()
     await asyncio.get_event_loop().run_in_executor(None, _dtr_reset)
     yield "[DTR reset sent — master rebooting]"

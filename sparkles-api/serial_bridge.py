@@ -15,6 +15,7 @@ import collections
 import json
 import logging
 import os
+import queue
 import threading
 from collections import defaultdict
 
@@ -125,6 +126,10 @@ class SerialBridge:
         # watchdog: timestamps for stale detection
         self._last_frame_time: float = 0.0
         self._connected_since: float = 0.0  # when port was last opened successfully
+        # set to True to keep reader thread from reconnecting (e.g. during firmware flash)
+        self._pause_reconnect: bool = False
+        # outbound write queue — serial writes happen on the reader thread, never the event loop
+        self._send_queue: queue.Queue = queue.Queue(maxsize=64)
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -171,11 +176,16 @@ class SerialBridge:
         logger.info("Serial bridge stopped")
 
     def release_port(self):
-        """Close the serial port so an external tool (e.g. esptool) can claim it.
-        The reader thread will reconnect automatically once the port is free."""
+        """Close the serial port and pause reconnection so esptool can claim it."""
+        self._pause_reconnect = True
         if self._serial and self._serial.is_open:
             self._serial.close()
-            logger.info("Serial port released for external use")
+        logger.info("Serial port released for external use")
+
+    def resume_port(self):
+        """Allow the reader thread to reconnect after external tool is done."""
+        self._pause_reconnect = False
+        logger.info("Serial port reconnect resumed")
 
     def _emit_serial_status(self, connected: bool):
         self._dispatch({"event": "serial_status", "connected": connected})
@@ -198,11 +208,11 @@ class SerialBridge:
             logger.warning("Could not detect Pi IP for OTA URL: %s", exc)
 
     def send(self, payload: dict):
-        if not self._serial or not self._serial.is_open:
-            logger.warning("Serial not open, dropping: %s", payload)
-            return
-        line = json.dumps(payload) + "\n"
-        self._serial.write(line.encode())
+        """Enqueue a command for the reader thread to write — never blocks the event loop."""
+        try:
+            self._send_queue.put_nowait(json.dumps(payload) + "\n")
+        except queue.Full:
+            logger.warning("Send queue full, dropping: %s", payload)
         logger.debug("TX → %s", line.strip())
 
     # ------------------------------------------------------------------
@@ -277,6 +287,13 @@ class SerialBridge:
         RECONNECT_DELAY = 3.0
 
         while self._running:
+            # --- wait if paused for external tool (e.g. firmware flash) ---
+            while self._running and self._pause_reconnect:
+                _time.sleep(0.5)
+
+            if not self._running:
+                break
+
             # --- connect ---
             try:
                 self._serial = serial.Serial(self._port, self._baud, timeout=1)
@@ -304,6 +321,13 @@ class SerialBridge:
 
             # --- read loop ---
             while self._running:
+                # drain outbound queue before blocking on readline
+                while True:
+                    try:
+                        line_out = self._send_queue.get_nowait()
+                        self._serial.write(line_out.encode())
+                    except queue.Empty:
+                        break
                 try:
                     raw = self._serial.readline()
                     if not raw:
