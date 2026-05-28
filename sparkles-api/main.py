@@ -30,7 +30,7 @@ SERIAL_PORT   = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
 FIRMWARE_PATH = os.path.join(os.path.dirname(__file__), "firmware.bin")
 
 # Public paths that never require a token
-_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico"}
+_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png"}
 _PUBLIC_PREFIXES = ("/_app/", "/login")
 
 
@@ -69,7 +69,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if user is None:
             if accepts_html:
-                return RedirectResponse("/login", status_code=302)
+                return RedirectResponse("/", status_code=302)
             return JSONResponse({"detail": "Not authenticated"}, status_code=401)
 
         role = user.get("role", "")
