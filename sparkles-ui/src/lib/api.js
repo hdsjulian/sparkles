@@ -39,8 +39,8 @@ export const commandBlink = (boardId) =>
 export const commandMessage = (boardId) =>
   fetch(`${BASE}/commandMessage?boardId=${boardId}`).then(r => r.json());
 
-export const commandSync = (boardId) =>
-  fetch(`${BASE}/commandSync?boardId=${boardId}`).then(r => r.json());
+export const commandSync = (index) =>
+  fetch(`${BASE}/commandSync?index=${index}`).then(r => r.json());
 
 // ---- System info & settings ----
 export const getSystemInfo = () =>

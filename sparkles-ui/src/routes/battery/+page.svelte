@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { devices } from '$lib/stores.js';
-  import { getAddressList, commandBlink } from '$lib/api.js';
+  import { getAddressList, commandBlink, commandSync } from '$lib/api.js';
 
   let error = '';
   let blinkMsg = '';
@@ -49,6 +49,18 @@
       setTimeout(() => { blinkMsg = ''; }, 2000);
     } catch (e) {
       error = `Blink failed: ${e.message}`;
+    }
+  }
+
+  async function handleSync(boardId) {
+    blinkMsg = '';
+    error = '';
+    try {
+      await commandSync(boardId);
+      blinkMsg = `Sync sent to #${boardId}`;
+      setTimeout(() => { blinkMsg = ''; }, 2000);
+    } catch (e) {
+      error = `Sync failed: ${e.message}`;
     }
   }
 
@@ -106,10 +118,9 @@
                 </span>
               </td>
               <td>{device.delay ?? '—'} ms</td>
-              <td>
-                <button class="btn btn-ghost btn-sm" on:click={() => handleBlink(device.boardId)}>
-                  Blink
-                </button>
+              <td style="display:flex; gap:0.4rem;">
+                <button class="btn btn-ghost btn-sm" on:click={() => handleBlink(device.boardId)}>Blink</button>
+                <button class="btn btn-ghost btn-sm" on:click={() => handleSync(device.boardId)}>Sync</button>
               </td>
             </tr>
           {/each}
