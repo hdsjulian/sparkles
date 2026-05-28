@@ -94,6 +94,27 @@ async def _stream_process(cmd: list[str], cwd: Path):
         raise RuntimeError(f"Process exited with code {proc.returncode}")
 
 
+async def git_pull():
+    """Pull latest code from remote with a 15s timeout. Skips silently on timeout or network error."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "pull",
+            cwd=str(REPO_DIR),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+            for line in stdout.decode(errors="replace").splitlines():
+                yield line
+            yield f"[git pull exit code {proc.returncode}]"
+        except asyncio.TimeoutError:
+            proc.kill()
+            yield "[git pull timed out after 15s — continuing with local code]"
+    except Exception as exc:
+        yield f"[git pull failed: {exc} — continuing with local code]"
+
+
 async def compile_client():
     """Compile client firmware and copy binary to firmware.bin for OTA serving."""
     async for line in _stream_process(

@@ -637,6 +637,10 @@ async def compile_stream(
             return f"event: compile_log\ndata: {json.dumps(line)}\n\n"
 
         try:
+            yield emit("[pulling latest code…]")
+            async for line in fw_compile.git_pull():
+                yield emit(line)
+
             if incrementVersion and target in ("master", "both"):
                 old, new = fw_compile.increment_version()
                 yield emit(f"[version bumped {old} → {new}]")
