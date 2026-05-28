@@ -549,9 +549,11 @@ async def command_message(boardId: int = Query(...)):
 async def serial_status():
     import time
     connected = bridge._serial is not None and bridge._serial.is_open
+    now = time.monotonic()
     last = bridge._last_frame_time
-    stale = connected and last > 0 and (time.monotonic() - last) > 30
-    return {"connected": connected, "stale": stale, "lastFrameAge": round(time.monotonic() - last) if last > 0 else None}
+    ref = last if last > 0 else bridge._connected_since  # fallback: time since port opened
+    stale = connected and ref > 0 and (now - ref) > 30
+    return {"connected": connected, "stale": stale, "lastFrameAge": round(now - last) if last > 0 else None}
 
 
 @app.get("/current-version")

@@ -122,8 +122,9 @@ class SerialBridge:
         # serial log buffer + subscribers
         self._log_buffer: collections.deque[str] = collections.deque(maxlen=_LOG_BUFFER_SIZE)
         self._log_subscribers: list[asyncio.Queue] = []
-        # watchdog: timestamp of last received JSON frame
+        # watchdog: timestamps for stale detection
         self._last_frame_time: float = 0.0
+        self._connected_since: float = 0.0  # when port was last opened successfully
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -289,6 +290,8 @@ class SerialBridge:
             if not self._running:
                 break
             self._serial.reset_input_buffer()
+            self._connected_since = _time.monotonic()
+            self._last_frame_time = 0.0  # reset so stale clock starts from connect
             self._emit_serial_status(True)
             self._send_ota_url()
 
