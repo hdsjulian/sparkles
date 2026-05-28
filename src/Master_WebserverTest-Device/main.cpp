@@ -293,7 +293,7 @@ static void handleSerialCommand(const String& line) {
 
     } else if (strcmp(cmd, "shimmer") == 0) {
         int boardId = doc["boardId"] | -1;
-        message_animation anim = msgHandler.createCandle(esp_timer_get_time() + 100000, 30000, 30, 80, 30);
+        message_animation anim = ledInstance.createCandle(esp_timer_get_time() + 100000, 30000, 30, 80, 30);
         msgHandler.sendAnimation(anim, boardId);
 
     } else if (strcmp(cmd, "bioluminescence") == 0) {
