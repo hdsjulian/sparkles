@@ -34,6 +34,22 @@ _PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png"}
 _PUBLIC_PREFIXES = ("/_app/", "/login")
 
 
+async def _serial_status_broadcaster():
+    """Periodically push serial_status (including stale flag) via SSE."""
+    import time
+    while True:
+        await asyncio.sleep(10)
+        try:
+            connected = bridge._serial is not None and bridge._serial.is_open
+            now = time.monotonic()
+            last = bridge._last_frame_time
+            ref = last if last > 0 else bridge._connected_since
+            stale = connected and ref > 0 and (now - ref) > 30
+            bridge._dispatch({"event": "serial_status", "connected": connected, "stale": stale})
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     auth.bootstrap()
@@ -43,6 +59,7 @@ async def lifespan(app: FastAPI):
         bridge.start(loop)
     except Exception as exc:
         logger.warning("Could not open serial port %s: %s – running in offline mode", SERIAL_PORT, exc)
+    asyncio.create_task(_serial_status_broadcaster())
     yield
     bridge.stop()
 
@@ -102,7 +119,7 @@ def _ok(msg: str = "OK"):
     return JSONResponse({"status": True, "msg": msg})
 
 
-async def _request(cmd: dict, event: str, timeout: float = 10.0):
+async def _request(cmd: dict, event: str, timeout: float = 4.0):
     result = await bridge.request(cmd, event, timeout)
     if result is None:
         raise HTTPException(504, detail=f"No response from device (timeout waiting for '{event}')")

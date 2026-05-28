@@ -49,7 +49,8 @@
     serialEs.addEventListener('serial_status', (e) => {
       const d = JSON.parse(e.data);
       serialConnected = d.connected;
-      if (d.connected) pollSerialStatus(); // refresh stale flag on reconnect
+      if (d.stale !== undefined) serialStale = d.stale;
+      else if (d.connected) pollSerialStatus(); // fallback: refresh stale on reconnect
     });
   }
 
