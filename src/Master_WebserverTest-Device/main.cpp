@@ -140,6 +140,8 @@ static void handleSerialCommand(const String& line) {
         t.tm_sec  = doc["seconds"].as<int>();
         struct timeval tv{ mktime(&t), 0 };
         settimeofday(&tv, NULL);
+        setenv("TZ", "UTC", 1);
+        tzset();
 
     } else if (strcmp(cmd, "set_sleep_time") == 0) {
         msgHandler.setSleepTime(doc["hours"].as<int>(), doc["minutes"].as<int>(), doc["seconds"].as<int>());
