@@ -1,5 +1,5 @@
 <script>
-  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll } from '$lib/api.js';
+  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff } from '$lib/api.js';
 
   let error = '';
   let successMsg = '';
@@ -156,7 +156,10 @@
 </script>
 
 <div class="page-content">
-  <h1 class="page-title">Animations</h1>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+    <h1 class="page-title" style="margin-bottom:0;">Animations</h1>
+    <button class="btn btn-ghost" on:click={() => commandAnimationOff()}>All Off</button>
+  </div>
 
   {#if error}
     <div class="status-msg error">{error}</div>
