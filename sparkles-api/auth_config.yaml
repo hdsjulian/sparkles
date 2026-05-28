@@ -4,10 +4,10 @@
 
 users:
   admin:
-    password_plain: "admin123"   # change me
+    password_plain: "admin"   # change me
     role: admin
   user:
-    password_plain: "user123"    # change me
+    password_plain: "user"    # change me
     role: user
 
 # Access rules — evaluated top-to-bottom, first match wins.
