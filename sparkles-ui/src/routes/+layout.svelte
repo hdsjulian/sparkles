@@ -9,7 +9,9 @@
   let authUser = null;
   let authChecked = false;
   let serialConnected = true;
+  let serialStale = false;
   let serialEs;
+  let serialPollInterval;
 
   $: isLoginPage = $page.url.pathname === '/login';
 
@@ -31,21 +33,30 @@
     authChecked = true;
   });
 
-  function initSerialStatus() {
-    // poll once on load
-    fetch('/serial-status').then(r => r.json()).then(d => { serialConnected = d.connected; }).catch(() => {});
+  function pollSerialStatus() {
+    fetch('/serial-status').then(r => r.json()).then(d => {
+      serialConnected = d.connected;
+      serialStale = d.stale ?? false;
+    }).catch(() => {});
+  }
 
-    // listen for live status changes via SSE
+  function initSerialStatus() {
+    pollSerialStatus();
+    serialPollInterval = setInterval(pollSerialStatus, 15000);
+
+    // live disconnect/reconnect events via SSE
     serialEs = new EventSource('/events');
     serialEs.addEventListener('serial_status', (e) => {
       const d = JSON.parse(e.data);
       serialConnected = d.connected;
+      if (d.connected) pollSerialStatus(); // refresh stale flag on reconnect
     });
   }
 
   onDestroy(() => {
     if (cleanupSSE) cleanupSSE();
     if (serialEs) serialEs.close();
+    if (serialPollInterval) clearInterval(serialPollInterval);
   });
 
   async function logout() {
@@ -61,6 +72,10 @@
   {#if !serialConnected}
     <div class="serial-warning">
       ⚠ No serial connection to master — commands will not reach the device
+    </div>
+  {:else if serialStale}
+    <div class="serial-warning">
+      ⚠ Master is connected but not responding — it may be hung
     </div>
   {/if}
   <div class="page-wrapper">
