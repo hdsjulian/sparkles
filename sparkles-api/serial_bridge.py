@@ -170,6 +170,13 @@ class SerialBridge:
             self._tbeam.close()
         logger.info("Serial bridge stopped")
 
+    def release_port(self):
+        """Close the serial port so an external tool (e.g. esptool) can claim it.
+        The reader thread will reconnect automatically once the port is free."""
+        if self._serial and self._serial.is_open:
+            self._serial.close()
+            logger.info("Serial port released for external use")
+
     def _emit_serial_status(self, connected: bool):
         self._dispatch({"event": "serial_status", "connected": connected})
 

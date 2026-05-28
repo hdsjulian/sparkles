@@ -608,6 +608,8 @@ async def compile_stream(
 
             if target in ("master", "both"):
                 yield emit("[compiling & flashing master…]")
+                bridge.release_port()
+                await asyncio.sleep(0.5)  # let the port fully close before esptool opens it
                 async for line in fw_compile.compile_master():
                     if await request.is_disconnected():
                         return
