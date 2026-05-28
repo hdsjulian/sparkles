@@ -21,7 +21,11 @@ const config = {
         '/calibration',
         '/log',
         '/login'
-      ]
+      ],
+      handleHttpError: ({ path, message }) => {
+        if (path.startsWith('/favicon')) return;
+        throw new Error(message);
+      }
     }
   }
 };
