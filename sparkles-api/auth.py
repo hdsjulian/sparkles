@@ -45,8 +45,8 @@ def bootstrap():
     changed = False
     for username, user in cfg.get("users", {}).items():
         if "password_plain" in user:
-            hashed = pwd_ctx.hash(user.pop("password_plain"))
-            user["password_hash"] = hashed
+            plain = str(user.pop("password_plain"))[:72]  # bcrypt hard limit
+            user["password_hash"] = pwd_ctx.hash(plain)
             changed = True
             logger.info("Hashed password for user '%s'", username)
     if changed:
