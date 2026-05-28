@@ -1,5 +1,5 @@
 <script>
-  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath } from '$lib/api.js';
+  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence } from '$lib/api.js';
 
   let error = '';
   let successMsg = '';
@@ -148,6 +148,20 @@
       };
       await setSyncAsyncParams(params);
       successMsg = 'Colors + Spatial params saved';
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  // ----- Bioluminescence -----
+  let bioLum = { minInterval: 2000, maxInterval: 8000, fadeDuration: 1500, hue: 140, hueVariance: 20, saturation: 220, brightness: 80, repetitions: 0 };
+
+  async function submitBioluminescence() {
+    error = ''; successMsg = '';
+    try {
+      await commandBioluminescence(bioLum);
+      successMsg = 'Bioluminescence started';
       setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
@@ -317,6 +331,25 @@
     </div>
 
     <button class="btn btn-primary" on:click={submitColorsSpatial}>Save Colors + Spatial</button>
+  </div>
+
+  <!-- Bioluminescence -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Bioluminescence</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      Each lamp pulses independently at random intervals with a slow blue-green glow.
+    </p>
+    <div class="form-row">
+      <div class="form-group"><label>Min interval (ms)</label><input type="number" min="100" max="30000" step="100" bind:value={bioLum.minInterval} /></div>
+      <div class="form-group"><label>Max interval (ms)</label><input type="number" min="100" max="60000" step="100" bind:value={bioLum.maxInterval} /></div>
+      <div class="form-group"><label>Fade duration (ms)</label><input type="number" min="100" max="10000" step="100" bind:value={bioLum.fadeDuration} /></div>
+      <div class="form-group"><label>Hue</label><input type="number" min="0" max="255" bind:value={bioLum.hue} /></div>
+      <div class="form-group"><label>Hue variance</label><input type="number" min="0" max="127" bind:value={bioLum.hueVariance} /></div>
+      <div class="form-group"><label>Saturation</label><input type="number" min="0" max="255" bind:value={bioLum.saturation} /></div>
+      <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={bioLum.brightness} /></div>
+      <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={bioLum.repetitions} /></div>
+    </div>
+    <button class="btn btn-primary" on:click={submitBioluminescence}>Start Bioluminescence</button>
   </div>
 
   <!-- Breath -->

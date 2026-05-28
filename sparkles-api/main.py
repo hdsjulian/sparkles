@@ -564,6 +564,23 @@ async def command_shimmer(boardId: int = Query(default=-1)):
     return _ok()
 
 
+@app.get("/commandBioluminescence")
+async def command_bioluminescence(
+    minInterval: int = Query(default=2000),
+    maxInterval: int = Query(default=8000),
+    fadeDuration: int = Query(default=1500),
+    repetitions: int = Query(default=0),
+    hue: int = Query(default=140),
+    hueVariance: int = Query(default=20),
+    saturation: int = Query(default=220),
+    brightness: int = Query(default=80),
+):
+    _send({"cmd": "bioluminescence", "minInterval": minInterval, "maxInterval": maxInterval,
+           "fadeDuration": fadeDuration, "repetitions": repetitions, "hue": hue,
+           "hueVariance": hueVariance, "saturation": saturation, "brightness": brightness})
+    return _ok()
+
+
 @app.get("/commandBreath")
 async def command_breath(
     cycleDuration: int = Query(default=4000),

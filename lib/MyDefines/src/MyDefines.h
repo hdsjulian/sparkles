@@ -200,6 +200,7 @@ enum animationEnum {
     BACKGROUND_SHIMMER,
     STROBE,
     BREATH,
+    BIOLUMINESCENCE,
 };
 
 
@@ -333,6 +334,18 @@ struct animation_background_shimmer {
   animation_background_shimmer() : hue(0), saturation(0), value(0) {}
 };
 
+struct animation_bioluminescence {
+  uint32_t minInterval;  // ms between pulses (min)
+  uint32_t maxInterval;  // ms between pulses (max)
+  uint32_t fadeDuration; // ms for fade in + out total
+  uint16_t repetitions;  // 0 = infinite
+  uint8_t hue;
+  uint8_t hueVariance;   // random ± hue shift per pulse
+  uint8_t saturation;
+  uint8_t brightness;
+  animation_bioluminescence() : minInterval(2000), maxInterval(8000), fadeDuration(1500), repetitions(0), hue(140), hueVariance(20), saturation(220), brightness(80) {}
+};
+
 struct animation_breath {
   unsigned long long startTime; // master clock time the first cycle starts
   uint32_t cycleDuration;       // ms for one full in+out breath
@@ -352,6 +365,7 @@ union animation_params {
   struct animation_background_shimmer backgroundShimmer;
   struct animation_candle candle;
   struct animation_breath breath;
+  struct animation_bioluminescence bioluminescence;
   animation_params() {}
   ~animation_params() {}
 };

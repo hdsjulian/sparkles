@@ -244,6 +244,11 @@ void LedHandler::ledTask()
                 xTaskCreatePinnedToCore(runBreathWrapper, "runBreath", 10000, this, 2, &animationTaskHandle, 1);
             }
         }
+        else if (getCurrentAnimation() == BIOLUMINESCENCE) {
+            if (animationTaskHandle == NULL || eTaskGetState(animationTaskHandle) == eDeleted) {
+                xTaskCreatePinnedToCore(runBioluminescenceWrapper, "runBioLum", 10000, this, 2, &animationTaskHandle, 1);
+            }
+        }
         else {
             ledsOff();
             setCurrentAnimation(OFF);
@@ -974,6 +979,68 @@ void LedHandler::runBreath() {
         }
         count++;
     }
+    ledsOff();
+    setCurrentAnimation(OFF);
+}
+
+void LedHandler::runBioluminescenceWrapper(void *pvParameters) {
+    LedHandler *instance = (LedHandler *)pvParameters;
+    instance->runBioluminescence();
+}
+
+void LedHandler::runBioluminescence() {
+    message_animation anim = getAnimation();
+    animation_bioluminescence& p = anim.animationParams.bioluminescence;
+
+    uint32_t count = 0;
+    uint32_t stepMs = 16;
+
+    // Random initial offset so lamps don't all start at the same time
+    uint32_t initDelay = (esp_random() % (p.maxInterval > 0 ? p.maxInterval : 5000));
+    vTaskDelay(pdMS_TO_TICKS(initDelay));
+
+    while (getCurrentAnimation() == BIOLUMINESCENCE) {
+        if (p.repetitions > 0 && count >= p.repetitions) break;
+
+        // Random hue variation per pulse
+        int32_t hueShift = (int32_t)(esp_random() % (p.hueVariance * 2 + 1)) - p.hueVariance;
+        uint8_t pulseHue = (uint8_t)((p.hue + hueShift + 256) % 256);
+
+        uint32_t halfFade = p.fadeDuration / 2;
+        uint32_t fadeSteps = halfFade / stepMs;
+        if (fadeSteps < 1) fadeSteps = 1;
+
+        // Fade in
+        for (uint32_t i = 0; i <= fadeSteps; i++) {
+            if (getCurrentAnimation() != BIOLUMINESCENCE) goto done;
+            float t = (float)i / (float)fadeSteps;
+            uint8_t bri = (uint8_t)(t * t * p.brightness); // ease-in
+            writeLeds(CHSV(pulseHue, p.saturation, bri));
+            vTaskDelay(pdMS_TO_TICKS(stepMs));
+        }
+
+        // Fade out
+        for (uint32_t i = fadeSteps; i > 0; i--) {
+            if (getCurrentAnimation() != BIOLUMINESCENCE) goto done;
+            float t = (float)i / (float)fadeSteps;
+            uint8_t bri = (uint8_t)(t * t * p.brightness); // ease-out
+            writeLeds(CHSV(pulseHue, p.saturation, bri));
+            vTaskDelay(pdMS_TO_TICKS(stepMs));
+        }
+        ledsOff();
+
+        // Random pause before next pulse
+        uint32_t interval = p.minInterval + (esp_random() % (p.maxInterval - p.minInterval + 1));
+        uint32_t elapsed = 0;
+        while (elapsed < interval && getCurrentAnimation() == BIOLUMINESCENCE) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            elapsed += 100;
+        }
+
+        count++;
+    }
+
+done:
     ledsOff();
     setCurrentAnimation(OFF);
 }

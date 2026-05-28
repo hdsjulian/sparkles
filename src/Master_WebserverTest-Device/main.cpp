@@ -297,6 +297,19 @@ static void handleSerialCommand(const String& line) {
         anim.animationType = BACKGROUND_SHIMMER;
         msgHandler.sendAnimation(anim, boardId);
 
+    } else if (strcmp(cmd, "bioluminescence") == 0) {
+        message_animation anim;
+        anim.animationType = BIOLUMINESCENCE;
+        anim.animationParams.bioluminescence.minInterval  = doc["minInterval"]  | 2000;
+        anim.animationParams.bioluminescence.maxInterval  = doc["maxInterval"]  | 8000;
+        anim.animationParams.bioluminescence.fadeDuration = doc["fadeDuration"] | 1500;
+        anim.animationParams.bioluminescence.repetitions  = doc["repetitions"]  | 0;
+        anim.animationParams.bioluminescence.hue          = doc["hue"]          | 140;
+        anim.animationParams.bioluminescence.hueVariance  = doc["hueVariance"]  | 20;
+        anim.animationParams.bioluminescence.saturation   = doc["saturation"]   | 220;
+        anim.animationParams.bioluminescence.brightness   = doc["brightness"]   | 80;
+        msgHandler.sendAnimation(anim, -1);
+
     } else if (strcmp(cmd, "breath") == 0) {
         message_animation anim;
         anim.animationType = BREATH;
