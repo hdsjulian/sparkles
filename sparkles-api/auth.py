@@ -22,7 +22,7 @@ ALGORITHM     = "HS256"
 TOKEN_TTL_H   = 24 * 7   # 1 week
 COOKIE_NAME   = "sparkles_token"
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_ctx = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 # ---------------------------------------------------------------------------
