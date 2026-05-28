@@ -88,7 +88,7 @@ static void handleSerialCommand(const String& line) {
         a.animationParams.blink.brightness  = 255;
         a.animationParams.blink.duration    = 500;
         a.animationParams.blink.repetitions = 3;
-        a.animationParams.blink.startTime   = esp_timer_get_time() + 1000000;
+        a.animationParams.blink.startTime   = esp_timer_get_time() + 100000;
         msgHandler.sendAnimation(a, doc["boardId"].as<int>());
 
     } else if (strcmp(cmd, "blink_all") == 0) {
@@ -97,7 +97,7 @@ static void handleSerialCommand(const String& line) {
         a.animationParams.blink.brightness  = 255;
         a.animationParams.blink.duration    = 500;
         a.animationParams.blink.repetitions = 3;
-        a.animationParams.blink.startTime   = esp_timer_get_time() + 1000000;
+        a.animationParams.blink.startTime   = esp_timer_get_time() + 100000;
         msgHandler.sendAnimation(a, -1);
 
     } else if (strcmp(cmd, "blink_battery_all") == 0) {
