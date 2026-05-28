@@ -26,7 +26,7 @@ export function setupSSE() {
     const key = board.id ?? board.boardId;
     devices.update(map => {
       const next = new Map(map);
-      next.set(key, { ...map.get(key), ...board });
+      next.set(key, { ...map.get(key), ...board, boardId: key });
       return next;
     });
   };

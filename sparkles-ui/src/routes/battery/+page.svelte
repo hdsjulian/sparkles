@@ -12,7 +12,10 @@
       const list = Array.isArray(resp) ? resp : (resp.addresses ?? []);
       devices.update(map => {
         const next = new Map(map);
-        list.forEach(d => next.set(d.boardId, d));
+        list.forEach(d => {
+          const key = d.boardId ?? d.id;
+          next.set(key, { ...d, boardId: key });
+        });
         return next;
       });
     } catch (e) {
