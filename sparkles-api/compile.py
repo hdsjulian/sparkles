@@ -78,10 +78,25 @@ async def compile_client():
         raise RuntimeError("Client binary not found after build")
 
 
+def _dtr_reset(port: str = "/dev/sparkles"):
+    """Toggle DTR to hard-reset the ESP32 after flashing."""
+    try:
+        import serial as _serial, time as _time
+        s = _serial.Serial(port, 115200, timeout=1)
+        s.dtr = False
+        _time.sleep(0.1)
+        s.dtr = True
+        s.close()
+    except Exception as exc:
+        raise RuntimeError(f"DTR reset failed: {exc}")
+
+
 async def compile_master():
-    """Compile and flash master firmware via USB."""
+    """Compile and flash master firmware via USB, then hard-reset."""
     async for line in _stream_process(
         [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload", "-j", "1"],
         cwd=REPO_DIR,
     ):
         yield line
+    await asyncio.get_event_loop().run_in_executor(None, _dtr_reset)
+    yield "[DTR reset sent — master rebooting]"
