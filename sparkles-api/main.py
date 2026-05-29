@@ -111,7 +111,13 @@ app.add_middleware(AuthMiddleware)
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _assert_connected():
+    if not bridge.is_connected:
+        raise HTTPException(503, detail="Master not connected — serial bridge is down")
+
+
 def _send(payload: dict):
+    _assert_connected()
     bridge.send(payload)
 
 
@@ -120,6 +126,7 @@ def _ok(msg: str = "OK"):
 
 
 async def _request(cmd: dict, event: str, timeout: float = 4.0):
+    _assert_connected()
     result = await bridge.request(cmd, event, timeout)
     if result is None:
         raise HTTPException(504, detail=f"No response from device (timeout waiting for '{event}')")

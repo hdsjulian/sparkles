@@ -207,6 +207,10 @@ class SerialBridge:
         except Exception as exc:
             logger.warning("Could not detect Pi IP for OTA URL: %s", exc)
 
+    @property
+    def is_connected(self) -> bool:
+        return self._serial is not None and self._serial.is_open
+
     def send(self, payload: dict):
         """Enqueue a command for the reader thread to write — never blocks the event loop."""
         try:
