@@ -591,6 +591,17 @@ void MessageHandler::calculateDistances() {
         memcpy(configMessage.targetAddress, addressList[i].address, 6);
         pushToSendQueue(configMessage);
     }
+
+    float maxDist = 0.0f;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+        if (addressList[i].distanceFromCenter > maxDist)
+            maxDist = addressList[i].distanceFromCenter;
+    }
+    ESP_LOGI("MSG", "Broadcasting max distance: %.2f m", maxDist);
+    message_data maxDistMsg = createCommandMessage(CMD_SET_MAX_DISTANCE, true);
+    maxDistMsg.payload.command.param = maxDist;
+    pushToSendQueue(maxDistMsg);
 }
 
 void MessageHandler::startCalibrationMaster() {

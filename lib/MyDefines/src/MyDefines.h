@@ -167,8 +167,9 @@ extern MessageHandler& getMessageHandlerInstance();
 #define CMD_CANCEL_CALIBRATION 14
 #define CMD_REANNOUNCE 15
 #define CMD_OTA_UPDATE 16
-#define CMD_TEST_MODE_ON  17
-#define CMD_TEST_MODE_OFF 18
+#define CMD_TEST_MODE_ON      17
+#define CMD_TEST_MODE_OFF     18
+#define CMD_SET_MAX_DISTANCE  19
 
 
 

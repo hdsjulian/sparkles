@@ -110,6 +110,10 @@ void MessageHandler::handleReceive() {
                     setTestMode(false);
                     ledInstance->setTestMode(false);
                 }
+                if (commandMessage.commandType == CMD_SET_MAX_DISTANCE) {
+                    ledInstance->setMaxDistanceFromCenter((int)commandMessage.param);
+                    ESP_LOGI("MSG", "Max distance from center set to %.2f m", commandMessage.param);
+                }
                 if (commandMessage.commandType == CMD_OTA_UPDATE) {
                     ESP_LOGI("MSG", "CMD_OTA_UPDATE received — connecting to %s", OTA_WIFI_SSID);
                     WiFi.mode(WIFI_OFF);
