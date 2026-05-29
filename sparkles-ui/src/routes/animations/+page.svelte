@@ -1,5 +1,6 @@
 <script>
   import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence, commandCandleAll } from '$lib/api.js';
+  import HueSatPicker from '$lib/components/HueSatPicker.svelte';
 
   let error = '';
   let successMsg = '';
@@ -246,6 +247,7 @@
   <!-- Strobe -->
   <div class="card" style="margin-bottom:1.25rem;">
     <div class="card-title">Strobe All</div>
+    <HueSatPicker bind:hue={strobe.hue} bind:saturation={strobe.saturation} brightness={strobe.brightness} />
     <div class="param-section">
       <div class="form-row">
         <div class="form-group">
@@ -255,14 +257,6 @@
         <div class="form-group">
           <label>Duration (ms)</label>
           <input type="number" min="100" bind:value={strobe.duration} />
-        </div>
-        <div class="form-group">
-          <label>Hue (0–255)</label>
-          <input type="number" min="0" max="255" bind:value={strobe.hue} />
-        </div>
-        <div class="form-group">
-          <label>Saturation (0–255)</label>
-          <input type="number" min="0" max="255" bind:value={strobe.saturation} />
         </div>
         <div class="form-group">
           <label>Brightness (0–255)</label>
@@ -377,9 +371,8 @@
     <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
       Each lamp flickers independently like a candle flame until switched off.
     </p>
+    <HueSatPicker bind:hue={candle.hue} bind:saturation={candle.saturation} brightness={candle.brightness} />
     <div class="form-row" style="margin-bottom:0.75rem;">
-      <div class="form-group"><label>Hue (0–255)</label><input type="number" min="0" max="255" bind:value={candle.hue} /></div>
-      <div class="form-group"><label>Saturation (0–255)</label><input type="number" min="0" max="255" bind:value={candle.saturation} /></div>
       <div class="form-group"><label>Brightness (0–255)</label><input type="number" min="0" max="255" bind:value={candle.brightness} /></div>
     </div>
     <button class="btn {candleActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleCandle}>
@@ -393,13 +386,12 @@
     <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
       Each lamp pulses independently at random intervals with a slow blue-green glow.
     </p>
+    <HueSatPicker bind:hue={bioLum.hue} bind:saturation={bioLum.saturation} brightness={bioLum.brightness} />
     <div class="form-row">
       <div class="form-group"><label>Min interval (ms)</label><input type="number" min="100" max="30000" step="100" bind:value={bioLum.minInterval} /></div>
       <div class="form-group"><label>Max interval (ms)</label><input type="number" min="100" max="60000" step="100" bind:value={bioLum.maxInterval} /></div>
       <div class="form-group"><label>Fade duration (ms)</label><input type="number" min="100" max="10000" step="100" bind:value={bioLum.fadeDuration} /></div>
-      <div class="form-group"><label>Hue</label><input type="number" min="0" max="255" bind:value={bioLum.hue} /></div>
       <div class="form-group"><label>Hue variance</label><input type="number" min="0" max="127" bind:value={bioLum.hueVariance} /></div>
-      <div class="form-group"><label>Saturation</label><input type="number" min="0" max="255" bind:value={bioLum.saturation} /></div>
       <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={bioLum.brightness} /></div>
       <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={bioLum.repetitions} /></div>
     </div>
@@ -414,11 +406,10 @@
     <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
       All lamps fade in and out like breathing. Lamps farther from center start slightly later, creating a ripple across the forest.
     </p>
+    <HueSatPicker bind:hue={breath.hue} bind:saturation={breath.saturation} brightness={breath.brightness} />
     <div class="form-row">
       <div class="form-group"><label>Cycle (ms)</label><input type="number" min="500" max="30000" step="500" bind:value={breath.cycleDuration} /></div>
       <div class="form-group"><label>Spread (ms)</label><input type="number" min="0" max="10000" step="250" bind:value={breath.spreadDelay} /></div>
-      <div class="form-group"><label>Hue</label><input type="number" min="0" max="255" bind:value={breath.hue} /></div>
-      <div class="form-group"><label>Saturation</label><input type="number" min="0" max="255" bind:value={breath.saturation} /></div>
       <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={breath.brightness} /></div>
       <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={breath.repetitions} /></div>
     </div>
