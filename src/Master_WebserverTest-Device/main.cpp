@@ -339,7 +339,7 @@ static void handleSerialCommand(const String& line) {
 void setup()
 {
     Serial.begin(115200);
-    esp_log_level_set("*", ESP_LOG_NONE);
+    delay(500);
 
     unsigned long long startTime = millis();
     while (!Serial) {
