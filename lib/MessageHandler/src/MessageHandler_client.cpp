@@ -193,7 +193,7 @@ void MessageHandler::handleReceive() {
             }
 
             else {
-                ESP_LOGI("MSG", "Unknown message type ");
+                ESP_LOGI("MSG", "Unknown message type %d", incomingData.messageType);
             }
         }
     }

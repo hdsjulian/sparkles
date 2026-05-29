@@ -178,12 +178,20 @@
 
   // ----- Bioluminescence -----
   let bioLum = { minInterval: 2000, maxInterval: 8000, fadeDuration: 1500, hue: 140, hueVariance: 20, saturation: 220, brightness: 80, repetitions: 0 };
+  let bioLumActive = false;
 
-  async function submitBioluminescence() {
+  async function toggleBioluminescence() {
     error = ''; successMsg = '';
     try {
-      await commandBioluminescence(bioLum);
-      successMsg = 'Bioluminescence started';
+      if (bioLumActive) {
+        await commandAnimationOff();
+        bioLumActive = false;
+        successMsg = 'Bioluminescence stopped';
+      } else {
+        await commandBioluminescence(bioLum);
+        bioLumActive = true;
+        successMsg = 'Bioluminescence started';
+      }
       setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
@@ -192,12 +200,20 @@
 
   // ----- Breath -----
   let breath = { cycleDuration: 4000, spreadDelay: 2000, hue: 96, saturation: 180, brightness: 200, repetitions: 0 };
+  let breathActive = false;
 
-  async function submitBreath() {
+  async function toggleBreath() {
     error = ''; successMsg = '';
     try {
-      await commandBreath(breath);
-      successMsg = 'Breath started';
+      if (breathActive) {
+        await commandAnimationOff();
+        breathActive = false;
+        successMsg = 'Breath stopped';
+      } else {
+        await commandBreath(breath);
+        breathActive = true;
+        successMsg = 'Breath started';
+      }
       setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
@@ -387,7 +403,9 @@
       <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={bioLum.brightness} /></div>
       <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={bioLum.repetitions} /></div>
     </div>
-    <button class="btn btn-primary" on:click={submitBioluminescence}>Start Bioluminescence</button>
+    <button class="btn {bioLumActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleBioluminescence}>
+      {bioLumActive ? 'Stop Bioluminescence' : 'Start Bioluminescence'}
+    </button>
   </div>
 
   <!-- Breath -->
@@ -404,7 +422,9 @@
       <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={breath.brightness} /></div>
       <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={breath.repetitions} /></div>
     </div>
-    <button class="btn btn-primary" on:click={submitBreath}>Start Breath</button>
+    <button class="btn {breathActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleBreath}>
+      {breathActive ? 'Stop Breath' : 'Start Breath'}
+    </button>
   </div>
 
   <!-- Good Morning / Good Night -->
