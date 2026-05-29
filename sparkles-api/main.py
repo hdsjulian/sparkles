@@ -523,8 +523,8 @@ async def command_ota_update():
 
 
 @app.get("/toggleTestMode")
-async def toggle_test_mode():
-    result = await _request({"cmd": "toggle_test_mode"}, "test_mode")
+async def toggle_test_mode(spacing: float = Query(default=1.0)):
+    result = await _request({"cmd": "toggle_test_mode", "spacing": spacing}, "test_mode")
     return result
 
 
@@ -592,6 +592,16 @@ async def command_breath(
 ):
     _send({"cmd": "breath", "cycleDuration": cycleDuration, "spreadDelay": spreadDelay,
            "repetitions": repetitions, "hue": hue, "saturation": saturation, "brightness": brightness})
+    return _ok()
+
+
+@app.get("/commandCandleAll")
+async def command_candle_all(
+    hue: int = Query(default=20),
+    saturation: int = Query(default=210),
+    brightness: int = Query(default=180),
+):
+    _send({"cmd": "candle_all", "hue": hue, "saturation": saturation, "brightness": brightness})
     return _ok()
 
 

@@ -58,6 +58,11 @@ export const commandBreath = (params) => {
   return fetch(`${BASE}/commandBreath?${qs}`).then(r => r.json());
 };
 
+export const commandCandleAll = (params) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/commandCandleAll?${qs}`).then(r => r.json());
+};
+
 // ---- System info & settings ----
 export const getSystemInfo = () =>
   fetch(`${BASE}/getSystemInfo`).then(r => r.json());
@@ -77,8 +82,8 @@ export const setWakeupTime = (hours, minutes, seconds) =>
 export const toggleLogging = () =>
   fetch(`${BASE}/toggleLogging`).then(r => r.json());
 
-export const toggleTestMode = () =>
-  fetch(`${BASE}/toggleTestMode`).then(r => r.json());
+export const toggleTestMode = (spacing = 1.0) =>
+  fetch(`${BASE}/toggleTestMode?spacing=${spacing}`).then(r => r.json());
 
 export const commandOTAUpdate = () =>
   fetch(`${BASE}/commandOTAUpdate`).then(r => r.json());

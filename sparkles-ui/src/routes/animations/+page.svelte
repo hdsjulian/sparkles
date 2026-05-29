@@ -1,5 +1,5 @@
 <script>
-  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence } from '$lib/api.js';
+  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence, commandCandleAll } from '$lib/api.js';
 
   let error = '';
   let successMsg = '';
@@ -148,6 +148,28 @@
       };
       await setSyncAsyncParams(params);
       successMsg = 'Colors + Spatial params saved';
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  // ----- Candle -----
+  let candle = { hue: 20, saturation: 210, brightness: 180 };
+  let candleActive = false;
+
+  async function toggleCandle() {
+    error = ''; successMsg = '';
+    try {
+      if (candleActive) {
+        await commandAnimationOff();
+        candleActive = false;
+        successMsg = 'Candle off';
+      } else {
+        await commandCandleAll(candle);
+        candleActive = true;
+        successMsg = 'Candle started';
+      }
       setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
@@ -331,6 +353,22 @@
     </div>
 
     <button class="btn btn-primary" on:click={submitColorsSpatial}>Save Colors + Spatial</button>
+  </div>
+
+  <!-- Candle -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Candle</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      Each lamp flickers independently like a candle flame until switched off.
+    </p>
+    <div class="form-row" style="margin-bottom:0.75rem;">
+      <div class="form-group"><label>Hue (0–255)</label><input type="number" min="0" max="255" bind:value={candle.hue} /></div>
+      <div class="form-group"><label>Saturation (0–255)</label><input type="number" min="0" max="255" bind:value={candle.saturation} /></div>
+      <div class="form-group"><label>Brightness (0–255)</label><input type="number" min="0" max="255" bind:value={candle.brightness} /></div>
+    </div>
+    <button class="btn {candleActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleCandle}>
+      {candleActive ? 'Turn Off Candle' : 'Start Candle'}
+    </button>
   </div>
 
   <!-- Bioluminescence -->

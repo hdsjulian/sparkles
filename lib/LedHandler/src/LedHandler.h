@@ -55,6 +55,8 @@ public:
     bool getUseDistanceSwitch();
     void setDistanceMode(int mode);
     int  getDistanceMode();
+    void setTestMode(bool on);
+    bool getTestMode();
     void setMidiParams(message_midi_params& params);
     message_midi_params getMidiParams();
 
@@ -137,6 +139,7 @@ private:
     int syncAsyncMaxAniReps = 20;
     int syncAsyncMinSpread = 500;
     int syncAsyncMaxSpread = 2000;
+    bool testModeActive = false;
     bool backgroundShimmerFadeout = false;
     bool useDistanceSwitch = false;
     int distanceMode = 0;

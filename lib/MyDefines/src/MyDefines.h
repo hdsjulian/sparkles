@@ -450,10 +450,11 @@ struct message_update_version {
 
 struct message_command {
   uint8_t commandType;
-  message_command() : commandType(0) {}
-  message_command(uint8_t cmdType) : commandType(cmdType) {}
-  message_command(const message_command& other) : commandType(other.commandType) {
-}
+  float param = 0.0f;
+  message_command() : commandType(0), param(0.0f) {}
+  message_command(uint8_t cmdType) : commandType(cmdType), param(0.0f) {}
+  message_command(uint8_t cmdType, float p) : commandType(cmdType), param(p) {}
+  message_command(const message_command& other) : commandType(other.commandType), param(other.param) {}
 };
 
 

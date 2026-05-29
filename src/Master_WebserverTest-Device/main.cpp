@@ -230,6 +230,7 @@ static void handleSerialCommand(const String& line) {
         r["sleepSet"]     = msgHandler.isSleepSet();
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);
         r["sleepDuration"]= (long)(msgHandler.getSleepDuration() / 1000);
+        r["testMode"]     = msgHandler.getTestMode();
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "calibration_start") == 0)    { msgHandler.startCalibrationMaster(); }
@@ -254,7 +255,8 @@ static void handleSerialCommand(const String& line) {
 
     else if (strcmp(cmd, "toggle_test_mode") == 0) {
         bool next = !msgHandler.getTestMode();
-        msgHandler.setTestMode(next);
+        float spacing = doc["spacing"] | 1.0f;
+        msgHandler.setTestMode(next, spacing);
         JsonDocument r;
         r["event"]    = "test_mode";
         r["testMode"] = next;
@@ -319,6 +321,15 @@ static void handleSerialCommand(const String& line) {
         anim.animationParams.breath.hue           = doc["hue"]           | 96;
         anim.animationParams.breath.saturation    = doc["saturation"]    | 180;
         anim.animationParams.breath.brightness    = doc["brightness"]    | 200;
+        msgHandler.sendAnimation(anim, -1);
+    } else if (strcmp(cmd, "candle_all") == 0) {
+        message_animation anim;
+        anim.animationType = CANDLE;
+        anim.animationParams.candle.startTime  = esp_timer_get_time() + 500000ULL;
+        anim.animationParams.candle.duration   = 0; // 0 = loop forever
+        anim.animationParams.candle.hue        = doc["hue"]        | 20;
+        anim.animationParams.candle.saturation = doc["saturation"] | 210;
+        anim.animationParams.candle.value      = doc["brightness"] | 180;
         msgHandler.sendAnimation(anim, -1);
     }
 }

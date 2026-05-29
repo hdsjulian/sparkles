@@ -99,11 +99,16 @@ void MessageHandler::handleReceive() {
                 }
                 if (commandMessage.commandType == CMD_TEST_MODE_ON) {
                     setTestMode(true);
-                    ledInstance->setDistanceFromCenter((float)ledInstance->getCurrentPosition());
-                    ESP_LOGI("MSG", "Test mode ON: distance set to %d m", ledInstance->getCurrentPosition());
+                    ledInstance->setTestMode(true);
+                    float spacing = commandMessage.param > 0.0f ? commandMessage.param : 1.0f;
+                    float dist = spacing * (float)ledInstance->getCurrentPosition();
+                    ledInstance->setDistanceFromCenter(dist);
+                    ESP_LOGI("MSG", "Test mode ON: pos %d, spacing %.2f m, distance %.2f m, MIDI note %d",
+                        ledInstance->getCurrentPosition(), spacing, dist, 60 + ledInstance->getCurrentPosition());
                 }
                 if (commandMessage.commandType == CMD_TEST_MODE_OFF) {
                     setTestMode(false);
+                    ledInstance->setTestMode(false);
                 }
                 if (commandMessage.commandType == CMD_OTA_UPDATE) {
                     ESP_LOGI("MSG", "CMD_OTA_UPDATE received — connecting to %s", OTA_WIFI_SSID);

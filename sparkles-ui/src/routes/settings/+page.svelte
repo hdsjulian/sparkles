@@ -17,6 +17,8 @@
   } from '$lib/api.js';
 
   let systemInfo = null;
+  let testMode = false;
+  let testModeSpacing = 1.0;
   let error = '';
   let successMsg = '';
   let pollInterval;
@@ -42,6 +44,7 @@
   async function loadSystemInfo() {
     try {
       systemInfo = await getSystemInfo();
+      if (systemInfo?.testMode !== undefined) testMode = systemInfo.testMode;
     } catch (e) {
       error = `Failed to load system info: ${e.message}`;
     }
@@ -130,8 +133,9 @@
   async function handleToggleTestMode() {
     error = '';
     try {
-      const r = await toggleTestMode();
-      successMsg = `Test mode: ${JSON.stringify(r)}`;
+      const r = await toggleTestMode(testModeSpacing);
+      if (r?.testMode !== undefined) testMode = r.testMode;
+      successMsg = `Test mode ${testMode ? 'ON' : 'OFF'}`;
       setTimeout(() => { successMsg = ''; }, 2000);
     } catch (e) {
       error = e.message;
@@ -394,7 +398,14 @@
     <div class="card-title">Toggles</div>
     <div class="btn-row">
       <button class="btn btn-ghost" on:click={handleToggleLogging}>Toggle Logging</button>
-      <button class="btn btn-ghost" on:click={handleToggleTestMode}>Toggle Test Mode</button>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;">
+        <span>m/client</span>
+        <input type="number" min="0.1" max="100" step="0.1" bind:value={testModeSpacing}
+          style="width:5rem;" disabled={testMode} />
+      </label>
+      <button class="btn" class:btn-warning={testMode} class:btn-ghost={!testMode} on:click={handleToggleTestMode}>
+        Test Mode: {testMode ? 'ON' : 'OFF'}
+      </button>
       <button class="btn btn-ghost" on:click={handleReannounce}>Reannounce</button>
     </div>
   </div>

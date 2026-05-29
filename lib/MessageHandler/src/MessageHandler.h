@@ -190,7 +190,7 @@ public:
     void resetSystem();
     void broadcastReannounce();
     void stopAllAnimations();
-    void setTestMode(bool on);
+    void setTestMode(bool on, float spacingMeters = 1.0f);
     bool getTestMode();
     void sendLogMessage(const char* text);
     void tickInactiveTimeout();

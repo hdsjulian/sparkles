@@ -120,6 +120,13 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_GOT_TIMER) {
                 ESP_LOGI("MSG", "Received got timer message");
+                // Chirp device sends MSG_GOT_TIMER but is not in addressList — remove peer and stop timer, skip addressList writes.
+                if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
+                    ESP_LOGI("MSG", "Got timer from chirp device, delay avg %d", incomingData.payload.gotTimer.delayAverage);
+                    removePeer(clapDeviceAddress);
+                    setSettingTimer(false);
+                    continue;
+                }
                 int timerIndex = getCurrentTimerIndex();
                 //vTaskDelete(timerSyncHandle);
                 removePeer(addressList[getCurrentTimerIndex()].address);

@@ -2,20 +2,20 @@
 
 void LedHandler::addToMidiTable(midiNoteTable midiNoteTableArray[OCTAVESONKEYBOARD], message_animation animation, int position)
 {
-
-    if (animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE)
-    {   
-
-        return;
-    }
-
     int note = animation.animationParams.midi.note;
     int velocity = animation.animationParams.midi.velocity;
+    int tableIndex;
 
-    if (animation.animationParams.midi.note % 12 == 1) { // C# is 1 in the chromatic scale
-        velocity = static_cast<int>(velocity * 0.8f);
+    if (testModeActive) {
+        // C4 (MIDI 60) → client 0, C#4 → client 1, C5 → client 12, etc.
+        if (note - 60 != position) return;
+        tableIndex = 0;
+    } else {
+        if (note % OCTAVE != (getMidiNoteFromPosition(position) + animation.animationParams.midi.offset) % OCTAVE) return;
+        if (note % 12 == 1) velocity = static_cast<int>(velocity * 0.8f); // C# is quieter
+        tableIndex = (note / OCTAVE) - 1;
     }
-    int octave = (note / OCTAVE) - 1;
+    int octave = tableIndex;
     if (xSemaphoreTake(midiNoteTableMutex, portMAX_DELAY) == pdTRUE) {
         if (velocity > 0) {
             // Always update if new note or startTime is zero, or if velocity is higher
@@ -97,8 +97,11 @@ void LedHandler::getMidiNoteTableArray(midiNoteTable* buffer, size_t size, int i
             memcpy(buffer, midiNoteTableArray, sizeof(midiNoteTableArray));
         } else if (instrument == INSTRUMENT_MIC) {
             memcpy(buffer, micNoteTableArray, sizeof(micNoteTableArray));
-        } 
+        }
 
         xSemaphoreGive(midiNoteTableMutex);
     }
 }
+
+void LedHandler::setTestMode(bool on) { testModeActive = on; }
+bool LedHandler::getTestMode() { return testModeActive; }

@@ -185,7 +185,9 @@ void LedHandler::ledTask()
                 //midi animation incoming and current animation is normal animatino
                 if (animationData.animationType == MIDI && getCurrentAnimation() != MIDI && animationData.animationParams.midi.instrument != INSTRUMENT_CC) {
                     //delete old animation task if it exists
-                    bool isInOctave = !(animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE);
+                    bool isInOctave = testModeActive
+                        ? (animation.animationParams.midi.note - 60 == position)
+                        : !(animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE);
 
                     if (animationTaskHandle != NULL && isInOctave) {
                         vTaskDelete(animationTaskHandle);
@@ -744,15 +746,22 @@ void LedHandler::runMidi()
             if (midiDecayFactor >= 1.0f) continue;
             int note = localMidiNoteTableArray[i].note;
             int velocity = localMidiNoteTableArray[i].velocity;
-            int octave = (note / OCTAVE) - 1;
-            int ledOctave = getOctaveFromPosition(position);
-            int octaveDistance = abs((octave % numDevices) - ledOctave);
-            float distanceFactor = 0.2 * octaveDistance;
-            float currentBrightness = (int)(velocity * (1 - midiDecayFactor) * (1 - distanceFactor));
-            if (currentBrightness > brightnessMidi) {
-                brightnessMidi = currentBrightness;
+            float currentBrightness;
+            if (testModeActive) {
+                currentBrightness = (int)(velocity * (1 - midiDecayFactor));
+                huemodMidi = 0;
+                satmodMidi = 0;
+            } else {
+                int octave = (note / OCTAVE) - 1;
+                int ledOctave = getOctaveFromPosition(position);
+                int octaveDistance = abs((octave % numDevices) - ledOctave);
+                float distanceFactor = 0.2 * octaveDistance;
+                currentBrightness = (int)(velocity * (1 - midiDecayFactor) * (1 - distanceFactor));
                 huemodMidi = -0.02 * octaveDistance;
                 satmodMidi = 0.02 * octaveDistance;
+            }
+            if (currentBrightness > brightnessMidi) {
+                brightnessMidi = currentBrightness;
             }
             brightnessZeroMidi = false;
         }
@@ -853,6 +862,32 @@ void LedHandler::runCandle() {
         ledsOff();
         vTaskDelayUntil(&currentTicks, ticksUntilStart);
     }
+    if (animation.animationParams.candle.duration == 0) {
+        // Continuous candle: fade in once then flicker forever until task is killed.
+        float hue        = (float)animation.animationParams.candle.hue;
+        float saturation = (float)animation.animationParams.candle.saturation;
+        float value      = (float)animation.animationParams.candle.value;
+        int   steps      = 24;
+        int   fadeMs     = 1200;
+        auto  randFloat  = []() { return (float)rand() / (float)RAND_MAX; };
+        // Fade in
+        for (int i = 0; i < steps; i++) {
+            CRGB color = CHSV(hue, saturation, value * ((float)i / steps));
+            writeLeds(color);
+            vTaskDelay(pdMS_TO_TICKS(fadeMs / steps));
+        }
+        // Flicker forever — realistic candle parameters
+        float lastFlicker = value;
+        while (true) {
+            float target  = value * (0.75f + 0.25f * randFloat());
+            lastFlicker   = 0.88f * lastFlicker + 0.12f * target;
+            // Occasional brief gust: drop to 60% for one frame
+            if (randFloat() < 0.03f) lastFlicker = value * 0.60f;
+            CRGB color = CHSV(hue + randFloat() * 6.0f, saturation, lastFlicker);
+            writeLeds(color);
+            vTaskDelay(pdMS_TO_TICKS(30 + (int)(randFloat() * 60)));
+        }
+    }
     candleLight(
         animation.animationParams.candle.duration,
         animation.animationParams.candle.hue,
@@ -861,7 +896,7 @@ void LedHandler::runCandle() {
     );
     setCurrentAnimation(OFF);
     animationTaskHandle = NULL;
-    vTaskDelete(NULL); 
+    vTaskDelete(NULL);
 }
 
 
