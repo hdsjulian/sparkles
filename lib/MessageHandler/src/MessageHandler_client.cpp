@@ -151,6 +151,9 @@ void MessageHandler::handleReceive() {
 
                 
             }
+            else if (incomingData.messageType == MSG_STATUS) {
+                // another client's status broadcast — ignore
+            }
             else if (incomingData.messageType == MSG_CLAP) {
                 message_clap clapMessage = incomingData.payload.clap;
                 ESP_LOGI("MSG", "Received clap message");

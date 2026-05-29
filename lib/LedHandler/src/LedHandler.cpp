@@ -295,6 +295,14 @@ void LedHandler::handleQueue(message_animation& animationData, int currentPositi
     
     }
     else if (animationData.animationType == OFF) {
+        if (animationTaskHandle != NULL) {
+            vTaskDelete(animationTaskHandle);
+            animationTaskHandle = NULL;
+        }
+        if (midiTaskHandle != NULL) {
+            vTaskDelete(midiTaskHandle);
+            midiTaskHandle = NULL;
+        }
         ledsOff();
         setCurrentAnimation(OFF);
     }
