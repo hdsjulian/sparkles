@@ -31,6 +31,7 @@ _TBEAM_BAUD = int(os.environ.get("SPARKLES_TBEAM_BAUD", "38400"))
 _BATTERY_CRITICAL = int(os.environ.get("SPARKLES_BATTERY_CRITICAL", "15"))
 _HEALTH_INTERVAL  = int(os.environ.get("SPARKLES_HEALTH_INTERVAL", "300"))  # seconds
 _LOG_BUFFER_SIZE  = 2000
+_SERIAL_LOG_PATH  = os.environ.get("SPARKLES_SERIAL_LOG", "/home/raspi/sparkles/serial.log")
 
 
 class HealthMonitor:
@@ -109,6 +110,7 @@ class SerialBridge:
         self._port = port
         self._baud = baud
         self._serial: serial.Serial | None = None
+        self._log_file = open(_SERIAL_LOG_PATH, "a", buffering=1) if _SERIAL_LOG_PATH else None
         self._thread: threading.Thread | None = None
         self._running = False
         # asyncio queues subscribed to all incoming events
@@ -217,6 +219,9 @@ class SerialBridge:
             line = json.dumps(payload) + "\n"
             self._send_queue.put_nowait(line)
             logger.debug("TX → %s", line.strip())
+            if self._log_file:
+                import time as _time
+                self._log_file.write(f"{_time.strftime('%H:%M:%S')} TX {line.strip()}\n")
         except queue.Full:
             logger.warning("Send queue full, dropping: %s", payload)
 
@@ -257,6 +262,9 @@ class SerialBridge:
         with self._subscribers_lock:
             self._log_buffer.append(line)
             subs = list(self._log_subscribers)
+        if self._log_file:
+            import time as _time
+            self._log_file.write(f"{_time.strftime('%H:%M:%S')} RX {line}\n")
         for q in subs:
             try:
                 self._loop.call_soon_threadsafe(q.put_nowait, line)
