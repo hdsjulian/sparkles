@@ -25,8 +25,22 @@ def sudo(cmd, cwd=None):
 
 
 run("git update-index --skip-worktree sparkles-api/auth_config.yaml", cwd=REPO_DIR)
-run("git pull origin feature/serial-bridge", cwd=REPO_DIR)
-run("npm run build", cwd=UI_DIR)
+
+print("\n$ git pull origin feature/serial-bridge")
+result = subprocess.run(
+    "git pull origin feature/serial-bridge",
+    shell=True, cwd=REPO_DIR, check=True, capture_output=True, text=True
+)
+print(result.stdout)
+
+ui_changed = any("sparkles-ui/" in line for line in result.stdout.splitlines())
+
+if ui_changed:
+    print("[sparkles-ui files changed — rebuilding frontend]")
+    run("npm run build", cwd=UI_DIR)
+else:
+    print("[no sparkles-ui changes — skipping frontend build]")
+
 sudo("systemctl restart sparkles")
 
 print("\nDone. Service restarted.")
