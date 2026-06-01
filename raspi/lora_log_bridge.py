@@ -27,7 +27,7 @@ import serial
 import subprocess
 import argparse
 
-SERIAL_PORT = '/dev/ttyUSB0'   # Adjust to wherever the T-Beam appears
+SERIAL_PORT = '/dev/ttyTBeam'
 BAUD_RATE   = 115200
 MAX_LINE    = 200              # Meshtastic message limit (chars)
 

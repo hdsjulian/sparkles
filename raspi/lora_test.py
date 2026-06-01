@@ -17,7 +17,7 @@ import signal
 import serial
 import argparse
 
-SERIAL_PORT = '/dev/ttyUSB0'
+SERIAL_PORT = '/dev/ttyTBeam'
 BAUD_RATE   = 115200
 INTERVAL    = 10  # seconds
 
