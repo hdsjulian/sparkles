@@ -23,12 +23,17 @@
 #include <math.h>
 
 // ---------------------------------------------------------------------------
+// Test mode — plays chirp every 5 seconds, no ESP-NOW needed
+// ---------------------------------------------------------------------------
+#define TEST_AUDIO true
+
+// ---------------------------------------------------------------------------
 // I2S config
 // ---------------------------------------------------------------------------
 #define I2S_SAMPLE_RATE  44100
-#define I2S_BCLK_PIN     GPIO_NUM_6
-#define I2S_WS_PIN       GPIO_NUM_7
-#define I2S_DOUT_PIN     GPIO_NUM_16
+#define I2S_BCLK_PIN     GPIO_NUM_4
+#define I2S_WS_PIN       GPIO_NUM_5
+#define I2S_DOUT_PIN     GPIO_NUM_17
 
 // ---------------------------------------------------------------------------
 // Chirp config — 8 frequency steps × 3 ms, 1–2 kHz
@@ -38,7 +43,7 @@
 #define SAMPLES_PER_STEP  (I2S_SAMPLE_RATE * CHIRP_STEP_MS / 1000)   // 132
 #define CHIRP_SAMPLES     (CHIRP_STEPS * SAMPLES_PER_STEP)            // 1056
 #define CHIRP_FRAMES      (CHIRP_SAMPLES * 2)                         // stereo
-#define CHIRP_AMPLITUDE   26000
+#define CHIRP_AMPLITUDE   32000
 
 static const int CHIRP_FREQS[CHIRP_STEPS] = {1000, 1700, 1200, 2000, 1500, 1100, 1800, 1300};
 
@@ -148,8 +153,8 @@ static void i2sInit() {
 
     i2s_std_config_t stdCfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
-        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
-                                                      I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT,
+                                                         I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = I2S_BCLK_PIN,
@@ -285,5 +290,29 @@ void setup() {
 }
 
 void loop() {
+#if TEST_AUDIO
+    // 1 kHz sine, 512 frames — fills DMA continuously with no gap
+    static int16_t sineBuf[512 * 2];
+    static bool built = false;
+    if (!built) {
+        for (int i = 0; i < 512; i++) {
+            int16_t v = (int16_t)(CHIRP_AMPLITUDE * sinf(2.0f * M_PI * 1000.0f * i / I2S_SAMPLE_RATE));
+            sineBuf[i * 2]     = v;
+            sineBuf[i * 2 + 1] = v;
+        }
+        built = true;
+        ESP_LOGI("CHIRP", "sine[0]=%d [11]=%d [22]=%d [44]=%d",
+                 sineBuf[0], sineBuf[22], sineBuf[44], sineBuf[88]);
+    }
+    size_t written = 0;
+    i2s_channel_write(s_txChan, sineBuf, sizeof(sineBuf), &written, pdMS_TO_TICKS(100));
+    static uint32_t lastBeat = 0;
+    uint32_t now = millis();
+    if (now - lastBeat >= 20000) {
+        ESP_LOGI("CHIRP", "heartbeat — written=%d", (int)written);
+        lastBeat = now;
+    }
+#else
     vTaskDelay(pdMS_TO_TICKS(10000));
+#endif
 }
