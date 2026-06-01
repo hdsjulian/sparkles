@@ -4,16 +4,31 @@
 #include "Arduino.h"
 #include "esp_now.h"
 #include "WiFi.h"
+#include <ArduinoJson.h>
 
-// Track last MIDI animation time
-#include "Arduino.h"
-#include "esp_now.h"
-#include "WiFi.h"
+static void serialEmitBoard(int id, const client_address& a) {
+    JsonDocument doc;
+    doc["event"] = "update_board";
+    doc["id"]    = id;
+    char mac[18];
+    snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+        a.address[0], a.address[1], a.address[2],
+        a.address[3], a.address[4], a.address[5]);
+    doc["address"]           = mac;
+    doc["status"]            = (a.active == ACTIVE) ? "active" : "inactive";
+    doc["batteryPercentage"] = a.batteryPercentage;
+    doc["distance"]          = a.distanceFromCenter;
+    doc["xpos"]              = a.xPos;
+    doc["ypos"]              = a.yPos;
+    doc["lastUpdateTime"]    = (unsigned long)a.lastUpdateTime;
+    doc["timerOffset"]       = (long)a.timerOffset;
+    doc["delay"]             = a.delay;
+    String out; serializeJson(doc, out); Serial.println(out);
+}
 
 
 void MessageHandler::turnWifiOn() {
-    WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
-    webServerInstance.setWifi();
+    WiFi.mode(WIFI_AP_STA);
     if (esp_now_init() != ESP_OK)
     {
       Serial.println("Error initializing ESP-NOW");
@@ -105,6 +120,13 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_GOT_TIMER) {
                 ESP_LOGI("MSG", "Received got timer message");
+                // Chirp device sends MSG_GOT_TIMER but is not in addressList — remove peer and stop timer, skip addressList writes.
+                if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
+                    ESP_LOGI("MSG", "Got timer from chirp device, delay avg %d", incomingData.payload.gotTimer.delayAverage);
+                    removePeer(clapDeviceAddress);
+                    setSettingTimer(false);
+                    continue;
+                }
                 int timerIndex = getCurrentTimerIndex();
                 //vTaskDelete(timerSyncHandle);
                 removePeer(addressList[getCurrentTimerIndex()].address);
@@ -118,8 +140,7 @@ void MessageHandler::handleReceive() {
                 setSettingTimer(false);
                 writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
                 sendSystemStatus();
-                WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
-                webServerInstance.updateAddress(timerIndex);
+                serialEmitBoard(timerIndex, addressList[timerIndex]);
             }
             else if (incomingData.messageType == MSG_STATUS) {
                 for (int i = 0; i < NUM_DEVICES; i++) {
@@ -127,9 +148,8 @@ void MessageHandler::handleReceive() {
                         addressList[i].batteryPercentage = incomingData.payload.status.batteryPercentage;
                         addressList[i].lastUpdateTime = millis();
                         
-                        WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
                         ESP_LOGI("MSG", "Updating address %d", i);
-                        webServerInstance.updateAddress(i);      
+                        serialEmitBoard(i, addressList[i]);
                         break;
                     }
                 }
@@ -160,8 +180,14 @@ void MessageHandler::handleReceive() {
                 int clapIndex = getClapIndex();
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
                     setLastClapTime(micros() - getClapDeviceDelay());
-                    WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
-                    webServerInstance.clapReceived(clapIndex, incomingData.payload.clap.clapTime);
+                    {
+                        JsonDocument doc;
+                        doc["event"]    = "calibration_status";
+                        doc["status"]   = 3;
+                        doc["clapId"]   = clapIndex;
+                        doc["clapTime"] = (unsigned long long)incomingData.payload.clap.clapTime;
+                        String out; serializeJson(doc, out); Serial.println(out);
+                    }
                     ESP_LOGI("CLAP", "Clap time %llu", getLastClapTime());
 
                 }
@@ -176,8 +202,14 @@ void MessageHandler::handleReceive() {
                             ESP_LOGI("CLAP", "Distance: %.2f", addressList[i].distances[clapIndex]);
                             float distance = convertMicrosToMeters((incomingData.msgReceiveTime - addressList[i].delay / 2)-getLastClapTime());
                             ESP_LOGI("CLAP", "Distance2: %.2f", addressList[i].distances[clapIndex]);
-                            WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
-                            webServerInstance.clapReceivedClient(clapIndex, i, addressList[i].distances[clapIndex]);
+                            {
+                                JsonDocument doc;
+                                doc["event"]        = "client_clap";
+                                doc["clapId"]       = clapIndex;
+                                doc["boardId"]      = i;
+                                doc["clapDistance"] = addressList[i].distances[clapIndex];
+                                String out; serializeJson(doc, out); Serial.println(out);
+                            }
                             
                             break;
                         }
@@ -244,14 +276,14 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
             instance.setTimerReset(false);
             instance.setLastTimerCounter();
             if (memcmp(mac_addr, instance.getItemFromAddressList(instance.getCurrentTimerIndex()).address, 6) == 0) {
-                instance.setLastDelay(micros() - instance.getLastSendTime());   
+                instance.setLastDelay(esp_timer_get_time() - instance.getLastSendTime());   
             }
             else {
                 ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             }
         }
         else if (instance.getSettingClapSync() == true) {
-            int lastDelay = micros() - instance.getLastSendTime();
+            int lastDelay = esp_timer_get_time() - instance.getLastSendTime();
             ESP_LOGI("CLAP", "Last delay: %d", lastDelay);
             instance.setLastDelay(lastDelay);
         }
@@ -313,6 +345,21 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
 
 
 
+void MessageHandler::tickInactiveTimeout() {
+    static constexpr unsigned long INACTIVE_TIMEOUT_MS = 25UL * 60UL * 1000UL; // 25 minutes
+    unsigned long now = millis();
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+        if (addressList[i].active == ACTIVE &&
+            addressList[i].lastUpdateTime > 0 &&
+            now - addressList[i].lastUpdateTime > INACTIVE_TIMEOUT_MS) {
+            addressList[i].active = INACTIVE;
+            ESP_LOGW("MSG", "Device %d timed out after 25 min, marking inactive", i);
+            serialEmitBoard(i, addressList[i]);
+        }
+    }
+}
+
 void MessageHandler::sendSystemStatus() {
     message_system_status systemStatus;
     systemStatus.numDevices = getNumDevices();
@@ -336,7 +383,7 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     }
     // Master blinks immediately when queued; clients use the original startTime
     message_animation masterAnimation = animationMessage;
-    masterAnimation.animationParams.blink.startTime = micros() + 10000;
+    masterAnimation.animationParams.blink.startTime = esp_timer_get_time() + 10000;
     ledInstance->setAnimation(masterAnimation);
     ESP_LOGI("MSG", "Sending animation message to %02x:%02x:%02x:%02x:%02x:%02x", message.targetAddress[0], message.targetAddress[1], message.targetAddress[2], message.targetAddress[3], message.targetAddress[4], message.targetAddress[5]);
     ESP_LOGI("MSG", "Animation type: %d", animationMessage.animationType);
@@ -472,10 +519,16 @@ void MessageHandler::runCalculatePositionsTask() {
             ESP_LOGI("MSG", "Device %d position calculated: X=%.2f, Y=%.2f", i, x, y);
         }
 
-        // Delay before recalculating
-        WebServer& webServerInstance = WebServer::getInstance(&LittleFS);
-        webServerInstance.setCalculationDone(true);
-        webServerInstance.updateAddressList();
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+            serialEmitBoard(i, addressList[i]);
+        }
+        {
+            JsonDocument doc;
+            doc["event"]  = "calibration_status";
+            doc["status"] = 5;
+            String out; serializeJson(doc, out); Serial.println(out);
+        }
         vTaskDelete(calculatePositionsHandle);
     }
 }
@@ -538,6 +591,17 @@ void MessageHandler::calculateDistances() {
         memcpy(configMessage.targetAddress, addressList[i].address, 6);
         pushToSendQueue(configMessage);
     }
+
+    float maxDist = 0.0f;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+        if (addressList[i].distanceFromCenter > maxDist)
+            maxDist = addressList[i].distanceFromCenter;
+    }
+    ESP_LOGI("MSG", "Broadcasting max distance: %.2f m", maxDist);
+    message_data maxDistMsg = createCommandMessage(CMD_SET_MAX_DISTANCE, true);
+    maxDistMsg.payload.command.param = maxDist;
+    pushToSendQueue(maxDistMsg);
 }
 
 void MessageHandler::startCalibrationMaster() {
@@ -621,7 +685,7 @@ void MessageHandler::runAnimationLoop() {
         }
         message_animation newAnimation;
         newAnimation = ledInstance->createSyncAsyncBlinkRandom();
-        newAnimation.animationParams.syncAsyncBlink.startTime = micros()+1000000;
+        newAnimation.animationParams.syncAsyncBlink.startTime = esp_timer_get_time() + 1000000;
         ESP_LOGI("MSG", "Starting animation loop with start time %lu", newAnimation.animationParams.syncAsyncBlink.startTime);
         sendAnimation(newAnimation, -1);
 
@@ -656,12 +720,12 @@ void MessageHandler::runDarkroomTaskWrapper(void *pvParameters) {
 void MessageHandler::runDarkroomTask() {
     ESP_LOGI("MSG", "Running darkroom task");
     while (true) {
-        message_animation darkroomStrobe = ledInstance->createFlash(micros()+100000, 150, 1, 255, 0, 255);
+        message_animation darkroomStrobe = ledInstance->createFlash(esp_timer_get_time() + 100000, 150, 1, 255, 0, 255);
         sendAnimation(darkroomStrobe, -1);
         ESP_LOGI("LED", "Strobe happening");
         vTaskDelay(200 / portTICK_PERIOD_MS);
         int nextBlink = random(darkroomParams.strobeMin, darkroomParams.strobeMax);
-        message_animation darkroomCandle = ledInstance->createCandle(micros()+100000+150, nextBlink*1000, 255, 255, darkroomParams.redlightMax);
+        message_animation darkroomCandle = ledInstance->createCandle(esp_timer_get_time() + 100000 + 150, nextBlink * 1000, 255, 255, darkroomParams.redlightMax);
         sendAnimation(darkroomCandle, -1);
         ESP_LOGI("MSG", "Next darkroom blink in %d seconds", nextBlink);
         vTaskDelay(nextBlink * 1000 / portTICK_PERIOD_MS);

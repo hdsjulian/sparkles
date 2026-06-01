@@ -320,6 +320,15 @@ a:hover {
   background: #d32f2f;
 }
 
+.btn-warning {
+  background: #e65100;
+  color: #fff;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #bf360c;
+}
+
 .btn-sm {
   padding: 0.3rem 0.65rem;
   font-size: 0.8rem;

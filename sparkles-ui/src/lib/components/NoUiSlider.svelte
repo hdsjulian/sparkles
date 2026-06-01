@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import noUiSlider from 'nouislider';
+  import 'nouislider/dist/nouislider.css';
 
   export let min = 0;
   export let max = 100;

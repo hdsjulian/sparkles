@@ -12,6 +12,10 @@ void OTAHandler::setup() {
     this->updateUrl = OTA_UPDATE_URL;
 }
 
+void OTAHandler::setup(const char* url) {
+    this->updateUrl = url;
+}
+
 void OTAHandler::connectToWiFi() {
     ESP_LOGI("OTA", "Connecting to WiFi: %s", OTA_WIFI_SSID);
     WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);

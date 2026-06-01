@@ -39,15 +39,39 @@ export const commandBlink = (boardId) =>
 export const commandMessage = (boardId) =>
   fetch(`${BASE}/commandMessage?boardId=${boardId}`).then(r => r.json());
 
-export const commandSync = (boardId) =>
-  fetch(`${BASE}/commandSync?boardId=${boardId}`).then(r => r.json());
+export const commandSync = (index) =>
+  fetch(`${BASE}/commandSync?index=${index}`).then(r => r.json());
+
+export const setMaintenanceMode = (active) =>
+  fetch(`${BASE}/setMaintenanceMode?active=${active}`, { method: 'POST' }).then(r => r.json());
+
+export const commandShimmer = (boardId = -1) =>
+  fetch(`${BASE}/commandShimmer?boardId=${boardId}`).then(r => r.json());
+
+export const commandBioluminescence = (params) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/commandBioluminescence?${qs}`).then(r => r.json());
+};
+
+export const commandBreath = (params) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/commandBreath?${qs}`).then(r => r.json());
+};
+
+export const commandCandleAll = (params) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/commandCandleAll?${qs}`).then(r => r.json());
+};
 
 // ---- System info & settings ----
 export const getSystemInfo = () =>
   fetch(`${BASE}/getSystemInfo`).then(r => r.json());
 
+export const getAnimateStatus = () =>
+  fetch(`${BASE}/getAnimateStatus`).then(r => r.json());
+
 export const setTime = (year, month, day, hour, minute, second) =>
-  fetch(`${BASE}/setTime?year=${year}&month=${month}&day=${day}&hour=${hour}&minute=${minute}&second=${second}`).then(r => r.json());
+  fetch(`${BASE}/setTime?year=${year}&month=${month}&day=${day}&hours=${hour}&minutes=${minute}&seconds=${second}`).then(r => r.json());
 
 export const setSleepTime = (hours, minutes, seconds) =>
   fetch(`${BASE}/setSleepTime?hours=${hours}&minutes=${minutes}&seconds=${seconds}`).then(r => r.json());
@@ -58,8 +82,8 @@ export const setWakeupTime = (hours, minutes, seconds) =>
 export const toggleLogging = () =>
   fetch(`${BASE}/toggleLogging`).then(r => r.json());
 
-export const toggleTestMode = () =>
-  fetch(`${BASE}/toggleTestMode`).then(r => r.json());
+export const toggleTestMode = (spacing = 1.0) =>
+  fetch(`${BASE}/toggleTestMode?spacing=${spacing}`).then(r => r.json());
 
 export const commandOTAUpdate = () =>
   fetch(`${BASE}/commandOTAUpdate`).then(r => r.json());

@@ -18,8 +18,13 @@ const config = {
         '/animations',
         '/midi',
         '/darkroom',
-        '/calibration'
-      ]
+        '/calibration',
+        '/log'
+      ],
+      handleHttpError: ({ path, message }) => {
+        if (path.startsWith('/favicon')) return;
+        throw new Error(message);
+      }
     }
   }
 };

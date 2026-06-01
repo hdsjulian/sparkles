@@ -4,7 +4,6 @@
 #include <esp_now.h>
 #include <LedHandler.h>
 #include "LittleFS.h"
-#include <WebServer.h>
 #include <MyDefines.h>
 #include <Version.h>
 #include <time.h>
@@ -12,7 +11,8 @@ class MessageHandler
 {
 public:
     static constexpr uint8_t emptyAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
+    uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    char _otaUrl[64] = {};   // set via serial "set_ota_url" from Pi
     bool isOTAUpdating = false;
     bool testMode = false;
     bool nextOTAAddress = false;
@@ -134,6 +134,7 @@ public:
     void runBroadcastSettle();
     void startClapTask();
     void startOTAUpdateTask();
+    void setOtaUrl(const char* url);
     void startCalculatePositionsTask();
     void startAnnounceAddressTask();
     void startClapSyncTask();
@@ -189,18 +190,15 @@ public:
     void resetSystem();
     void broadcastReannounce();
     void stopAllAnimations();
-    void setTestMode(bool on);
+    void setTestMode(bool on, float spacingMeters = 1.0f);
     bool getTestMode();
     void sendLogMessage(const char* text);
+    void tickInactiveTimeout();
 private:
     // Static Constants
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    //kiste 1-3
-    static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xbf, 0xb8};
-    //kiste 2
-    //static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8f, 0xc0, 0x60};
-    // testdevice
-    //static constexpr uint8_t hostAddress[6] = {0x34, 0x85, 0x18, 0x8e, 0xf8, 0x50};
+    uint8_t hostAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    bool hostAddressLearned = false;
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};

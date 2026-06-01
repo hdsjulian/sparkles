@@ -29,6 +29,25 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
 
 unsigned long lastTick = 0;
 
+#define SLEEP_BROADCAST_INTERVAL_MS 1000
+#define SLEEP_BROADCAST_DURATION_MS (5 * 60 * 1000)  // 5 minutes in ms
+
+static TaskHandle_t sleepBroadcastTaskHandle = NULL;
+
+static void sleepBroadcastTask(void* pvParameters) {
+    unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
+    while (msgHandler.isInSleepPhase()) {
+        msgHandler.sendSleepWakeupMessage(durationMicros);
+        vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
+    }
+    // Sleep phase ended — reannounce so clients that are awake can re-pair
+    msgHandler.setAddressListInactive();
+    msgHandler.startBroadcastSettleTask();
+    msgHandler.broadcastReannounce();
+    sleepBroadcastTaskHandle = NULL;
+    vTaskDelete(NULL);
+}
+
 // ── Serial bridge ─────────────────────────────────────────────────────────────
 
 static String serialLineBuffer;
@@ -57,13 +76,19 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "animation_off") == 0) {
         msgHandler.stopAllAnimations();
 
+    } else if (strcmp(cmd, "get_animate_status") == 0) {
+        JsonDocument r;
+        r["event"]  = "animate_status";
+        r["status"] = msgHandler.isAnimationLoopRunning();
+        serialSendDoc(r);
+
     } else if (strcmp(cmd, "blink") == 0) {
         message_animation a{};
         a.animationType = BLINK;
         a.animationParams.blink.brightness  = 255;
         a.animationParams.blink.duration    = 500;
         a.animationParams.blink.repetitions = 3;
-        a.animationParams.blink.startTime   = esp_timer_get_time() + 1000000;
+        a.animationParams.blink.startTime   = esp_timer_get_time() + 100000;
         msgHandler.sendAnimation(a, doc["boardId"].as<int>());
 
     } else if (strcmp(cmd, "blink_all") == 0) {
@@ -72,7 +97,7 @@ static void handleSerialCommand(const String& line) {
         a.animationParams.blink.brightness  = 255;
         a.animationParams.blink.duration    = 500;
         a.animationParams.blink.repetitions = 3;
-        a.animationParams.blink.startTime   = esp_timer_get_time() + 1000000;
+        a.animationParams.blink.startTime   = esp_timer_get_time() + 100000;
         msgHandler.sendAnimation(a, -1);
 
     } else if (strcmp(cmd, "blink_battery_all") == 0) {
@@ -115,6 +140,8 @@ static void handleSerialCommand(const String& line) {
         t.tm_sec  = doc["seconds"].as<int>();
         struct timeval tv{ mktime(&t), 0 };
         settimeofday(&tv, NULL);
+        setenv("TZ", "UTC", 1);
+        tzset();
 
     } else if (strcmp(cmd, "set_sleep_time") == 0) {
         msgHandler.setSleepTime(doc["hours"].as<int>(), doc["minutes"].as<int>(), doc["seconds"].as<int>());
@@ -192,12 +219,18 @@ static void handleSerialCommand(const String& line) {
         struct tm ti;
         char buf[32] = "not set";
         if (getLocalTime(&ti)) snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+        uint8_t mac[6]; WiFi.macAddress(mac);
+        char macStr[18];
+        snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         JsonDocument r;
         r["event"]        = "system_info";
         r["systemTime"]   = buf;
+        r["macAddress"]   = macStr;
         r["sleepSet"]     = msgHandler.isSleepSet();
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);
         r["sleepDuration"]= (long)(msgHandler.getSleepDuration() / 1000);
+        r["testMode"]     = msgHandler.getTestMode();
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "calibration_start") == 0)    { msgHandler.startCalibrationMaster(); }
@@ -213,12 +246,17 @@ static void handleSerialCommand(const String& line) {
     else if (strcmp(cmd, "dist_cal_cancel") == 0)        { msgHandler.cancelCalibration(); }
     else if (strcmp(cmd, "dist_cal_abort") == 0)         { msgHandler.abortDistanceCalibration(); }
     else if (strcmp(cmd, "ota_update") == 0)             { msgHandler.startOTAUpdateTask(); }
+    else if (strcmp(cmd, "set_ota_url") == 0) {
+        const char* url = doc["url"] | "";
+        msgHandler.setOtaUrl(url);
+    }
     else if (strcmp(cmd, "reannounce") == 0)             { msgHandler.broadcastReannounce(); }
     else if (strcmp(cmd, "reset_system") == 0)           { msgHandler.resetSystem(); }
 
     else if (strcmp(cmd, "toggle_test_mode") == 0) {
         bool next = !msgHandler.getTestMode();
-        msgHandler.setTestMode(next);
+        float spacing = doc["spacing"] | 1.0f;
+        msgHandler.setTestMode(next, spacing);
         JsonDocument r;
         r["event"]    = "test_mode";
         r["testMode"] = next;
@@ -240,6 +278,59 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "factory_reset") == 0) {
         if (LittleFS.exists("/clientAddress")) LittleFS.remove("/clientAddress");
         ESP.restart();
+
+    } else if (strcmp(cmd, "set_maintenance_mode") == 0) {
+        bool active = doc["active"].as<bool>();
+        msgHandler.setAdminPresent(active ? millis() : 0);
+        if (!active) {
+            // tell all clients to stop shimmering
+            message_animation stopAnim;
+            stopAnim.animationType = OFF;
+            msgHandler.sendAnimation(stopAnim, -1);
+        }
+        JsonDocument r;
+        r["event"]  = "maintenance_mode";
+        r["active"] = active;
+        serialSendDoc(r);
+
+    } else if (strcmp(cmd, "shimmer") == 0) {
+        int boardId = doc["boardId"] | -1;
+        message_animation anim = ledInstance.createCandle(esp_timer_get_time() + 100000, 30000, 30, 80, 30);
+        msgHandler.sendAnimation(anim, boardId);
+
+    } else if (strcmp(cmd, "bioluminescence") == 0) {
+        message_animation anim;
+        anim.animationType = BIOLUMINESCENCE;
+        anim.animationParams.bioluminescence.minInterval  = doc["minInterval"]  | 2000;
+        anim.animationParams.bioluminescence.maxInterval  = doc["maxInterval"]  | 8000;
+        anim.animationParams.bioluminescence.fadeDuration = doc["fadeDuration"] | 1500;
+        anim.animationParams.bioluminescence.repetitions  = doc["repetitions"]  | 0;
+        anim.animationParams.bioluminescence.hue          = doc["hue"]          | 140;
+        anim.animationParams.bioluminescence.hueVariance  = doc["hueVariance"]  | 20;
+        anim.animationParams.bioluminescence.saturation   = doc["saturation"]   | 220;
+        anim.animationParams.bioluminescence.brightness   = doc["brightness"]   | 80;
+        msgHandler.sendAnimation(anim, -1);
+
+    } else if (strcmp(cmd, "breath") == 0) {
+        message_animation anim;
+        anim.animationType = BREATH;
+        anim.animationParams.breath.startTime   = esp_timer_get_time() + 2000000ULL;
+        anim.animationParams.breath.cycleDuration = doc["cycleDuration"] | 4000;
+        anim.animationParams.breath.spreadDelay   = doc["spreadDelay"]   | 2000;
+        anim.animationParams.breath.repetitions   = doc["repetitions"]   | 0;
+        anim.animationParams.breath.hue           = doc["hue"]           | 96;
+        anim.animationParams.breath.saturation    = doc["saturation"]    | 180;
+        anim.animationParams.breath.brightness    = doc["brightness"]    | 200;
+        msgHandler.sendAnimation(anim, -1);
+    } else if (strcmp(cmd, "candle_all") == 0) {
+        message_animation anim;
+        anim.animationType = CANDLE;
+        anim.animationParams.candle.startTime  = esp_timer_get_time() + 500000ULL;
+        anim.animationParams.candle.duration   = 0; // 0 = loop forever
+        anim.animationParams.candle.hue        = doc["hue"]        | 20;
+        anim.animationParams.candle.saturation = doc["saturation"] | 210;
+        anim.animationParams.candle.value      = doc["brightness"] | 180;
+        msgHandler.sendAnimation(anim, -1);
     }
 }
 
@@ -248,13 +339,7 @@ static void handleSerialCommand(const String& line) {
 void setup()
 {
     Serial.begin(115200);
-    esp_log_level_set("*",      ESP_LOG_INFO);
-    esp_log_level_set("MSG",    ESP_LOG_NONE);
-    esp_log_level_set("LED",    ESP_LOG_NONE);
-    esp_log_level_set("Sleep",  ESP_LOG_NONE);
-    esp_log_level_set("TIMER",  ESP_LOG_NONE);
-    esp_log_level_set("CLAP",   ESP_LOG_INFO);
-    esp_log_level_set("Tick",   ESP_LOG_INFO);
+    delay(500);
 
     unsigned long long startTime = millis();
     while (!Serial) {
@@ -297,6 +382,7 @@ void loop()
 
     if (lastTick + 5000 < millis()) {
         lastTick = millis();
+        msgHandler.tickInactiveTimeout();
 
         uint8_t address[6];
         WiFi.macAddress(address);
@@ -355,28 +441,7 @@ void loop()
         }
     }
 
-    if (msgHandler.isInSleepPhase()) {
-        ESP_LOGI("Sleep", "Going to sleep for %lu ms", msgHandler.getSleepDuration());
-        unsigned long long sleepDuration = ((unsigned long long)msgHandler.getSleepDuration() - 1ULL) * 1000ULL;
-        ESP_LOGI("Sleep", "Sleep duration in micros: %llu", sleepDuration);
-        esp_sleep_enable_timer_wakeup(sleepDuration);
-        msgHandler.sendSleepWakeupMessage(sleepDuration);
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo)) {
-            ESP_LOGI("Sleep", "Before Sleep Current Time: %02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        }
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        msgHandler.turnWifiOff();
-        Serial.end();
-        msgHandler.recordTimeOfDayBeforeSleep();
-        esp_light_sleep_start();
-        Serial.begin(115200);
-        delay(200);
-        msgHandler.setTimeOfDayAfterSleep(sleepDuration);
-        msgHandler.turnWifiOn();
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
-        msgHandler.setAddressListInactive();
-        msgHandler.startBroadcastSettleTask();
-        msgHandler.broadcastReannounce();
+    if (msgHandler.isInSleepPhase() && sleepBroadcastTaskHandle == NULL) {
+        xTaskCreatePinnedToCore(sleepBroadcastTask, "sleepBroadcast", 4096, NULL, 1, &sleepBroadcastTaskHandle, 1);
     }
 }

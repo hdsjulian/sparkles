@@ -99,11 +99,20 @@ void MessageHandler::handleReceive() {
                 }
                 if (commandMessage.commandType == CMD_TEST_MODE_ON) {
                     setTestMode(true);
-                    ledInstance->setDistanceFromCenter((float)ledInstance->getCurrentPosition());
-                    ESP_LOGI("MSG", "Test mode ON: distance set to %d m", ledInstance->getCurrentPosition());
+                    ledInstance->setTestMode(true);
+                    float spacing = commandMessage.param > 0.0f ? commandMessage.param : 1.0f;
+                    float dist = spacing * (float)ledInstance->getCurrentPosition();
+                    ledInstance->setDistanceFromCenter(dist);
+                    ESP_LOGI("MSG", "Test mode ON: pos %d, spacing %.2f m, distance %.2f m, MIDI note %d",
+                        ledInstance->getCurrentPosition(), spacing, dist, 60 + ledInstance->getCurrentPosition());
                 }
                 if (commandMessage.commandType == CMD_TEST_MODE_OFF) {
                     setTestMode(false);
+                    ledInstance->setTestMode(false);
+                }
+                if (commandMessage.commandType == CMD_SET_MAX_DISTANCE) {
+                    ledInstance->setMaxDistanceFromCenter((int)commandMessage.param);
+                    ESP_LOGI("MSG", "Max distance from center set to %.2f m", commandMessage.param);
                 }
                 if (commandMessage.commandType == CMD_OTA_UPDATE) {
                     ESP_LOGI("MSG", "CMD_OTA_UPDATE received — connecting to %s", OTA_WIFI_SSID);
@@ -142,6 +151,9 @@ void MessageHandler::handleReceive() {
 
                 
             }
+            else if (incomingData.messageType == MSG_STATUS) {
+                // another client's status broadcast — ignore
+            }
             else if (incomingData.messageType == MSG_CLAP) {
                 message_clap clapMessage = incomingData.payload.clap;
                 ESP_LOGI("MSG", "Received clap message");
@@ -170,11 +182,17 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
                 message_update_version updateVersionMessage = incomingData.payload.updateVersion;
                 if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
-                    ledInstance->blink(micros(), 100, 5, 200, 255, 127);
+                    ledInstance->blink(esp_timer_get_time(), 100, 5, 200, 255, 127);
                     vTaskDelete(announceTaskHandle);
                     announceTaskHandle = NULL;
-                    OTAHandler::getInstance().setup();
-                    OTAHandler::getInstance().performUpdate();
+                    OTAHandler& ota = OTAHandler::getInstance();
+                    // use URL from message if provided, else fall back to compile-time define
+                    if (updateVersionMessage.otaUrl[0] != '\0') {
+                        ota.setup(updateVersionMessage.otaUrl);
+                    } else {
+                        ota.setup();
+                    }
+                    ota.performUpdate();
                 }
                 else {
                     ESP_LOGI("MSG", "Received update version message with lower version, ignoring");
@@ -182,7 +200,7 @@ void MessageHandler::handleReceive() {
             }
 
             else {
-                ESP_LOGI("MSG", "Unknown message type ");
+                ESP_LOGI("MSG", "Unknown message type %d", incomingData.messageType);
             }
         }
     }
@@ -228,7 +246,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
             long long correctedOffset = offsetMultiplier * (offsetSum / offsetCount) + offsetMultiplier * (delayAverage / 2);
             setTimeOffset(correctedOffset);
             message_data gotTimerMessage;
-            unsigned long long now = micros();
+            unsigned long long now = esp_timer_get_time();
             long long timeOffset = getTimeOffset();
             gotTimerMessage.messageType = MSG_GOT_TIMER;
             gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
@@ -238,7 +256,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
             ESP_LOGI("MSG", "Sending got timer message with perceived time: %lld, delay average: %d, battery percentage: %f", gotTimerMessage.payload.gotTimer.perceivedTime, gotTimerMessage.payload.gotTimer.delayAverage, gotTimerMessage.payload.gotTimer.batteryPercentage);
             xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
             setTimerSet(true);
-            ledInstance->blink(micros(), 300, 3, 100, 255, 127);
+            ledInstance->blink(esp_timer_get_time(), 300, 3, 100, 255, 127);
             ESP_LOGI("MSG", "Timer set. time offset: %lld", getTimeOffset());
             startBatterySyncTask();
             delayCounter = 0;
@@ -275,7 +293,7 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
     ESP_LOGI("MSG", "Going to sleep for %llu microseconds", sleepWakeupMessage.duration);
     vTaskDelay(1000/portTICK_PERIOD_MS);
-    ledInstance->blink(micros(), 100, 4, 160, 255, 127);
+    ledInstance->blink(esp_timer_get_time(), 100, 4, 160, 255, 127);
     vTaskDelay(1000/portTICK_PERIOD_MS);
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
@@ -289,7 +307,7 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     ESP_LOGI("MSG", "Woke up");
     turnWifiOn();
     ledInstance->resetLedTask();
-    ledInstance->blink(micros(), 150, 2, 160, 255, 127);
+    ledInstance->blink(esp_timer_get_time(), 150, 2, 160, 255, 127);
     ESP_LOGI("MSG", "Woke up from sleep, current time: %llu", micros());
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     ESP_LOGI("MSG", "Should be back up");
@@ -310,9 +328,15 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
 }
 
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
-    unsigned long long receiveTime = micros();
+    unsigned long long receiveTime = esp_timer_get_time();
     MessageHandler& instance = getInstance();
     if (incomingData[0] == MSG_TIMER) {
+        // Learn master MAC from the first MSG_TIMER we receive
+        if (!instance.hostAddressLearned) {
+            memcpy(instance.hostAddress, mac->src_addr, 6);
+            instance.hostAddressLearned = true;
+            instance.addPeer(instance.hostAddress);
+        }
         message_data* messageData = (message_data*)incomingData;
         messageData->payload.timer.receiveTime = receiveTime;
     }
@@ -321,7 +345,13 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         if (messageData->payload.animation.animationType == MIDI || messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
             LedHandler& ledInstance = LedHandler::getInstance(); 
             if (messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
-                ESP_LOGI("RECV", "Received background shimmer animation with hue %d, saturation %d, value %d", messageData->payload.animation.animationParams.backgroundShimmer.hue, messageData->payload.animation.animationParams.backgroundShimmer.saturation, messageData->payload.animation.animationParams.backgroundShimmer.value);
+                auto& shimmer = messageData->payload.animation.animationParams.backgroundShimmer;
+                if (shimmer.value > 0) {
+                    uint8_t mac[6]; WiFi.macAddress(mac);
+                    uint8_t range = (uint8_t)(shimmer.value * 0.1f);
+                    int8_t offset = (range > 0) ? (int8_t)((mac[5] % (range * 2 + 1)) - range) : 0;
+                    shimmer.value = (uint8_t)constrain((int)shimmer.value + offset, 0, 255);
+                }
             }
             ledInstance.pushToAnimationQueue(messageData->payload.animation);
             return;
@@ -347,11 +377,10 @@ void MessageHandler::announceAddressWrapper(void *pvParameters) {
 void MessageHandler::runAnnounceAddress() {
     message_data messageData;
     messageData.messageType = MSG_ADDRESS;
-    memcpy(messageData.targetAddress, hostAddress, 6);
+    memcpy(messageData.targetAddress, broadcastAddress, 6);
     messageData.payload.address.version = version;
     WiFi.macAddress(messageData.payload.address.address);
-    while (getAddressAnnounced() == false) {    
-  
+    while (getAddressAnnounced() == false) {
         xQueueSend(sendQueue, &messageData, portMAX_DELAY);
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
@@ -367,7 +396,7 @@ void MessageHandler::handleSend() {
             addPeer(messageData.targetAddress);
             switch (messageData.messageType) {
                 case MSG_GOT_TIMER:
-                    now = micros();
+                    now = esp_timer_get_time();
                     messageData.payload.gotTimer.sendTime = now;
                     messageData.payload.gotTimer.perceivedTime = (long long)now + getTimeOffset();
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
@@ -404,8 +433,8 @@ void MessageHandler::runBatterySyncWrapper(void *pvParameters) {
 }
 void MessageHandler::runBatterySync() {
     while (true) {
-        float batteryPercentage = getBatteryPercentage(); // Use your actual battery reading function
-        if (batteryPercentage < 10.0 && false) {
+        float batteryPercentage = getBatteryPercentage();
+        if (batteryPercentage < BATTERY_LOW_THRESHOLD) {
             if (getBatteryLow() == false) {
                 setBatteryLow(true);
                 ledInstance->turnOff();
@@ -413,33 +442,44 @@ void MessageHandler::runBatterySync() {
                 pushToSendQueue(statusMessage);
                 vTaskDelay(1000 / portTICK_PERIOD_MS);
             }
+            // Sleep 5 minutes, then ask master if maintenance mode is active
+            turnWifiOff();
+            esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+            esp_sleep_enable_timer_wakeup(5ULL * 60ULL * 1000000ULL);
+            esp_light_sleep_start();
+            turnWifiOn();
+            vTaskDelay(2000 / portTICK_PERIOD_MS); // let ESP-NOW settle after wake
+
             message_data askAdminPresentMessage = createCommandMessage(CMD_ASK_ADMIN_PRESENT);
             memcpy(askAdminPresentMessage.targetAddress, hostAddress, 6);
             pushToSendQueue(askAdminPresentMessage);
-            vTaskDelay(1000 / portTICK_PERIOD_MS); // Wait for 1
-            if (getAdminPresent()) {
-                ESP_LOGI("MSG", "Admin present, not going to sleep");
-                setAdminPresent(0);
-                ledInstance->blink(micros(), 200, 3, 0, 255, 255); // Skip the sleep if admin is present
-                vTaskDelay(60000 / portTICK_PERIOD_MS); // Wait for 1 minute before checking again
-            }
-            else {
-                turnWifiOff();
-                esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-                esp_sleep_enable_timer_wakeup(5 * 60 * 1000000ULL);
-                esp_light_sleep_start();
-                            turnWifiOn();
-            }
+            vTaskDelay(1500 / portTICK_PERIOD_MS); // wait for master response
 
+            if (getAdminPresent()) {
+                ESP_LOGI("MSG", "Critical battery: maintenance mode active, shimmering for visibility");
+                setAdminPresent(0);
+                // Repeat candlelight with 10 s cooldown as long as maintenance mode stays active
+                do {
+                    ledInstance->candleLight(30ULL * 1000000ULL, 30, 80, 30);
+                    vTaskDelay(10000 / portTICK_PERIOD_MS); // 10 s dark cooldown between pulses
+
+                    // Refresh admin-present: ask master again each cycle
+                    message_data refreshMsg = createCommandMessage(CMD_ASK_ADMIN_PRESENT);
+                    memcpy(refreshMsg.targetAddress, hostAddress, 6);
+                    pushToSendQueue(refreshMsg);
+                    vTaskDelay(1500 / portTICK_PERIOD_MS);
+                } while (getAdminPresent());
+                // Admin left maintenance mode — fall through, next iteration sleeps 5 min
+                ESP_LOGI("MSG", "Maintenance mode ended, returning to critical sleep cycle");
+            }
+            // If maintenance mode is off, loop back immediately — next iteration sleeps 5 min again
         }
         else {
-        setBatteryLow(false);
-        message_data statusMessage = createStatusMessage();
-        pushToSendQueue(statusMessage);
-        vTaskDelay(10 * 60 * 1000 / portTICK_PERIOD_MS); // 10 minutes
-
+            setBatteryLow(false);
+            message_data statusMessage = createStatusMessage();
+            pushToSendQueue(statusMessage);
+            vTaskDelay(10 * 60 * 1000 / portTICK_PERIOD_MS); // 10 minutes
         }
-
     }
 }
 
@@ -453,7 +493,6 @@ void MessageHandler::turnWifiOn() {
     }
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
-    addPeer(const_cast<uint8_t*>(hostAddress));
     addPeer(const_cast<uint8_t*>(broadcastAddress));
     Serial.println("should initialize");
 }

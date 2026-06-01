@@ -3,6 +3,8 @@
   import { devices, animating, numDevices, syncStatus, animateStatus } from '$lib/stores.js';
   import {
     getAddressList,
+    getSystemInfo,
+    getAnimateStatus,
     commandSyncAll,
     commandBlinkAll,
     commandAnimate,
@@ -12,19 +14,32 @@
 
   let error = '';
   let actionMsg = '';
+  let masterMac = '—';
 
   onMount(async () => {
     try {
-      const list = await getAddressList();
+      const info = await getSystemInfo();
+      masterMac = info.macAddress ?? '—';
+    } catch (_) {}
+
+    try {
+      const status = await getAnimateStatus();
+      animating.set(status.status === true || status.status === 'true');
+    } catch (_) {}
+
+    try {
+      const data = await getAddressList();
+      const list = data.addresses ?? [];
       devices.update(map => {
         const next = new Map(map);
-        list.forEach(d => next.set(d.boardId, d));
+        list.forEach(d => next.set(d.id, d));
         return next;
       });
     } catch (e) {
       error = `Failed to load devices: ${e.message}`;
     }
   });
+
 
   async function handleSyncAll() {
     error = '';
@@ -93,6 +108,10 @@
       <div class="reading" style="font-size:1.1rem; color: {$animating ? 'var(--color-ok)' : 'var(--color-text-muted)'}">
         {$animating ? 'Running' : 'Off'}
       </div>
+    </div>
+    <div class="card stat-card">
+      <div class="card-title">Master MAC</div>
+      <div class="reading" style="font-size:0.85rem; font-family: monospace;">{masterMac}</div>
     </div>
   </div>
 

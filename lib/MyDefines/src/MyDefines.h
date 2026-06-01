@@ -65,7 +65,7 @@
 #define OTA_WIFI_SSID "fogscreen"
 #define OTA_WIFI_PASSWORD ""
 #define OTA_UPDATE_URL "http://192.168.4.1/firmware.bin" // Update URL for OTA updates
-#define BATTERY_LOW_THRESHOLD 0.0 // Percentage below which battery is considered low
+#define BATTERY_LOW_THRESHOLD 7.0 // Percentage below which battery is considered low
 #define CLAP_TIMEOUT 10000
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // Clients compiled before message_log was added to the payload union have sizeof(message_data)==80.
@@ -167,8 +167,9 @@ extern MessageHandler& getMessageHandlerInstance();
 #define CMD_CANCEL_CALIBRATION 14
 #define CMD_REANNOUNCE 15
 #define CMD_OTA_UPDATE 16
-#define CMD_TEST_MODE_ON  17
-#define CMD_TEST_MODE_OFF 18
+#define CMD_TEST_MODE_ON      17
+#define CMD_TEST_MODE_OFF     18
+#define CMD_SET_MAX_DISTANCE  19
 
 
 
@@ -198,7 +199,9 @@ enum animationEnum {
     CONCENTRIC, 
     MIDI, 
     BACKGROUND_SHIMMER,
-    STROBE, 
+    STROBE,
+    BREATH,
+    BIOLUMINESCENCE,
 };
 
 
@@ -332,6 +335,29 @@ struct animation_background_shimmer {
   animation_background_shimmer() : hue(0), saturation(0), value(0) {}
 };
 
+struct animation_bioluminescence {
+  uint32_t minInterval;  // ms between pulses (min)
+  uint32_t maxInterval;  // ms between pulses (max)
+  uint32_t fadeDuration; // ms for fade in + out total
+  uint16_t repetitions;  // 0 = infinite
+  uint8_t hue;
+  uint8_t hueVariance;   // random ± hue shift per pulse
+  uint8_t saturation;
+  uint8_t brightness;
+  animation_bioluminescence() : minInterval(2000), maxInterval(8000), fadeDuration(1500), repetitions(0), hue(140), hueVariance(20), saturation(220), brightness(80) {}
+};
+
+struct animation_breath {
+  unsigned long long startTime; // master clock time the first cycle starts
+  uint32_t cycleDuration;       // ms for one full in+out breath
+  uint32_t spreadDelay;         // max phase offset across all lamps in ms
+  uint16_t repetitions;         // 0 = infinite
+  uint8_t hue;
+  uint8_t saturation;
+  uint8_t brightness;
+  animation_breath() : startTime(0), cycleDuration(4000), spreadDelay(2000), repetitions(0), hue(96), saturation(180), brightness(200) {}
+};
+
 union animation_params {
   struct animation_strobe strobe;
   struct animation_midi midi;
@@ -339,6 +365,8 @@ union animation_params {
   struct animation_sync_async_blink syncAsyncBlink;
   struct animation_background_shimmer backgroundShimmer;
   struct animation_candle candle;
+  struct animation_breath breath;
+  struct animation_bioluminescence bioluminescence;
   animation_params() {}
   ~animation_params() {}
 };
@@ -414,17 +442,20 @@ struct message_config_data {
 
 struct message_update_version {
   Version version;
-  message_update_version() : version(VERSION) {}
+  char otaUrl[55];  // fits within 80-byte compat frame (59-byte payload - 4 byte Version)
+  message_update_version() : version(VERSION) { otaUrl[0] = '\0'; }
   message_update_version(const message_update_version& other) : version(other.version) {
+    memcpy(otaUrl, other.otaUrl, sizeof(otaUrl));
   }
 };
 
 struct message_command {
   uint8_t commandType;
-  message_command() : commandType(0) {}
-  message_command(uint8_t cmdType) : commandType(cmdType) {}
-  message_command(const message_command& other) : commandType(other.commandType) {
-}
+  float param = 0.0f;
+  message_command() : commandType(0), param(0.0f) {}
+  message_command(uint8_t cmdType) : commandType(cmdType), param(0.0f) {}
+  message_command(uint8_t cmdType, float p) : commandType(cmdType), param(p) {}
+  message_command(const message_command& other) : commandType(other.commandType), param(other.param) {}
 };
 
 

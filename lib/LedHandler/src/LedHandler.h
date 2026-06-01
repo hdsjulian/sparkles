@@ -55,6 +55,8 @@ public:
     bool getUseDistanceSwitch();
     void setDistanceMode(int mode);
     int  getDistanceMode();
+    void setTestMode(bool on);
+    bool getTestMode();
     void setMidiParams(message_midi_params& params);
     message_midi_params getMidiParams();
 
@@ -86,6 +88,8 @@ private:
     static void runSyncAsyncBlinkWrapper(void *pvParameters);
     static void runBackgroundShimmerWrapper(void *pvParameters);
     static void runCandleWrapper(void *pvParameters);
+    static void runBreathWrapper(void *pvParameters);
+    static void runBioluminescenceWrapper(void *pvParameters);
     void ledTask();
     void runMidi();
     void runBlink();
@@ -93,6 +97,8 @@ private:
     void runSyncAsyncBlink();
     void runBackgroundShimmer();
     void runCandle();
+    void runBreath();
+    void runBioluminescence();
     
     static void ledsOff();
     float midiHue = 25.0f / 360.0f;
@@ -133,6 +139,7 @@ private:
     int syncAsyncMaxAniReps = 20;
     int syncAsyncMinSpread = 500;
     int syncAsyncMaxSpread = 2000;
+    bool testModeActive = false;
     bool backgroundShimmerFadeout = false;
     bool useDistanceSwitch = false;
     int distanceMode = 0;

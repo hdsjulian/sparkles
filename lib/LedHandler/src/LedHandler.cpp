@@ -153,10 +153,10 @@ void LedHandler::ledTask()
                             startTime = animationData.animationParams.syncAsyncBlink.startTime;
                             break;
                         default:
-                            startTime = micros();
+                            startTime = esp_timer_get_time();
                             break;
                     }
-                    if (startTime > micros() + 1000) {
+                    if (startTime > esp_timer_get_time() + 1000) {
                         startTime -= 500;
                     }
                     unsigned long long microsUntilStart = calculateMicrosUntilStart(startTime);
@@ -185,7 +185,9 @@ void LedHandler::ledTask()
                 //midi animation incoming and current animation is normal animatino
                 if (animationData.animationType == MIDI && getCurrentAnimation() != MIDI && animationData.animationParams.midi.instrument != INSTRUMENT_CC) {
                     //delete old animation task if it exists
-                    bool isInOctave = !(animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE);
+                    bool isInOctave = testModeActive
+                        ? (animation.animationParams.midi.note - 60 == position)
+                        : !(animation.animationParams.midi.note % OCTAVE != (getMidiNoteFromPosition(position)+animation.animationParams.midi.offset) % OCTAVE);
 
                     if (animationTaskHandle != NULL && isInOctave) {
                         vTaskDelete(animationTaskHandle);
@@ -239,6 +241,16 @@ void LedHandler::ledTask()
                 xTaskCreatePinnedToCore(runCandleWrapper, "runCandle", 10000, this, 2, &animationTaskHandle, 1);
             }
         }
+        else if (getCurrentAnimation() == BREATH) {
+            if (animationTaskHandle == NULL || eTaskGetState(animationTaskHandle) == eDeleted) {
+                xTaskCreatePinnedToCore(runBreathWrapper, "runBreath", 10000, this, 2, &animationTaskHandle, 1);
+            }
+        }
+        else if (getCurrentAnimation() == BIOLUMINESCENCE) {
+            if (animationTaskHandle == NULL || eTaskGetState(animationTaskHandle) == eDeleted) {
+                xTaskCreatePinnedToCore(runBioluminescenceWrapper, "runBioLum", 10000, this, 2, &animationTaskHandle, 1);
+            }
+        }
         else {
             ledsOff();
             setCurrentAnimation(OFF);
@@ -283,6 +295,14 @@ void LedHandler::handleQueue(message_animation& animationData, int currentPositi
     
     }
     else if (animationData.animationType == OFF) {
+        if (animationTaskHandle != NULL) {
+            vTaskDelete(animationTaskHandle);
+            animationTaskHandle = NULL;
+        }
+        if (midiTaskHandle != NULL) {
+            vTaskDelete(midiTaskHandle);
+            midiTaskHandle = NULL;
+        }
         ledsOff();
         setCurrentAnimation(OFF);
     }
@@ -481,15 +501,16 @@ unsigned long long LedHandler::calculateSyncAsyncBlink(message_animation& animat
 
 unsigned long long LedHandler::calculateBlinkTime(message_animation& animationData) {
     const auto& params = animationData.animationParams.blink;
-    unsigned long long microsUntilStart = params.startTime - micros();
+    unsigned long long now = esp_timer_get_time();
+    unsigned long long microsUntilStart = (params.startTime > now) ? params.startTime - now : 0;
     return (microsUntilStart + params.duration * 2 * params.repetitions);
 }
 
 unsigned long long LedHandler::calculateStrobeTime(message_animation& animationData) {
     const auto& params = animationData.animationParams.strobe;
     unsigned long long microsUntilStart = 0;
-    if (micros() < params.startTime) {
-        microsUntilStart = params.startTime - micros();
+    if (esp_timer_get_time() < params.startTime) {
+        microsUntilStart = params.startTime - esp_timer_get_time();
     }
     // strobeDurationMicros matches runStrobe logic
     unsigned long long strobeDurationMicros = params.duration * 1000ULL;
@@ -519,6 +540,8 @@ void LedHandler::runBackgroundShimmer() {
     float hue        = animation.animationParams.backgroundShimmer.hue;
     float saturation = animation.animationParams.backgroundShimmer.saturation;
     float value      = animation.animationParams.backgroundShimmer.value;
+
+    float flickerValue = value;  // autonomous flicker tracks baseValue
 
     TickType_t lastUpdateTick = xTaskGetTickCount();
 
@@ -577,6 +600,7 @@ void LedHandler::runBackgroundShimmer() {
             return interrupted;
         } else {
             value = newVal;
+            flickerValue = newVal;  // re-center flicker on new base
             return false;
         }
     };
@@ -651,7 +675,13 @@ void LedHandler::runBackgroundShimmer() {
             break;
         }
         if (value > 0) {
-            writeLeds(CHSV(hue, saturation, value));
+            // autonomous random-walk flicker around current base value
+            float variance = value * 0.10f;
+            float step     = variance * 0.3f;
+            float delta    = ((float)(esp_random() % 1001) / 1000.0f) * 2.0f * step - step;
+            flickerValue  += delta;
+            flickerValue   = constrain(flickerValue, value - variance, value + variance);
+            writeLeds(CHSV(hue, saturation, (uint8_t)flickerValue));
         }
     }
     ledsOff();
@@ -724,15 +754,22 @@ void LedHandler::runMidi()
             if (midiDecayFactor >= 1.0f) continue;
             int note = localMidiNoteTableArray[i].note;
             int velocity = localMidiNoteTableArray[i].velocity;
-            int octave = (note / OCTAVE) - 1;
-            int ledOctave = getOctaveFromPosition(position);
-            int octaveDistance = abs((octave % numDevices) - ledOctave);
-            float distanceFactor = 0.2 * octaveDistance;
-            float currentBrightness = (int)(velocity * (1 - midiDecayFactor) * (1 - distanceFactor));
-            if (currentBrightness > brightnessMidi) {
-                brightnessMidi = currentBrightness;
+            float currentBrightness;
+            if (testModeActive) {
+                currentBrightness = (int)(velocity * (1 - midiDecayFactor));
+                huemodMidi = 0;
+                satmodMidi = 0;
+            } else {
+                int octave = (note / OCTAVE) - 1;
+                int ledOctave = getOctaveFromPosition(position);
+                int octaveDistance = abs((octave % numDevices) - ledOctave);
+                float distanceFactor = 0.2 * octaveDistance;
+                currentBrightness = (int)(velocity * (1 - midiDecayFactor) * (1 - distanceFactor));
                 huemodMidi = -0.02 * octaveDistance;
                 satmodMidi = 0.02 * octaveDistance;
+            }
+            if (currentBrightness > brightnessMidi) {
+                brightnessMidi = currentBrightness;
             }
             brightnessZeroMidi = false;
         }
@@ -833,6 +870,32 @@ void LedHandler::runCandle() {
         ledsOff();
         vTaskDelayUntil(&currentTicks, ticksUntilStart);
     }
+    if (animation.animationParams.candle.duration == 0) {
+        // Continuous candle: fade in once then flicker forever until task is killed.
+        float hue        = (float)animation.animationParams.candle.hue;
+        float saturation = (float)animation.animationParams.candle.saturation;
+        float value      = (float)animation.animationParams.candle.value;
+        int   steps      = 24;
+        int   fadeMs     = 1200;
+        auto  randFloat  = []() { return (float)rand() / (float)RAND_MAX; };
+        // Fade in
+        for (int i = 0; i < steps; i++) {
+            CRGB color = CHSV(hue, saturation, value * ((float)i / steps));
+            writeLeds(color);
+            vTaskDelay(pdMS_TO_TICKS(fadeMs / steps));
+        }
+        // Flicker forever — realistic candle parameters
+        float lastFlicker = value;
+        while (true) {
+            float target  = value * (0.75f + 0.25f * randFloat());
+            lastFlicker   = 0.88f * lastFlicker + 0.12f * target;
+            // Occasional brief gust: drop to 60% for one frame
+            if (randFloat() < 0.03f) lastFlicker = value * 0.60f;
+            CRGB color = CHSV(hue + randFloat() * 6.0f, saturation, lastFlicker);
+            writeLeds(color);
+            vTaskDelay(pdMS_TO_TICKS(30 + (int)(randFloat() * 60)));
+        }
+    }
     candleLight(
         animation.animationParams.candle.duration,
         animation.animationParams.candle.hue,
@@ -841,7 +904,7 @@ void LedHandler::runCandle() {
     );
     setCurrentAnimation(OFF);
     animationTaskHandle = NULL;
-    vTaskDelete(NULL); 
+    vTaskDelete(NULL);
 }
 
 
@@ -911,4 +974,116 @@ void LedHandler::candleLight(unsigned long long duration, float hue, float satur
         vTaskDelay(fadeTime / steps);
     }
     ledsOff();
+}
+
+void LedHandler::runBreathWrapper(void *pvParameters) {
+    LedHandler *instance = (LedHandler *)pvParameters;
+    instance->runBreath();
+}
+
+void LedHandler::runBreath() {
+    message_animation anim = getAnimation();
+    animation_breath& p = anim.animationParams.breath;
+
+    // Wait until startTime
+    unsigned long long microsUntil = calculateMicrosUntilStart(p.startTime);
+    if (microsUntil > 0 && microsUntil < 30000000ULL) {
+        vTaskDelay(pdMS_TO_TICKS(microsUntil / 1000));
+    }
+
+    // Phase offset based on distance from center
+    float dist = getDistanceFromCenter();
+    int maxDist = getMaxDistanceFromCenter();
+    uint32_t phaseOffsetMs = (maxDist > 0)
+        ? (uint32_t)((dist / (float)maxDist) * (float)p.spreadDelay)
+        : 0;
+
+    uint32_t cycleMs = p.cycleDuration > 0 ? p.cycleDuration : 4000;
+    uint32_t count = 0;
+
+    while (getCurrentAnimation() == BREATH) {
+        if (p.repetitions > 0 && count >= p.repetitions) break;
+
+        // Each cycle: sine fade in then out over cycleMs
+        uint32_t stepMs = 20;
+        uint32_t steps = cycleMs / stepMs;
+        for (uint32_t i = 0; i < steps; i++) {
+            if (getCurrentAnimation() != BREATH) break;
+
+            // Apply phase offset by shifting the position in the cycle
+            uint32_t effectiveMs = (i * stepMs + phaseOffsetMs) % cycleMs;
+            float phase = (float)effectiveMs / (float)cycleMs; // 0.0 – 1.0
+            float brightness = sinf(phase * M_PI) * (float)p.brightness;
+            if (brightness < 0) brightness = 0;
+
+            CRGB color = CHSV(p.hue, p.saturation, (uint8_t)brightness);
+            writeLeds(color);
+            vTaskDelay(pdMS_TO_TICKS(stepMs));
+        }
+        count++;
+    }
+    ledsOff();
+    setCurrentAnimation(OFF);
+}
+
+void LedHandler::runBioluminescenceWrapper(void *pvParameters) {
+    LedHandler *instance = (LedHandler *)pvParameters;
+    instance->runBioluminescence();
+}
+
+void LedHandler::runBioluminescence() {
+    message_animation anim = getAnimation();
+    animation_bioluminescence& p = anim.animationParams.bioluminescence;
+
+    uint32_t count = 0;
+    uint32_t stepMs = 16;
+
+    // Random initial offset so lamps don't all start at the same time
+    uint32_t initDelay = (esp_random() % (p.maxInterval > 0 ? p.maxInterval : 5000));
+    vTaskDelay(pdMS_TO_TICKS(initDelay));
+
+    while (getCurrentAnimation() == BIOLUMINESCENCE) {
+        if (p.repetitions > 0 && count >= p.repetitions) break;
+
+        // Random hue variation per pulse
+        int32_t hueShift = (int32_t)(esp_random() % (p.hueVariance * 2 + 1)) - p.hueVariance;
+        uint8_t pulseHue = (uint8_t)((p.hue + hueShift + 256) % 256);
+
+        uint32_t halfFade = p.fadeDuration / 2;
+        uint32_t fadeSteps = halfFade / stepMs;
+        if (fadeSteps < 1) fadeSteps = 1;
+
+        // Fade in
+        for (uint32_t i = 0; i <= fadeSteps; i++) {
+            if (getCurrentAnimation() != BIOLUMINESCENCE) goto done;
+            float t = (float)i / (float)fadeSteps;
+            uint8_t bri = (uint8_t)(t * t * p.brightness); // ease-in
+            writeLeds(CHSV(pulseHue, p.saturation, bri));
+            vTaskDelay(pdMS_TO_TICKS(stepMs));
+        }
+
+        // Fade out
+        for (uint32_t i = fadeSteps; i > 0; i--) {
+            if (getCurrentAnimation() != BIOLUMINESCENCE) goto done;
+            float t = (float)i / (float)fadeSteps;
+            uint8_t bri = (uint8_t)(t * t * p.brightness); // ease-out
+            writeLeds(CHSV(pulseHue, p.saturation, bri));
+            vTaskDelay(pdMS_TO_TICKS(stepMs));
+        }
+        ledsOff();
+
+        // Random pause before next pulse
+        uint32_t interval = p.minInterval + (esp_random() % (p.maxInterval - p.minInterval + 1));
+        uint32_t elapsed = 0;
+        while (elapsed < interval && getCurrentAnimation() == BIOLUMINESCENCE) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            elapsed += 100;
+        }
+
+        count++;
+    }
+
+done:
+    ledsOff();
+    setCurrentAnimation(OFF);
 }

@@ -32,16 +32,9 @@ int tickCount = 0;
 void setup()
 {
   Serial.begin(115200);
+  Serial.setTxTimeoutMs(0); // non-blocking CDC writes — drop bytes rather than hang
   esp_log_level_set("*", ESP_LOG_INFO);
   esp_log_level_set("LED", ESP_LOG_NONE);
-  unsigned long long startTime = millis();
-  while (!Serial)
-  {
-    if (millis() - startTime > 3000)
-    {
-      break;
-    }
-  }
   if (!LittleFS.begin())
   {
     Serial.println("LittleFS mount failed");

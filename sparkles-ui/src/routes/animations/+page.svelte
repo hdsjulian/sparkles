@@ -1,5 +1,6 @@
 <script>
-  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll } from '$lib/api.js';
+  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence, commandCandleAll } from '$lib/api.js';
+  import HueSatPicker from '$lib/components/HueSatPicker.svelte';
 
   let error = '';
   let successMsg = '';
@@ -153,10 +154,79 @@
       error = e.message;
     }
   }
+
+  // ----- Candle -----
+  let candle = { hue: 20, saturation: 210, brightness: 180 };
+  let candleActive = false;
+
+  async function toggleCandle() {
+    error = ''; successMsg = '';
+    try {
+      if (candleActive) {
+        await commandAnimationOff();
+        candleActive = false;
+        successMsg = 'Candle off';
+      } else {
+        await commandCandleAll(candle);
+        candleActive = true;
+        successMsg = 'Candle started';
+      }
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  // ----- Bioluminescence -----
+  let bioLum = { minInterval: 2000, maxInterval: 8000, fadeDuration: 1500, hue: 140, hueVariance: 20, saturation: 220, brightness: 80, repetitions: 0 };
+  let bioLumActive = false;
+
+  async function toggleBioluminescence() {
+    error = ''; successMsg = '';
+    try {
+      if (bioLumActive) {
+        await commandAnimationOff();
+        bioLumActive = false;
+        successMsg = 'Bioluminescence stopped';
+      } else {
+        await commandBioluminescence(bioLum);
+        bioLumActive = true;
+        successMsg = 'Bioluminescence started';
+      }
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  // ----- Breath -----
+  let breath = { cycleDuration: 4000, spreadDelay: 2000, hue: 96, saturation: 180, brightness: 200, repetitions: 0 };
+  let breathActive = false;
+
+  async function toggleBreath() {
+    error = ''; successMsg = '';
+    try {
+      if (breathActive) {
+        await commandAnimationOff();
+        breathActive = false;
+        successMsg = 'Breath stopped';
+      } else {
+        await commandBreath(breath);
+        breathActive = true;
+        successMsg = 'Breath started';
+      }
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
 </script>
 
 <div class="page-content">
-  <h1 class="page-title">Animations</h1>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+    <h1 class="page-title" style="margin-bottom:0;">Animations</h1>
+    <button class="btn btn-ghost" on:click={() => commandAnimationOff()}>All Off</button>
+  </div>
 
   {#if error}
     <div class="status-msg error">{error}</div>
@@ -177,6 +247,7 @@
   <!-- Strobe -->
   <div class="card" style="margin-bottom:1.25rem;">
     <div class="card-title">Strobe All</div>
+    <HueSatPicker bind:hue={strobe.hue} bind:saturation={strobe.saturation} brightness={strobe.brightness} />
     <div class="param-section">
       <div class="form-row">
         <div class="form-group">
@@ -186,14 +257,6 @@
         <div class="form-group">
           <label>Duration (ms)</label>
           <input type="number" min="100" bind:value={strobe.duration} />
-        </div>
-        <div class="form-group">
-          <label>Hue (0–255)</label>
-          <input type="number" min="0" max="255" bind:value={strobe.hue} />
-        </div>
-        <div class="form-group">
-          <label>Saturation (0–255)</label>
-          <input type="number" min="0" max="255" bind:value={strobe.saturation} />
         </div>
         <div class="form-group">
           <label>Brightness (0–255)</label>
@@ -300,6 +363,59 @@
     </div>
 
     <button class="btn btn-primary" on:click={submitColorsSpatial}>Save Colors + Spatial</button>
+  </div>
+
+  <!-- Candle -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Candle</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      Each lamp flickers independently like a candle flame until switched off.
+    </p>
+    <HueSatPicker bind:hue={candle.hue} bind:saturation={candle.saturation} brightness={candle.brightness} />
+    <div class="form-row" style="margin-bottom:0.75rem;">
+      <div class="form-group"><label>Brightness (0–255)</label><input type="number" min="0" max="255" bind:value={candle.brightness} /></div>
+    </div>
+    <button class="btn {candleActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleCandle}>
+      {candleActive ? 'Turn Off Candle' : 'Start Candle'}
+    </button>
+  </div>
+
+  <!-- Bioluminescence -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Bioluminescence</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      Each lamp pulses independently at random intervals with a slow blue-green glow.
+    </p>
+    <HueSatPicker bind:hue={bioLum.hue} bind:saturation={bioLum.saturation} brightness={bioLum.brightness} />
+    <div class="form-row">
+      <div class="form-group"><label>Min interval (ms)</label><input type="number" min="100" max="30000" step="100" bind:value={bioLum.minInterval} /></div>
+      <div class="form-group"><label>Max interval (ms)</label><input type="number" min="100" max="60000" step="100" bind:value={bioLum.maxInterval} /></div>
+      <div class="form-group"><label>Fade duration (ms)</label><input type="number" min="100" max="10000" step="100" bind:value={bioLum.fadeDuration} /></div>
+      <div class="form-group"><label>Hue variance</label><input type="number" min="0" max="127" bind:value={bioLum.hueVariance} /></div>
+      <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={bioLum.brightness} /></div>
+      <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={bioLum.repetitions} /></div>
+    </div>
+    <button class="btn {bioLumActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleBioluminescence}>
+      {bioLumActive ? 'Stop Bioluminescence' : 'Start Bioluminescence'}
+    </button>
+  </div>
+
+  <!-- Breath -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Breath</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      All lamps fade in and out like breathing. Lamps farther from center start slightly later, creating a ripple across the forest.
+    </p>
+    <HueSatPicker bind:hue={breath.hue} bind:saturation={breath.saturation} brightness={breath.brightness} />
+    <div class="form-row">
+      <div class="form-group"><label>Cycle (ms)</label><input type="number" min="500" max="30000" step="500" bind:value={breath.cycleDuration} /></div>
+      <div class="form-group"><label>Spread (ms)</label><input type="number" min="0" max="10000" step="250" bind:value={breath.spreadDelay} /></div>
+      <div class="form-group"><label>Brightness</label><input type="number" min="0" max="255" bind:value={breath.brightness} /></div>
+      <div class="form-group"><label>Reps (0=∞)</label><input type="number" min="0" max="999" bind:value={breath.repetitions} /></div>
+    </div>
+    <button class="btn {breathActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleBreath}>
+      {breathActive ? 'Stop Breath' : 'Start Breath'}
+    </button>
   </div>
 
   <!-- Good Morning / Good Night -->

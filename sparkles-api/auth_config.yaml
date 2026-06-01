@@ -1,0 +1,50 @@
+# Sparkles auth configuration
+# To change passwords: update password_plain and restart the service.
+# The app will hash it and replace this field with password_hash on first run.
+
+users:
+  admin:
+    password_plain: "admin"   # change me
+    role: admin
+  user:
+    password_plain: "user"    # change me
+    role: user
+
+# Access rules — evaluated top-to-bottom, first match wins.
+# Roles: admin, user
+# Use "*" as a catch-all default at the bottom of each section.
+access:
+  # API endpoint rules: "METHOD /path" — exact or prefix match
+  api:
+    "POST /upload-firmware":              [admin]
+    "GET /firmware.bin":                  [admin]
+    "GET /compile-stream":                [admin]
+    "GET /current-version":               [admin, user]
+    "GET /serial-status":                 [admin, user]
+    "GET /commandOTAUpdate":              [admin]
+    "GET /factoryReset":                  [admin]
+    "GET /resetSystem":                   [admin]
+    "GET /toggleLogging":                 [admin]
+    "GET /toggleTestMode":                [admin]
+    "GET /commandStartCalibration":       [admin]
+    "GET /commandCancelCalibration":      [admin]
+    "GET /commandResetCalibration":       [admin]
+    "GET /commandContinueCalibration":    [admin]
+    "GET /commandEndCalibration":         [admin]
+    "GET /commandTestCalibration":        [admin]
+    "GET /commandCalibrate":              [admin]
+    "GET /commandStartDistanceCalibration":    [admin]
+    "GET /commandContinueDistanceCalibration": [admin]
+    "GET /commandEndDistanceCalibration":      [admin]
+    "GET /commandCancelDistanceCalibration":   [admin]
+    "GET /commandAbortDistanceCalibration":    [admin]
+    "GET /setMidiParams":                 [admin]
+    "GET /setDarkroomParams":             [admin]
+    "*":                                  [admin, user]
+
+  # Page rules: path prefix match
+  pages:
+    "/settings":    [admin]
+    "/calibration": [admin]
+    "/log":         [admin]
+    "*":            [admin, user]

@@ -54,7 +54,7 @@ void MessageHandler::runBroadcastSettle() {
 
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
-        t.sendTime = micros();
+        t.sendTime = esp_timer_get_time();
         memcpy(&msg.payload.timer, &t, sizeof(t));
         memcpy(msg.targetAddress, addressList[i].address, 6);
         addPeer(addressList[i].address);
@@ -128,7 +128,7 @@ void MessageHandler::runClapSync() {
         }
         ESP_LOGI("CLAP", "Last delay: %d", getLastDelay());
         lastWakeTime = xTaskGetTickCount();
-         setLastSendTime(micros());
+         setLastSendTime(esp_timer_get_time());
         esp_now_send(clapDeviceAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
          vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY/portTICK_PERIOD_MS);
     }
@@ -136,6 +136,32 @@ void MessageHandler::runClapSync() {
     delayAverage /= 10;
     setClapDeviceDelay(delayAverage / 2);
     ESP_LOGI("CLAP", "Clap device delay set to %d", getClapDeviceDelay());
+
+    // Send MSG_TIMER to chirp device for clock offset sync.
+    // Does not expect MSG_GOT_TIMER — chirp device accumulates offset silently.
+    ESP_LOGI("CLAP", "Starting chirp device timer sync");
+    addPeer(clapDeviceAddress);
+    {
+        message_data timerData;
+        timerData.messageType = MSG_TIMER;
+        memcpy(timerData.targetAddress, clapDeviceAddress, 6);
+        message_timer t = {};
+        t.lastDelay = delayAverage / 2;
+        t.reset     = false;
+        t.addressId = -1;
+        TickType_t wake = xTaskGetTickCount();
+        for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
+            wake = xTaskGetTickCount();
+            t.counter  = i;
+            t.sendTime = esp_timer_get_time();
+            memcpy(&timerData.payload.timer, &t, sizeof(t));
+            esp_now_send(clapDeviceAddress, (uint8_t*)&timerData, ESPNOW_CLIENT_COMPAT_SIZE);
+            vTaskDelayUntil(&wake, TIMER_FREQUENCY / portTICK_PERIOD_MS);
+        }
+    }
+    removePeer(clapDeviceAddress);
+    ESP_LOGI("CLAP", "Chirp device timer sync done");
+
     ESP_LOGI("CLAP", "Clap sync finished");
     clapSyncHandle = NULL;
     vTaskDelete(NULL);
@@ -165,12 +191,12 @@ void MessageHandler::runTimerSync() {
     while (getSettingTimer() == true) {
         lastWakeTime = xTaskGetTickCount();
         timerMessage.counter = incrementTimerCounter();
-        timerMessage.sendTime = micros();
+        timerMessage.sendTime = esp_timer_get_time();
         timerMessage.lastDelay = getLastDelay();
         timerMessage.reset = getTimerReset();
         timerMessage.addressId = getCurrentTimerIndex();
         memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
-        timerMessage.sendTime = micros();
+        timerMessage.sendTime = esp_timer_get_time();
         setLastSendTime(timerMessage.sendTime);
         if (timerIndex == -1) {
             esp_now_send(broadcastAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);

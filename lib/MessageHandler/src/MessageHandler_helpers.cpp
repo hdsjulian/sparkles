@@ -281,11 +281,21 @@ bool MessageHandler::getTestMode() {
     return testMode;
 }
 
-void MessageHandler::setTestMode(bool on) {
+void MessageHandler::setTestMode(bool on, float spacingMeters) {
     testMode = on;
-    ESP_LOGI("MSG", "Test mode: %s", on ? "ON" : "OFF");
+    ESP_LOGI("MSG", "Test mode: %s (%.2f m/client)", on ? "ON" : "OFF", spacingMeters);
     message_data msg = createCommandMessage(on ? CMD_TEST_MODE_ON : CMD_TEST_MODE_OFF, true);
+    msg.payload.command.param = spacingMeters;
     pushToSendQueue(msg);
+
+    if (on) {
+        int numDevices = getNumDevices();
+        float maxDist = spacingMeters * (numDevices > 0 ? numDevices - 1 : 0);
+        ESP_LOGI("MSG", "Test mode max distance: %.2f m (%d devices)", maxDist, numDevices);
+        message_data maxDistMsg = createCommandMessage(CMD_SET_MAX_DISTANCE, true);
+        maxDistMsg.payload.command.param = maxDist;
+        pushToSendQueue(maxDistMsg);
+    }
 }
 
 void MessageHandler::resetSystem() {
