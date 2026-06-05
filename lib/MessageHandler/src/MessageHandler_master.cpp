@@ -238,6 +238,9 @@ void MessageHandler::handleReceive() {
                 }
 
              }
+            else if (incomingData.messageType == MSG_LOG) {
+                ESP_LOGI("LOG", "%s", incomingData.payload.log.text);
+            }
             else {
                 ESP_LOGI("MSG", "Unknown message type  %d received", incomingData.messageType);
             }

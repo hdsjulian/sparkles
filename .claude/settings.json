@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/julian/Code/SparklesCurrent log --oneline)",
+      "Bash(git -C /Users/julian/Code/SparklesCurrent log --format=\"%ad %s\" --date=short)",
+      "Bash(git -C ~/Code/SparklesOld log --oneline)",
+      "Bash(git -C ~/Code/SparklesOld log --format=\"%ad %s\" --date=short)",
+      "Bash(git -C ~/Code/SparklesOld log --format=\"%ad %H %s\" --date=short)",
+      "Bash(git -C ~/Code/SparklesOld show 86420be8f560aeecbd3e8a27f45740781fdfb7ca --stat)",
+      "Bash(python3)",
+      "Bash(python3 -)",
+      "WebSearch",
+      "WebFetch(domain:wiki.lilygo.cc)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
