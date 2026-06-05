@@ -28,7 +28,7 @@ MSG_LOG = 18
 #   180s  log.text  (char[180])
 #
 # Total sent: 201 bytes — within sizeof(message_data) so pushToRecvQueue accepts it.
-HEADER_FMT = "<B6s6sQ"
+HEADER_FMT = "<B6s6s3xQ"  # 3 bytes padding before uint64 to match ESP32 struct alignment
 TEXT_LEN = 180
 
 
