@@ -65,9 +65,6 @@ def main():
         print("ESPythoNOW not installed. Run:  pip install ESPythoNOW scapy")
         raise SystemExit(1)
 
-    msg = build_msg(args.text, args.mac, args.sender)
-    print(f"Sending {len(msg)}-byte MSG_LOG to {args.mac} via {args.iface}: {args.text!r}")
-
     def on_recv(from_mac, to_mac, data):
         print(f"[RECV] {from_mac} → {to_mac}  ({len(data)} bytes): {data!r}")
 
@@ -82,6 +79,9 @@ def main():
         except KeyboardInterrupt:
             pass
         return
+
+    msg = build_msg(args.text, args.mac, args.sender)
+    print(f"Sending {len(msg)}-byte MSG_LOG to {args.mac} via {args.iface}: {args.text!r}")
 
     for i in range(args.count):
         espnow.send(args.mac, msg)
