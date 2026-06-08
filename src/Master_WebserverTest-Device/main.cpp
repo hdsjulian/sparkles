@@ -331,6 +331,24 @@ static void handleSerialCommand(const String& line) {
         anim.animationParams.candle.saturation = doc["saturation"] | 210;
         anim.animationParams.candle.value      = doc["brightness"] | 180;
         msgHandler.sendAnimation(anim, -1);
+
+    } else if (strcmp(cmd, "aubio_shimmer") == 0) {
+        message_animation anim;
+        anim.animationType = BACKGROUND_SHIMMER;
+        anim.animationParams.backgroundShimmer.hue        = doc["hue"]        | 22;
+        anim.animationParams.backgroundShimmer.saturation = doc["saturation"] | 255;
+        anim.animationParams.backgroundShimmer.value      = doc["value"]      | 0;
+        msgHandler.setLastMidiTime(millis());
+        msgHandler.sendAnimation(anim, -1);
+
+    } else if (strcmp(cmd, "aubio_midi") == 0) {
+        message_animation anim;
+        anim.animationType = MIDI;
+        anim.animationParams.midi.note       = doc["note"]     | 0;
+        anim.animationParams.midi.velocity   = doc["velocity"] | 0;
+        anim.animationParams.midi.instrument = 0; // mic
+        msgHandler.setLastMidiTime(millis());
+        msgHandler.sendAnimation(anim, -1);
     }
 }
 
