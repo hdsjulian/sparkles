@@ -22,8 +22,12 @@ sudo apt install -y \
     git \
     curl
 
-# Fix locale
-locale-gen en_US.UTF-8
-update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+# Fix locale — use system default if en_US not available
+if locale -a 2>/dev/null | grep -q "en_US.utf8"; then
+    update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+else
+    SYSTEM_LOCALE=$(locale -a 2>/dev/null | grep -i "utf8" | head -1 | sed 's/utf8/UTF-8/')
+    update-locale LC_ALL="$SYSTEM_LOCALE" LANG="$SYSTEM_LOCALE"
+fi
 
 echo "=== System dependencies installed ==="
