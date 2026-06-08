@@ -1,8 +1,8 @@
 """
-serial_bridge.py – manages the USB serial connection to the ESP32 master.
+serial_bridge.py – connects to serial_mux.py via Unix socket.
 
 Runs a background reader thread that parses newline-delimited JSON frames
-from the device and fans them out to registered async queues.
+from the mux and fans them out to registered async queues.
 Pi → ESP32: call send(dict) to queue a command frame.
 
 Optionally forwards selected events to a T-Beam running Meshtastic via
@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import queue
+import socket
 import threading
 from collections import defaultdict
 
@@ -23,8 +24,55 @@ import serial
 
 logger = logging.getLogger("serial_bridge")
 
+_SOCKET_PATH = os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock")
 _DEFAULT_PORT = "/dev/ttyACM0"
 _BAUD = 115200
+
+
+class _MuxSocket:
+    """Wraps a Unix socket connection to serial_mux with a serial-like interface."""
+
+    def __init__(self, path: str):
+        self._path = path
+        self._sock: socket.socket | None = None
+        self._buf = b""
+        self.is_open = False
+
+    def open(self):
+        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._sock.settimeout(1.0)
+        self._sock.connect(self._path)
+        self._buf = b""
+        self.is_open = True
+
+    def close(self):
+        self.is_open = False
+        if self._sock:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
+
+    def write(self, data: bytes):
+        if self._sock:
+            self._sock.sendall(data)
+
+    def readline(self) -> bytes:
+        """Return one newline-terminated line, blocking up to timeout."""
+        while b"\n" not in self._buf:
+            try:
+                chunk = self._sock.recv(4096)
+            except socket.timeout:
+                return b""
+            if not chunk:
+                raise serial.SerialException("Mux socket closed")
+            self._buf += chunk
+        line, self._buf = self._buf.split(b"\n", 1)
+        return line + b"\n"
+
+    def reset_input_buffer(self):
+        self._buf = b""
 _TBEAM_PORT = os.environ.get("SPARKLES_TBEAM_PORT", "")
 _TBEAM_BAUD = int(os.environ.get("SPARKLES_TBEAM_BAUD", "38400"))
 
@@ -307,12 +355,14 @@ class SerialBridge:
             if not self._running:
                 break
 
-            # --- connect ---
+            # --- connect to mux socket ---
             try:
-                self._serial = serial.Serial(self._port, self._baud, timeout=1)
-                logger.info("Serial connected on %s", self._port)
+                mux = _MuxSocket(_SOCKET_PATH)
+                mux.open()
+                self._serial = mux
+                logger.info("Connected to serial mux at %s", _SOCKET_PATH)
             except Exception as exc:
-                logger.warning("Serial open failed (%s), retrying in %.0fs", exc, RECONNECT_DELAY)
+                logger.warning("Mux connect failed (%s), retrying in %.0fs", exc, RECONNECT_DELAY)
                 self._emit_serial_status(False)
                 _time.sleep(RECONNECT_DELAY)
                 continue

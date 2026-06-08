@@ -2,6 +2,5 @@ numpy
 aubio
 music21
 pyaudio
-pyserial
 
 

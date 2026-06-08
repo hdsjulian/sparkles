@@ -12,7 +12,7 @@ import time
 import logging
 import traceback
 import json
-import serial
+import socket
 import threading
 
 # ---------------------------------------------------------------------------
@@ -20,8 +20,7 @@ import threading
 # ---------------------------------------------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument('--noserial', action='store_true', help='Disable serial output')
-parser.add_argument('--port', default='/dev/ttyACM0', help='Serial port to master ESP32')
-parser.add_argument('--baud', default=115200, type=int, help='Serial baud rate')
+parser.add_argument('--sock', default='/tmp/sparkles.sock', help='Unix socket path to serial_mux')
 parser.add_argument('--log', action='store_true', help='Enable logging to aubioAlgo.txt')
 parser.add_argument('--random', action='store_true', help='Generate random pitch/RMS instead of USB mic')
 args = parser.parse_args()
@@ -59,50 +58,74 @@ midi_params = {
 }
 
 # ---------------------------------------------------------------------------
-# Serial setup
+# Mux socket setup
 # ---------------------------------------------------------------------------
-ser = None
-if not args.noserial:
-    def _open_serial():
-        global ser
-        while True:
-            try:
-                ser = serial.Serial(args.port, args.baud, timeout=1)
-                log.info(f"Serial opened on {args.port} at {args.baud} baud")
-                return
-            except Exception as e:
-                log.error(f"Serial open failed: {e} — retrying in {RETRY_DELAY}s")
-                time.sleep(RETRY_DELAY)
+_sock: socket.socket | None = None
+_sock_lock = threading.Lock()
+_sock_buf = b""
 
-    def _serial_reader():
-        """Read incoming JSON lines from master (e.g. midi_params updates)."""
-        while True:
+def _open_sock():
+    global _sock, _sock_buf
+    while True:
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(1.0)
+            s.connect(args.sock)
+            with _sock_lock:
+                _sock = s
+                _sock_buf = b""
+            log.info(f"Connected to serial mux at {args.sock}")
+            return
+        except Exception as e:
+            log.error(f"Mux connect failed: {e} — retrying in {RETRY_DELAY}s")
+            time.sleep(RETRY_DELAY)
+
+def _mux_reader():
+    global _sock_buf
+    while True:
+        try:
+            with _sock_lock:
+                s = _sock
+            if s is None:
+                time.sleep(1)
+                continue
             try:
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                chunk = s.recv(4096)
+            except socket.timeout:
+                continue
+            if not chunk:
+                raise ConnectionError("Mux socket closed")
+            _sock_buf += chunk
+            while b"\n" in _sock_buf:
+                raw, _sock_buf = _sock_buf.split(b"\n", 1)
+                line = raw.strip().decode("utf-8", errors="ignore")
                 if not line:
                     continue
-                data = json.loads(line)
-                if data.get('event') == 'midi_params':
-                    midi_params.update({k: v for k, v in data.items() if k != 'event'})
-                    log.info(f"[MIDI_PARAMS] updated via serial: mode={midi_params.get('mode')} "
-                             f"range={midi_params.get('rangeMin')}-{midi_params.get('rangeMax')} "
-                             f"rms={midi_params.get('rmsMin'):.1f}..{midi_params.get('rmsMax'):.1f}")
-            except json.JSONDecodeError:
-                pass
-            except Exception as e:
-                log.error(f"Serial read error: {e}")
-                time.sleep(1)
+                try:
+                    data = json.loads(line)
+                    if data.get("event") == "midi_params":
+                        midi_params.update({k: v for k, v in data.items() if k != "event"})
+                        log.info(f"[MIDI_PARAMS] updated: mode={midi_params.get('mode')} "
+                                 f"range={midi_params.get('rangeMin')}-{midi_params.get('rangeMax')} "
+                                 f"rms={midi_params.get('rmsMin'):.1f}..{midi_params.get('rmsMax'):.1f}")
+                except json.JSONDecodeError:
+                    pass
+        except Exception as e:
+            log.error(f"Mux read error: {e} — reconnecting")
+            _open_sock()
 
-    _open_serial()
-    threading.Thread(target=_serial_reader, daemon=True).start()
+if not args.noserial:
+    _open_sock()
+    threading.Thread(target=_mux_reader, daemon=True).start()
 
 def serial_send(cmd_dict):
-    if ser is None:
+    if args.noserial or _sock is None:
         return
     try:
-        ser.write((json.dumps(cmd_dict) + '\n').encode('utf-8'))
+        with _sock_lock:
+            _sock.sendall((json.dumps(cmd_dict) + "\n").encode("utf-8"))
     except Exception as e:
-        log.error(f"Serial write failed: {e}")
+        log.error(f"Mux send failed: {e}")
 
 # ---------------------------------------------------------------------------
 # Audio setup
