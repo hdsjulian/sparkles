@@ -32,4 +32,13 @@ for service in serial_mux sparkles aubio keyboard_midi; do
     echo "  $service: $status"
 done
 
+# Configure nginx as reverse proxy on port 80
+echo ">> Configuring nginx"
+cp "$REPO/setup/nginx_sparkles.conf" /etc/nginx/sites-available/sparkles
+ln -sf /etc/nginx/sites-available/sparkles /etc/nginx/sites-enabled/sparkles
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl enable nginx
+systemctl restart nginx
+
 echo "=== Services installed ==="

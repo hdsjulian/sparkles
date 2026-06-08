@@ -16,11 +16,11 @@ xset s noblank
 unclutter -idle 0 &
 
 # Wait for sparkles server to be ready
-until curl -s http://localhost:8080/ > /dev/null 2>&1; do
+until curl -s http://localhost/ > /dev/null 2>&1; do
     sleep 1
 done
 
-chromium --noerrdialogs --disable-infobars --kiosk --no-first-run http://localhost:8080/
+chromium --noerrdialogs --disable-infobars --kiosk --no-first-run http://localhost/
 EOF
 chmod +x /home/julian/.config/autostart.sh
 
