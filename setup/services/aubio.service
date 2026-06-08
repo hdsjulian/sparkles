@@ -1,0 +1,18 @@
+[Unit]
+Description=Sparkles Aubio Pitch Detector
+After=serial_mux.service sound.target
+Requires=serial_mux.service
+
+[Service]
+Type=simple
+User=julian
+WorkingDirectory=/home/julian/sparkles/pitchdetector
+ExecStart=/home/julian/myenv/bin/python3 aubioAlgo.py
+Restart=always
+RestartSec=5
+Environment=JACK_NO_START_SERVER=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

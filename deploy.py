@@ -11,7 +11,7 @@ REPO_DIR = os.path.expanduser("~/sparkles")
 UI_DIR   = os.path.join(REPO_DIR, "sparkles-ui")
 
 
-SUDO_PASS = "raspi"
+SUDO_PASS = "julian"
 
 
 def run(cmd, cwd=None):

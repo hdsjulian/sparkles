@@ -1,0 +1,18 @@
+[Unit]
+Description=Sparkles Keyboard MIDI Bridge
+After=serial_mux.service sparkles.service
+Requires=serial_mux.service sparkles.service
+
+[Service]
+Type=simple
+User=julian
+WorkingDirectory=/home/julian/sparkles/sparkles-api
+ExecStart=/home/julian/myenv/bin/python3 keyboard_midi.py
+Restart=always
+RestartSec=5
+Environment=SPARKLES_SONGS_DIR=/home/julian/sparkles/songs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

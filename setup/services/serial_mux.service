@@ -1,0 +1,17 @@
+[Unit]
+Description=Sparkles Serial Multiplexer
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=julian
+WorkingDirectory=/home/julian/sparkles/sparkles-api
+ExecStart=/home/julian/myenv/bin/python3 serial_mux.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

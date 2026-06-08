@@ -79,7 +79,7 @@ _TBEAM_BAUD = int(os.environ.get("SPARKLES_TBEAM_BAUD", "38400"))
 _BATTERY_CRITICAL = int(os.environ.get("SPARKLES_BATTERY_CRITICAL", "15"))
 _HEALTH_INTERVAL  = int(os.environ.get("SPARKLES_HEALTH_INTERVAL", "300"))  # seconds
 _LOG_BUFFER_SIZE  = 2000
-_SERIAL_LOG_PATH  = os.environ.get("SPARKLES_SERIAL_LOG", "/home/raspi/sparkles/serial.log")
+_SERIAL_LOG_PATH  = os.environ.get("SPARKLES_SERIAL_LOG", "/home/julian/sparkles/serial.log")
 
 
 class HealthMonitor:

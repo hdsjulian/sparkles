@@ -1,0 +1,35 @@
+#!/bin/bash
+# Install and enable systemd services
+set -e
+
+echo "=== [4/5] Installing Services ==="
+
+REPO=/home/julian/sparkles
+SERVICES_DIR="$REPO/setup/services"
+
+for service in serial_mux sparkles aubio keyboard_midi; do
+    echo ">> Installing $service.service"
+    sudo cp "$SERVICES_DIR/$service.service" /etc/systemd/system/
+done
+
+sudo systemctl daemon-reload
+
+for service in serial_mux sparkles aubio keyboard_midi; do
+    echo ">> Enabling $service"
+    sudo systemctl enable "$service"
+done
+
+# Start in dependency order
+for service in serial_mux sparkles aubio keyboard_midi; do
+    echo ">> Starting $service"
+    sudo systemctl restart "$service"
+done
+
+echo ""
+echo "Service status:"
+for service in serial_mux sparkles aubio keyboard_midi; do
+    status=$(systemctl is-active "$service" 2>/dev/null || echo "unknown")
+    echo "  $service: $status"
+done
+
+echo "=== Services installed ==="

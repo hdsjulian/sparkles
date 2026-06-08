@@ -719,6 +719,59 @@ async def upload_firmware(file: UploadFile = File(...)):
     return JSONResponse({"status": True, "size": len(data)})
 
 
+# ---------------------------------------------------------------------------
+# Keyboard / MIDI player
+# ---------------------------------------------------------------------------
+
+_SONGS_DIR        = os.environ.get("SPARKLES_SONGS_DIR", "/home/julian/sparkles/songs")
+_KEYBOARD_CMD_SOCK = os.environ.get("SPARKLES_KEYBOARD_SOCK", "/tmp/keyboard_cmd.sock")
+
+
+def _keyboard_cmd(cmd: dict):
+    """Send a command to keyboard_midi.py via its Unix socket."""
+    import socket as _socket
+    try:
+        s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        s.settimeout(2.0)
+        s.connect(_KEYBOARD_CMD_SOCK)
+        s.sendall((json.dumps(cmd) + "\n").encode())
+        s.close()
+    except Exception as exc:
+        raise HTTPException(503, detail=f"keyboard_midi not reachable: {exc}")
+
+
+@app.get("/keyboard/songs")
+async def keyboard_songs():
+    """List available MIDI files in the songs directory."""
+    if not os.path.isdir(_SONGS_DIR):
+        return {"songs": []}
+    files = sorted(
+        f for f in os.listdir(_SONGS_DIR)
+        if f.lower().endswith(".mid") or f.lower().endswith(".midi")
+    )
+    return {"songs": files}
+
+
+@app.post("/keyboard/play")
+async def keyboard_play(song: str = Query(...)):
+    _keyboard_cmd({"cmd": "play", "file": song})
+    return _ok()
+
+
+@app.post("/keyboard/stop")
+async def keyboard_stop():
+    _keyboard_cmd({"cmd": "stop"})
+    return _ok()
+
+
+@app.post("/internal/keyboard_event")
+async def keyboard_event(request: Request):
+    """Receive status callbacks from keyboard_midi.py and fan out via SSE."""
+    body = await request.json()
+    bridge._dispatch(body)
+    return {"ok": True}
+
+
 _build_dir = os.path.join(os.path.dirname(__file__), "..", "sparkles-ui", "build")
 _index_html = os.path.join(_build_dir, "index.html")
 

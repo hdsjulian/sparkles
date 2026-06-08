@@ -349,6 +349,20 @@ static void handleSerialCommand(const String& line) {
         anim.animationParams.midi.instrument = 0; // mic
         msgHandler.setLastMidiTime(millis());
         msgHandler.sendAnimation(anim, -1);
+
+    } else if (strcmp(cmd, "keyboard_midi") == 0) {
+        message_animation anim;
+        anim.animationType = MIDI;
+        anim.animationParams.midi.note       = doc["note"]     | 0;
+        anim.animationParams.midi.velocity   = doc["velocity"] | 0;
+        anim.animationParams.midi.instrument = 1; // keyboard
+        msgHandler.setLastMidiTime(millis());
+        msgHandler.sendAnimation(anim, -1);
+
+    } else if (strcmp(cmd, "sustain_pedal") == 0) {
+        // sustain pedal: value >= 64 = down, < 64 = up
+        // extend animation decay when pedal is held — placeholder for future effect
+        ESP_LOGI("MSG", "Sustain pedal: %d", doc["value"] | 0);
     }
 }
 
