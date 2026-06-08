@@ -9,7 +9,7 @@ REPO=/home/julian/sparkles
 
 # Create venv if it doesn't exist
 if [ ! -d "$VENV" ]; then
-    python3 -m venv "$VENV"
+    python3 -m venv "$VENV" --system-site-packages
     echo "Created virtualenv at $VENV"
 fi
 

@@ -9,6 +9,8 @@ sudo apt install -y \
     python3-pip \
     python3-venv \
     python3-dev \
+    python3-aubio \
+    python3-numpy \
     portaudio19-dev \
     libasound2-dev \
     librtmidi-dev \
