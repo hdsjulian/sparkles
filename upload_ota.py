@@ -3,7 +3,7 @@ import sys
 import os
 
 HOST = "192.168.4.1"
-USER = "julian"
+USER = "raspi"
 REMOTE_PATH = "/var/www/html/firmware.bin"
 BIN_PATH = ".pio/build/Client_Device/firmware.bin"
 
