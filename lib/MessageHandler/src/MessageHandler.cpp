@@ -67,8 +67,8 @@ void MessageHandler::pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t
 
 void MessageHandler::pushToSendQueue(message_data& msg) {
     ESP_LOGI("MSG", "Pushing to send queue");
-    if (xQueueSend(sendQueue, &msg, portMAX_DELAY) != pdTRUE) {
-        ESP_LOGE("MSG", "Failed to send data to send queue");
+    if (xQueueSend(sendQueue, &msg, pdMS_TO_TICKS(200)) != pdTRUE) {
+        ESP_LOGE("MSG", "Send queue full — message dropped");
     }
 }
 
