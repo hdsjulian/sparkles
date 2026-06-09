@@ -127,6 +127,9 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "sync_all") == 0) {
         msgHandler.startAllTimerSyncTask();
 
+    } else if (strcmp(cmd, "sync_fast") == 0) {
+        msgHandler.startFastResyncTask();
+
     } else if (strcmp(cmd, "submit_positions") == 0) {
         msgHandler.setBoardPosition(doc["boardId"].as<int>(), doc["xpos"].as<float>(), doc["ypos"].as<float>());
 

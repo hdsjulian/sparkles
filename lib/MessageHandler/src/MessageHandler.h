@@ -130,6 +130,7 @@ public:
     void startBatterySyncTask();
     void startWiFiToggleTask();
     void startAllTimerSyncTask();
+    void startFastResyncTask();
     void startBroadcastSettleTask();
     void runBroadcastSettle();
     void startClapTask();
@@ -220,7 +221,7 @@ private:
     message_midi_params midiParams;
     message_darkroom_params darkroomParams;
     SemaphoreHandle_t configMutex, updateOTAMutex;
-    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr;
+    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, fastResyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;

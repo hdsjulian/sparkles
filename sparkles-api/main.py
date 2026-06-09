@@ -300,6 +300,12 @@ async def command_sync_all():
     return _ok()
 
 
+@app.get("/commandSyncFast")
+async def command_sync_fast():
+    _send({"cmd": "sync_fast"})
+    return _ok()
+
+
 # ---------------------------------------------------------------------------
 # Board positions
 # ---------------------------------------------------------------------------

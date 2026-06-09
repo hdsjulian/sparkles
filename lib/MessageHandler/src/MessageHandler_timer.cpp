@@ -27,6 +27,67 @@ void MessageHandler::startAllTimerSyncTask() {
         }
 }
 
+// ---------------------------------------------------------------------------
+// Fast resync — parallel pool of FAST_RESYNC_POOL workers, one per client
+// ---------------------------------------------------------------------------
+#define FAST_RESYNC_POOL 5
+
+struct FastResyncArgs {
+    MessageHandler* self;
+    int index;
+};
+
+static void fastResyncWorker(void* pv) {
+    FastResyncArgs* a = (FastResyncArgs*)pv;
+    a->self->setCurrentTimerIndex(a->index);
+    a->self->setTimerReset(false);
+    a->self->runTimerSync();
+    delete a;
+    vTaskDelete(NULL);
+}
+
+void MessageHandler::startFastResyncTask() {
+    if (fastResyncHandle != NULL) {
+        ESP_LOGI("TIMER", "Fast resync already running");
+        return;
+    }
+    xTaskCreatePinnedToCore([](void* pv) {
+        MessageHandler* self = (MessageHandler*)pv;
+        ESP_LOGI("TIMER", "Fast resync starting");
+
+        // count known clients
+        int total = 0;
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            if (memcmp(self->getItemFromAddressList(i).address, self->emptyAddress, 6) == 0) break;
+            total++;
+        }
+
+        // dispatch clients in batches of FAST_RESYNC_POOL
+        for (int i = 0; i < total; i += FAST_RESYNC_POOL) {
+            int batch = min(FAST_RESYNC_POOL, total - i);
+            TaskHandle_t handles[FAST_RESYNC_POOL] = {};
+            for (int j = 0; j < batch; j++) {
+                FastResyncArgs* args = new FastResyncArgs{self, i + j};
+                char name[16];
+                snprintf(name, sizeof(name), "frsync_%d", i + j);
+                xTaskCreatePinnedToCore(fastResyncWorker, name, 4096, args, 2, &handles[j], 1);
+            }
+            // wait for batch to finish before starting next
+            for (int j = 0; j < batch; j++) {
+                if (handles[j]) {
+                    while (eTaskGetState(handles[j]) != eDeleted) {
+                        vTaskDelay(10 / portTICK_PERIOD_MS);
+                    }
+                }
+            }
+        }
+
+        ESP_LOGI("TIMER", "Fast resync done");
+        self->fastResyncHandle = NULL;
+        vTaskDelete(NULL);
+    }, "fastResync", 4096, this, 2, &fastResyncHandle, 1);
+}
+
 void MessageHandler::startBroadcastSettleTask() {
     xTaskCreatePinnedToCore(broadcastSettleWrapper, "broadcastSettle", 4000, this, 2, NULL, 1);
 }
