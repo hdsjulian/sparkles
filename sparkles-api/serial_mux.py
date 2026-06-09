@@ -28,6 +28,7 @@ SOCKET_PATH  = os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock")
 SERIAL_PORT  = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
 SERIAL_BAUD  = int(os.environ.get("SPARKLES_BAUD", "115200"))
 LOG_PATH     = os.environ.get("SPARKLES_SERIAL_LOG", "/home/julian/sparkles/logs/serial.log")
+RAW_LOG_PATH = os.environ.get("SPARKLES_RAW_LOG", "/home/julian/sparkles/logs/serial_raw.log")
 RECONNECT_DELAY = 3.0
 
 _write_queue: queue.Queue = queue.Queue(maxsize=256)
@@ -35,20 +36,27 @@ _clients: list[tuple[socket.socket, threading.Lock]] = []
 _clients_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
-# Serial log file
+# Serial log files
 # ---------------------------------------------------------------------------
 _log_file = None
+_raw_log_file = None
 try:
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     _log_file = open(LOG_PATH, "a", buffering=1)
+    _raw_log_file = open(RAW_LOG_PATH, "a", buffering=1)
 except Exception as exc:
-    log.warning("Could not open serial log %s: %s", LOG_PATH, exc)
+    log.warning("Could not open serial log: %s", exc)
 
 def _log_line(direction: str, line: str):
-    """Write a TX/RX line to the log file."""
+    """Write a TX/RX line to the structured log file."""
     if _log_file:
-        import time as _t
-        _log_file.write(f"{_t.strftime('%H:%M:%S')} {direction} {line}\n")
+        _log_file.write(f"{time.strftime('%H:%M:%S')} {direction} {line}\n")
+
+def _log_raw(line: str):
+    """Write every raw serial line to the raw log, including boot noise and crash dumps."""
+    if _raw_log_file:
+        ts = time.strftime('%H:%M:%S.') + f"{int(time.time() * 1000) % 1000:03d}"
+        _raw_log_file.write(f"{ts} {line}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -128,10 +136,13 @@ def _serial_worker():
             log.info("Master ESP32 connected on %s", SERIAL_PORT)
             _broadcast(json.dumps({"event": "serial_status", "connected": True}))
 
-            # drain boot noise
+            # drain boot noise — log it raw so crash dumps aren't lost
+            _log_raw("--- connected ---")
             deadline = time.monotonic() + 2.0
             while time.monotonic() < deadline:
-                ser.readline()
+                raw_boot = ser.readline()
+                if raw_boot:
+                    _log_raw(raw_boot.decode("utf-8", errors="replace").rstrip())
             ser.reset_input_buffer()
 
             while True:
@@ -153,6 +164,7 @@ def _serial_worker():
                     continue
                 log.debug("MUX RX ← serial: %s", line)
                 _log_line("RX", line)
+                _log_raw(line)
                 _broadcast(line)
 
         except serial.SerialException as exc:
