@@ -13,7 +13,7 @@ from pathlib import Path
 
 REPO_DIR     = Path(__file__).parent.parent.resolve()
 API_DIR      = Path(__file__).parent.resolve()
-PIO_BIN      = API_DIR / ".venv" / "bin" / "pio"
+PIO_BIN      = Path(os.environ.get("PIO_BIN", str(API_DIR / ".venv" / "bin" / "pio")))
 DEFINES_PATH = REPO_DIR / "lib" / "MyDefines" / "src" / "MyDefines.h"
 CLIENT_ENV   = "Client_Device"
 MASTER_ENV   = "Master_WebserverTest_Pi"

@@ -12,6 +12,7 @@ Restart=always
 RestartSec=3
 Environment=SPARKLES_SONGS_DIR=/home/julian/sparkles/songs
 Environment=SPARKLES_SERIAL_LOG=/home/julian/sparkles/logs/serial.log
+Environment=PIO_BIN=/home/julian/myenv/bin/pio
 StandardOutput=journal
 StandardError=journal
 
