@@ -527,6 +527,7 @@ void setup()
 
     rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256);
     WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("", "", 1, 1);  // hidden AP — keeps ESP-NOW channel locked, not visible
     if (esp_now_init() != ESP_OK) {
         Serial.println("Error initializing ESP-NOW");
         return;

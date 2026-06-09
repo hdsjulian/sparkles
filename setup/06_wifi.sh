@@ -74,6 +74,7 @@ sleep 3
 
 if nmcli device wifi list ifname "$IFACE" 2>/dev/null | grep -q "$WIFI_SSID"; then
     $LOG "$WIFI_SSID found — connecting"
+    nmcli connection down "$AP_CON" 2>/dev/null || true
     if nmcli connection up "$WIFI_CON" ifname "$IFACE"; then
         $LOG "Connected to $WIFI_SSID"
         exit 0
@@ -84,6 +85,7 @@ else
     $LOG "$WIFI_SSID not in range — starting AP"
 fi
 
+nmcli connection down "$WIFI_CON" 2>/dev/null || true
 nmcli connection up "$AP_CON" ifname "$IFACE"
 $LOG "AP hotspot started (SSID: Sparkles)"
 EOF
