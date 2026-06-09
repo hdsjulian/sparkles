@@ -158,7 +158,7 @@ class SerialBridge:
         self._port = port
         self._baud = baud
         self._serial: serial.Serial | None = None
-        self._log_file = open(_SERIAL_LOG_PATH, "a", buffering=1) if _SERIAL_LOG_PATH else None
+        self._log_file = None  # serial_mux owns the log file
         self._thread: threading.Thread | None = None
         self._running = False
         # asyncio queues subscribed to all incoming events

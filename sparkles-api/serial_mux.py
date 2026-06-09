@@ -24,14 +24,31 @@ logging.basicConfig(
 )
 log = logging.getLogger("serial_mux")
 
-SOCKET_PATH = os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock")
+SOCKET_PATH  = os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock")
 SERIAL_PORT  = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
 SERIAL_BAUD  = int(os.environ.get("SPARKLES_BAUD", "115200"))
+LOG_PATH     = os.environ.get("SPARKLES_SERIAL_LOG", "/home/julian/sparkles/logs/serial.log")
 RECONNECT_DELAY = 3.0
 
 _write_queue: queue.Queue = queue.Queue(maxsize=256)
 _clients: list[tuple[socket.socket, threading.Lock]] = []
 _clients_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# Serial log file
+# ---------------------------------------------------------------------------
+_log_file = None
+try:
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    _log_file = open(LOG_PATH, "a", buffering=1)
+except Exception as exc:
+    log.warning("Could not open serial log %s: %s", LOG_PATH, exc)
+
+def _log_line(direction: str, line: str):
+    """Write a TX/RX line to the log file."""
+    if _log_file:
+        import time as _t
+        _log_file.write(f"{_t.strftime('%H:%M:%S')} {direction} {line}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +101,7 @@ def _handle_client(conn: socket.socket, addr: str):
                 try:
                     _write_queue.put_nowait(line + "\n")
                     log.debug("MUX TX ← client: %s", line)
+                    _log_line("TX", line)
                 except queue.Full:
                     log.warning("Write queue full, dropping: %s", line)
     except Exception as exc:
@@ -134,6 +152,7 @@ def _serial_worker():
                 if not line:
                     continue
                 log.debug("MUX RX ← serial: %s", line)
+                _log_line("RX", line)
                 _broadcast(line)
 
         except serial.SerialException as exc:

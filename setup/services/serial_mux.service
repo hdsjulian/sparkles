@@ -9,6 +9,7 @@ User=julian
 WorkingDirectory=/home/julian/sparkles/sparkles-api
 ExecStart=/home/julian/myenv/bin/python3 serial_mux.py
 Restart=always
+Environment=SPARKLES_SERIAL_LOG=/home/julian/sparkles/logs/serial.log
 RestartSec=3
 StandardOutput=journal
 StandardError=journal
