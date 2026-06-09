@@ -12,8 +12,8 @@ git -C "$REPO" pull
 
 echo "=== Rebuilding frontend ==="
 cd "$REPO/sparkles-ui"
-npm install --legacy-peer-deps --silent
-npm run build
+/usr/bin/npm install --legacy-peer-deps --silent
+/usr/bin/npm run build
 
 echo "=== Restarting services ==="
 sudo systemctl restart serial_mux sparkles aubio keyboard_midi

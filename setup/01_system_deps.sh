@@ -22,7 +22,20 @@ sudo apt install -y \
     unclutter \
     i2c-tools \
     git \
-    curl
+    curl \
+    ca-certificates \
+    gnupg \
+    avahi-daemon \
+    avahi-utils
+
+# Node.js 20 via NodeSource
+if ! command -v node &>/dev/null || [ "$(node -e 'process.stdout.write(process.version.slice(1).split(".")[0])')" -lt 20 ]; then
+    echo ">> Installing Node.js 20"
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt install -y nodejs
+else
+    echo ">> Node.js $(node --version) already installed"
+fi
 
 # Fix locale — use system default if en_US not available
 if locale -a 2>/dev/null | grep -q "en_US.utf8"; then

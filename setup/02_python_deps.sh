@@ -6,6 +6,7 @@ echo "=== [2/5] Python Dependencies ==="
 
 VENV=/home/julian/myenv
 REPO=/home/julian/sparkles
+PIP="$VENV/bin/pip"
 
 # Create venv if it doesn't exist
 if [ ! -d "$VENV" ]; then
@@ -13,14 +14,21 @@ if [ ! -d "$VENV" ]; then
     echo "Created virtualenv at $VENV"
 fi
 
-source "$VENV/bin/activate"
-
-pip install --upgrade pip
+"$PIP" install --upgrade pip
 
 # API + services dependencies
-pip install -r "$REPO/sparkles-api/requirements.txt"
+"$PIP" install -r "$REPO/sparkles-api/requirements.txt"
 
 # Pitch detector dependencies
-pip install -r "$REPO/pitchdetector/requirements.txt"
+"$PIP" install -r "$REPO/pitchdetector/requirements.txt"
+
+# PlatformIO (for flashing master ESP32 from the Pi)
+if ! "$VENV/bin/pio" --version &>/dev/null; then
+    echo ">> Installing PlatformIO"
+    "$PIP" install platformio
+    "$VENV/bin/pio" platform install espressif32
+else
+    echo ">> PlatformIO already installed"
+fi
 
 echo "=== Python dependencies installed ==="

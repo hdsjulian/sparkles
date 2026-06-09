@@ -27,6 +27,8 @@ bash "$SETUP_DIR/04_services.sh"
 echo ""
 bash "$SETUP_DIR/05_kiosk.sh"
 echo ""
+bash "$SETUP_DIR/06_wifi.sh"
+echo ""
 
 echo "========================================"
 echo "  Setup complete!"
