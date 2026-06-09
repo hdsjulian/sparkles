@@ -300,7 +300,7 @@ async def _presync_then_send(payload: dict, delay_s: float):
 async def command_blink_all():
     settings = _load_settings()
     if settings.get("resync_mode", "fast") != "off":
-        asyncio.create_task(_presync_then_send({"cmd": "blink_all"}, delay_s=20))
+        asyncio.create_task(_presync_then_send({"cmd": "blink_all"}, delay_s=5))
     else:
         _send({"cmd": "blink_all"})
     return _ok()
@@ -324,7 +324,7 @@ async def command_strobe_all(
                "hue": hue, "saturation": saturation, "brightness": brightness}
     settings = _load_settings()
     if settings.get("resync_mode", "fast") != "off":
-        asyncio.create_task(_presync_then_send(payload, delay_s=20))
+        asyncio.create_task(_presync_then_send(payload, delay_s=5))
     else:
         _send(payload)
     return _ok()
