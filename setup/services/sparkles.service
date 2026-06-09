@@ -1,7 +1,7 @@
 [Unit]
 Description=Sparkles FastAPI Server
 After=serial_mux.service
-Requires=serial_mux.service
+Wants=serial_mux.service
 
 [Service]
 Type=simple

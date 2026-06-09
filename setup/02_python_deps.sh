@@ -14,18 +14,18 @@ if [ ! -d "$VENV" ]; then
     echo "Created virtualenv at $VENV"
 fi
 
-"$PIP" install --upgrade pip
+"$PIP" install --no-user --upgrade pip
 
 # API + services dependencies
-"$PIP" install -r "$REPO/sparkles-api/requirements.txt"
+"$PIP" install --no-user -r "$REPO/sparkles-api/requirements.txt"
 
 # Pitch detector dependencies
-"$PIP" install -r "$REPO/pitchdetector/requirements.txt"
+"$PIP" install --no-user -r "$REPO/pitchdetector/requirements.txt"
 
 # PlatformIO (for flashing master ESP32 from the Pi)
 if ! "$VENV/bin/pio" --version &>/dev/null; then
     echo ">> Installing PlatformIO"
-    "$PIP" install platformio
+    "$PIP" install --no-user platformio
     "$VENV/bin/pio" platform install espressif32
 else
     echo ">> PlatformIO already installed"

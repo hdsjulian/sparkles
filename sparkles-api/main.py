@@ -755,7 +755,7 @@ async def current_version():
 @app.get("/compile-stream")
 async def compile_stream(
     request: Request,
-    target: str = Query(..., regex="^(client|master|both)$"),
+    target: str = Query(..., pattern="^(client|master|both)$"),
     incrementVersion: bool = Query(default=False),
 ) -> StreamingResponse:
     """SSE stream of PlatformIO compile output."""
