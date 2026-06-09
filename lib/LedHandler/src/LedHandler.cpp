@@ -625,13 +625,17 @@ void LedHandler::runBackgroundShimmer() {
             } else {
                 message_animation interrupted;
                 if (applyUpdate(newAnimation, false, &interrupted)) {
-                    // interrupted mid-fade — process the new update next iteration
+                    // interrupted mid-fade — restore interrupted state unless this is a turn-off
                     lastUpdateTick = xTaskGetTickCount();
-                    hue        = interrupted.animationParams.backgroundShimmer.hue;
-                    saturation = interrupted.animationParams.backgroundShimmer.saturation;
-                    value      = interrupted.animationParams.backgroundShimmer.value;
-                    if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch())
-                        value = applyDistanceAttenuation(value, getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                    if (newAnimation.animationParams.backgroundShimmer.value > 0) {
+                        hue        = interrupted.animationParams.backgroundShimmer.hue;
+                        saturation = interrupted.animationParams.backgroundShimmer.saturation;
+                        value      = interrupted.animationParams.backgroundShimmer.value;
+                        if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch())
+                            value = applyDistanceAttenuation(value, getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                    } else {
+                        value = 0;
+                    }
                 }
             }
         }
