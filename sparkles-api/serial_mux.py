@@ -99,11 +99,15 @@ def _handle_client(conn: socket.socket, addr: str):
 # ---------------------------------------------------------------------------
 
 def _serial_worker():
+    _was_connected = False
+    _waiting_logged = False
     while True:
         ser = None
         try:
             ser = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
-            log.info("Serial opened on %s @ %d", SERIAL_PORT, SERIAL_BAUD)
+            _was_connected = True
+            _waiting_logged = False
+            log.info("Master ESP32 connected on %s", SERIAL_PORT)
             _broadcast(json.dumps({"event": "serial_status", "connected": True}))
 
             # drain boot noise
@@ -133,8 +137,13 @@ def _serial_worker():
                 _broadcast(line)
 
         except serial.SerialException as exc:
-            log.warning("Serial disconnected: %s — reconnecting in %.0fs", exc, RECONNECT_DELAY)
-            _broadcast(json.dumps({"event": "serial_status", "connected": False}))
+            if _was_connected:
+                log.warning("Master ESP32 disconnected — waiting for reconnect")
+                _broadcast(json.dumps({"event": "serial_status", "connected": False}))
+                _was_connected = False
+            elif not _waiting_logged:
+                log.info("Waiting for master ESP32 on %s ...", SERIAL_PORT)
+                _waiting_logged = True
         except Exception as exc:
             log.exception("Serial worker error: %s", exc)
         finally:
