@@ -78,7 +78,7 @@ def increment_version() -> tuple[str, str]:
 
 
 async def _stream_process(cmd: list[str], cwd: Path):
-    """Async generator — yields output lines from a subprocess."""
+    """Async generator — yields output lines from a subprocess, with keep-alives."""
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=str(cwd),
@@ -86,7 +86,14 @@ async def _stream_process(cmd: list[str], cwd: Path):
         stderr=asyncio.subprocess.STDOUT,
     )
     assert proc.stdout
-    async for raw in proc.stdout:
+    while True:
+        try:
+            raw = await asyncio.wait_for(proc.stdout.readline(), timeout=10)
+        except asyncio.TimeoutError:
+            yield ": keep-alive"
+            continue
+        if not raw:
+            break
         yield raw.decode(errors="replace").rstrip()
     await proc.wait()
     yield f"[exit code {proc.returncode}]"
