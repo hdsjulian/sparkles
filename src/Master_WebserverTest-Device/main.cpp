@@ -36,6 +36,13 @@ static TaskHandle_t sleepBroadcastTaskHandle = NULL;
 
 static void sleepBroadcastTask(void* pvParameters) {
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
+
+    // Resync all clients once before sending sleep so they wake up with aligned timers.
+    msgHandler.startFastResyncTask();
+    while (msgHandler.fastResyncHandle != NULL) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
     while (msgHandler.isInSleepPhase()) {
         msgHandler.sendSleepWakeupMessage(durationMicros);
         vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
@@ -366,6 +373,138 @@ static void handleSerialCommand(const String& line) {
         // sustain pedal: value >= 64 = down, < 64 = up
         // extend animation decay when pedal is held — placeholder for future effect
         ESP_LOGI("MSG", "Sustain pedal: %d", doc["value"] | 0);
+
+    } else if (strcmp(cmd, "test_sleep_cycle") == 0) {
+        struct SleepTestParams { int sleepDurationS; int phaseDurationS; };
+        auto* p = new SleepTestParams{
+            doc["sleep_duration_s"] | 15,
+            doc["phase_duration_s"] | 60
+        };
+        xTaskCreatePinnedToCore([](void* pv) {
+            auto* params = (SleepTestParams*)pv;
+            int sleepDurationS = params->sleepDurationS;
+            int phaseDurationS = params->phaseDurationS;
+            delete params;
+
+            auto emit = [](const char* event, JsonDocument& extra) {
+                extra["event"] = event;
+                String out; serializeJson(extra, out); Serial.println(out);
+            };
+
+            // 1. Snapshot clients
+            int total = 0;
+            for (int i = 0; i < NUM_DEVICES; i++) {
+                if (memcmp(msgHandler.getItemFromAddressList(i).address,
+                           MessageHandler::emptyAddress, 6) == 0) break;
+                total++;
+            }
+            { JsonDocument r; r["clients"] = total;
+              r["sleep_duration_s"] = sleepDurationS;
+              r["phase_duration_s"] = phaseDurationS;
+              emit("sleep_test_start", r); }
+
+            // 2. Fast resync
+            unsigned long t0 = millis();
+            { JsonDocument r; emit("sleep_test_resync_start", r); }
+            msgHandler.startFastResyncTask();
+            while (msgHandler.fastResyncHandle != NULL)
+                vTaskDelay(pdMS_TO_TICKS(100));
+            { JsonDocument r; r["elapsed_ms"] = (long)(millis() - t0);
+              emit("sleep_test_resync_done", r); }
+
+            // 3. Broadcast sleep for phaseDurationS
+            // Enforce minimum so clients cycle through at least 2 sleep periods
+            if (phaseDurationS < sleepDurationS * 2 + 5)
+                phaseDurationS = sleepDurationS * 2 + 5;
+
+            unsigned long long durationMicros = (unsigned long long)sleepDurationS * 1000000ULL;
+            unsigned long phaseStart = millis();
+            int broadcasts = 0;
+            int nextCycleLog = sleepDurationS; // log a heartbeat every sleepDurationS seconds
+            { JsonDocument r;
+              r["phase_duration_s"] = phaseDurationS;
+              r["cycles_expected"] = phaseDurationS / sleepDurationS;
+              emit("sleep_test_broadcast_start", r); }
+
+            while (millis() - phaseStart < (unsigned long)phaseDurationS * 1000) {
+                msgHandler.sendSleepWakeupMessage(durationMicros);
+                broadcasts++;
+                vTaskDelay(pdMS_TO_TICKS(1000));
+
+                long elapsedS = (long)((millis() - phaseStart) / 1000);
+
+                // Check for unexpected wakeups — any ACTIVE client mid-phase means
+                // they woke up and didn't receive the sleep rebroadcast in time.
+                for (int i = 0; i < NUM_DEVICES; i++) {
+                    if (memcmp(msgHandler.getItemFromAddressList(i).address,
+                               MessageHandler::emptyAddress, 6) == 0) break;
+                    if (msgHandler.getActiveStatus(i) == ACTIVE) {
+                        JsonDocument r;
+                        r["id"] = i;
+                        r["elapsed_ms"] = (long)(millis() - phaseStart);
+                        emit("sleep_test_unexpected_wakeup", r);
+                    }
+                }
+
+                // Heartbeat at each expected sleep cycle boundary
+                if (elapsedS >= nextCycleLog) {
+                    JsonDocument r;
+                    r["broadcasts"] = broadcasts;
+                    r["elapsed_s"] = elapsedS;
+                    r["cycle"] = elapsedS / sleepDurationS;
+                    emit("sleep_test_cycle_heartbeat", r);
+                    nextCycleLog += sleepDurationS;
+                }
+            }
+            { JsonDocument r;
+              r["broadcasts"] = broadcasts;
+              r["elapsed_ms"] = (long)(millis() - phaseStart);
+              emit("sleep_test_broadcast_end", r); }
+
+            // 4. Wake-up: mark all inactive, reannounce, wait for clients to return
+            msgHandler.setAddressListInactive();
+            msgHandler.broadcastReannounce();
+            { JsonDocument r; emit("sleep_test_waiting_for_wakeup", r); }
+
+            unsigned long wakeStart = millis();
+            unsigned long waitMaxMs = ((unsigned long)sleepDurationS + 30) * 1000;
+            int returned = 0;
+            while (millis() - wakeStart < waitMaxMs) {
+                // Count active clients
+                int active = 0;
+                for (int i = 0; i < NUM_DEVICES; i++) {
+                    if (memcmp(msgHandler.getItemFromAddressList(i).address,
+                               MessageHandler::emptyAddress, 6) == 0) break;
+                    if (msgHandler.getActiveStatus(i) == ACTIVE) active++;
+                }
+                if (active > returned) {
+                    returned = active;
+                    JsonDocument r;
+                    r["returned"] = returned;
+                    r["expected"] = total;
+                    r["elapsed_ms"] = (long)(millis() - wakeStart);
+                    emit("sleep_test_client_back", r);
+                }
+                if (returned >= total) break;
+                vTaskDelay(pdMS_TO_TICKS(500));
+            }
+
+            // 5. List any missing clients
+            { JsonDocument r;
+              r["expected"] = total;
+              r["returned"] = returned;
+              r["elapsed_ms"] = (long)(millis() - wakeStart);
+              JsonArray missing = r["missing_ids"].to<JsonArray>();
+              for (int i = 0; i < NUM_DEVICES; i++) {
+                  if (memcmp(msgHandler.getItemFromAddressList(i).address,
+                             MessageHandler::emptyAddress, 6) == 0) break;
+                  if (msgHandler.getActiveStatus(i) != ACTIVE) missing.add(i);
+              }
+              r["success"] = (returned == total);
+              emit("sleep_test_done", r); }
+
+            vTaskDelete(NULL);
+        }, "sleepTest", 8192, p, 1, NULL, 1);
     }
 }
 

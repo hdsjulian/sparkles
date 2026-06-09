@@ -143,22 +143,49 @@ def _dtr_reset(port: str = "/dev/sparkles"):
         raise RuntimeError(f"DTR reset failed: {exc}")
 
 
+async def _systemctl(action: str, unit: str):
+    """Run systemctl action and yield a status line."""
+    proc = await asyncio.create_subprocess_exec(
+        "sudo", "systemctl", action, unit,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    stdout, _ = await proc.communicate()
+    out = stdout.decode(errors="replace").strip()
+    status = "ok" if proc.returncode == 0 else f"exit {proc.returncode}"
+    yield f"[systemctl {action} {unit}: {status}{(' — ' + out) if out else ''}]"
+
+
 async def compile_master():
     """Compile (if sources changed) and flash master firmware via USB, then hard-reset."""
-    if not master_sources_changed() and MASTER_BIN.exists():
-        yield "[sources unchanged — skipping compile, uploading existing binary]"
-        async for line in _stream_process(
-            [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload",
-             "--disable-auto-clean", "-j", "1"],
-            cwd=REPO_DIR,
-        ):
+    # Stop serial_mux (and sparkles which depends on it) so /dev/sparkles is free
+    async for line in _systemctl("stop", "serial_mux"):
+        yield line
+    await asyncio.sleep(1)  # let the port release
+
+    try:
+        if not master_sources_changed() and MASTER_BIN.exists():
+            yield "[sources unchanged — skipping compile, uploading existing binary]"
+            async for line in _stream_process(
+                [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload",
+                 "--disable-auto-clean", "-j", "1"],
+                cwd=REPO_DIR,
+            ):
+                yield line
+        else:
+            async for line in _stream_process(
+                [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload", "-j", "1"],
+                cwd=REPO_DIR,
+            ):
+                yield line
+            record_master_upload()
+    finally:
+        # Always restart serial_mux (and sparkles) even if flash failed
+        async for line in _systemctl("start", "serial_mux"):
             yield line
-    else:
-        async for line in _stream_process(
-            [str(PIO_BIN), "run", "-e", MASTER_ENV, "--target", "upload", "-j", "1"],
-            cwd=REPO_DIR,
-        ):
+        await asyncio.sleep(2)
+        async for line in _systemctl("start", "sparkles"):
             yield line
-        record_master_upload()
+
     await asyncio.get_event_loop().run_in_executor(None, _dtr_reset)
     yield "[DTR reset sent — master rebooting]"

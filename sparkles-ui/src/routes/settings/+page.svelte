@@ -13,7 +13,10 @@
     resetSystem,
     factoryReset,
     commandAnimate,
-    commandAnimationOff
+    commandAnimationOff,
+    getAppSettings,
+    setAppSettings,
+    commandTestSleepCycle
   } from '$lib/api.js';
 
   let systemInfo = null;
@@ -22,6 +25,7 @@
   let error = '';
   let successMsg = '';
   let pollInterval;
+  let resyncMode = 'fast'; // "fast" | "slow" | "off"
 
   // Clock form
   let clockYear = new Date().getFullYear();
@@ -60,8 +64,27 @@
     clockSecond = now.getSeconds();
   }
 
+  async function loadAppSettings() {
+    try {
+      const s = await getAppSettings();
+      if (s?.resync_mode) resyncMode = s.resync_mode;
+    } catch (_) {}
+  }
+
+  async function handleResyncModeChange(mode) {
+    resyncMode = mode;
+    try {
+      await setAppSettings({ resync_mode: mode });
+      successMsg = `Resync mode: ${mode}`;
+      setTimeout(() => { successMsg = ''; }, 2000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   onMount(() => {
     loadSystemInfo();
+    loadAppSettings();
     pollInterval = setInterval(loadSystemInfo, 5000);
     syncClock();
     clockInterval = setInterval(syncClock, 1000);
@@ -275,6 +298,54 @@
       error = e.message;
     }
   }
+
+  // Sleep cycle test
+  let sleepTestRunning = false;
+  let sleepTestLog = [];
+  let sleepTestSleepS = 15;
+  let sleepTestPhaseS = 60;
+
+  const _SLEEP_TEST_LABELS = {
+    sleep_test_start:              (d) => `Starting — ${d.clients} clients, sleep ${d.sleep_duration_s}s, phase ${d.phase_duration_s}s`,
+    sleep_test_resync_start:       ()  => 'Resync started',
+    sleep_test_resync_done:        (d) => `Resync done in ${(d.elapsed_ms/1000).toFixed(1)}s`,
+    sleep_test_broadcast_start:    (d) => `Broadcasting sleep — ${d.cycles_expected} cycles expected over ${d.phase_duration_s}s`,
+    sleep_test_cycle_heartbeat:    (d) => `Cycle ${d.cycle} — ${d.broadcasts} broadcasts, ${d.elapsed_s}s elapsed — all quiet ✓`,
+    sleep_test_unexpected_wakeup:  (d) => `⚠ Client ${d.id} woke mid-phase at ${(d.elapsed_ms/1000).toFixed(1)}s and did not go back to sleep`,
+    sleep_test_broadcast_end:      (d) => `Sleep phase ended — ${d.broadcasts} broadcasts over ${(d.elapsed_ms/1000).toFixed(1)}s`,
+    sleep_test_waiting_for_wakeup: ()  => 'Phase over — waiting for clients to wake up and re-announce…',
+    sleep_test_client_back:        (d) => `Client back: ${d.returned}/${d.expected} (${(d.elapsed_ms/1000).toFixed(1)}s)`,
+    sleep_test_done:               (d) => `Done — ${d.returned}/${d.expected} returned${d.missing_ids?.length ? `, missing: [${d.missing_ids.join(', ')}]` : ''} — ${d.success ? '✓ OK' : '✗ INCOMPLETE'}`,
+    sleep_test_timeout:            ()  => 'Test timed out',
+  };
+
+  function handleRunSleepTest() {
+    if (sleepTestRunning) return;
+    sleepTestRunning = true;
+    sleepTestLog = [];
+
+    const es = commandTestSleepCycle(sleepTestSleepS, sleepTestPhaseS);
+
+    const allEvents = Object.keys(_SLEEP_TEST_LABELS);
+    allEvents.forEach(evt => {
+      es.addEventListener(evt, (e) => {
+        const d = JSON.parse(e.data);
+        const label = _SLEEP_TEST_LABELS[evt]?.(d) ?? evt;
+        const now = new Date().toLocaleTimeString();
+        sleepTestLog = [...sleepTestLog, { time: now, event: evt, label, data: d }];
+        if (evt === 'sleep_test_done' || evt === 'sleep_test_timeout') {
+          sleepTestRunning = false;
+          es.close();
+        }
+      });
+    });
+
+    es.onerror = () => {
+      sleepTestLog = [...sleepTestLog, { time: new Date().toLocaleTimeString(), event: 'error', label: 'Connection lost', data: {} }];
+      sleepTestRunning = false;
+      es.close();
+    };
+  }
 </script>
 
 <div class="page-content">
@@ -391,6 +462,66 @@
       </div>
     </div>
     <button class="btn btn-primary" on:click={handleSetWakeup}>Set Wakeup Time</button>
+  </div>
+
+  <!-- Resync Mode -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Resync Mode</div>
+    <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+      Controls timer sync before blink/strobe animations. Fast: ~20s parallel sync. Slow: full sequential sync. Off: no auto-sync.
+    </p>
+    <div class="btn-row">
+      <button class="btn" class:btn-primary={resyncMode === 'fast'} class:btn-ghost={resyncMode !== 'fast'}
+        on:click={() => handleResyncModeChange('fast')}>Fast</button>
+      <button class="btn" class:btn-primary={resyncMode === 'slow'} class:btn-ghost={resyncMode !== 'slow'}
+        on:click={() => handleResyncModeChange('slow')}>Slow</button>
+      <button class="btn" class:btn-warning={resyncMode === 'off'} class:btn-ghost={resyncMode !== 'off'}
+        on:click={() => handleResyncModeChange('off')}>Off</button>
+    </div>
+  </div>
+
+  <!-- Sleep Cycle Test -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Sleep Cycle Test</div>
+    <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+      Runs a compressed sleep cycle: resync → broadcast sleep → wait for wakeup. Phase must cover at least 2× client sleep duration to verify clients wake mid-phase, receive the rebroadcast, and go back to sleep. Any unexpected mid-phase wakeup is flagged in red.
+    </p>
+    {#if sleepTestPhaseS < sleepTestSleepS * 2 + 5}
+      <p style="font-size:0.8rem;color:#f9a825;margin-bottom:0.5rem;">
+        ⚠ Phase will be auto-extended to {sleepTestSleepS * 2 + 5}s to cover at least 2 client sleep cycles.
+      </p>
+    {/if}
+    <div class="form-row" style="margin-bottom:0.75rem;">
+      <div class="form-group">
+        <label>Client sleep (s)</label>
+        <input type="number" min="5" max="300" bind:value={sleepTestSleepS} disabled={sleepTestRunning} />
+      </div>
+      <div class="form-group">
+        <label>Phase duration (s)</label>
+        <input type="number" min="10" max="600" bind:value={sleepTestPhaseS} disabled={sleepTestRunning} />
+      </div>
+      <div class="form-group" style="align-self:flex-end;">
+        <button class="btn btn-primary" on:click={handleRunSleepTest} disabled={sleepTestRunning}>
+          {sleepTestRunning ? 'Running…' : 'Run Test'}
+        </button>
+      </div>
+    </div>
+    {#if sleepTestLog.length > 0}
+      <div style="font-family:monospace;font-size:0.8rem;background:var(--bg-secondary,#111);border-radius:6px;padding:0.75rem;max-height:280px;overflow-y:auto;">
+        {#each sleepTestLog as entry}
+          <div style="margin-bottom:0.25rem;color:{
+            (entry.event==='sleep_test_done' && entry.data.success) || entry.event==='sleep_test_cycle_heartbeat' ? '#4caf50' :
+            entry.event==='sleep_test_done' || entry.event==='error' || entry.event==='sleep_test_timeout' || entry.event==='sleep_test_unexpected_wakeup' ? '#f44336' :
+            'inherit'}">
+            <span style="opacity:0.5">{entry.time}</span>
+            &nbsp;{entry.label}
+          </div>
+        {/each}
+        {#if sleepTestRunning}
+          <div style="opacity:0.4">…</div>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <!-- Toggles -->

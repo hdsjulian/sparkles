@@ -28,6 +28,25 @@ logger = logging.getLogger("sparkles")
 
 SERIAL_PORT   = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
 FIRMWARE_PATH = os.path.join(os.path.dirname(__file__), "firmware.bin")
+_SETTINGS_PATH = os.environ.get("SPARKLES_SETTINGS", "/home/julian/sparkles/settings.json")
+
+# ---------------------------------------------------------------------------
+# App settings — persisted to JSON file
+# ---------------------------------------------------------------------------
+_DEFAULT_SETTINGS = {"resync_mode": "fast"}
+
+def _load_settings() -> dict:
+    try:
+        with open(_SETTINGS_PATH) as f:
+            data = json.load(f)
+        return {**_DEFAULT_SETTINGS, **data}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return dict(_DEFAULT_SETTINGS)
+
+def _save_settings(data: dict):
+    os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
+    with open(_SETTINGS_PATH, "w") as f:
+        json.dump(data, f, indent=2)
 
 # Public paths that never require a token
 _PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png"}
@@ -259,9 +278,26 @@ async def command_blink(boardId: int = Query(...)):
     return _ok()
 
 
+async def _presync_then_send(payload: dict, delay_s: float):
+    """Send sync first, wait delay_s, then send the animation payload."""
+    settings = _load_settings()
+    mode = settings.get("resync_mode", "fast")
+    if mode == "fast":
+        _send({"cmd": "sync_fast"})
+        await asyncio.sleep(delay_s)
+    elif mode == "slow":
+        _send({"cmd": "sync_all"})
+        await asyncio.sleep(delay_s * 5)
+    _send(payload)
+
+
 @app.get("/commandBlinkAll")
 async def command_blink_all():
-    _send({"cmd": "blink_all"})
+    settings = _load_settings()
+    if settings.get("resync_mode", "fast") != "off":
+        asyncio.create_task(_presync_then_send({"cmd": "blink_all"}, delay_s=20))
+    else:
+        _send({"cmd": "blink_all"})
     return _ok()
 
 
@@ -279,8 +315,13 @@ async def command_strobe_all(
     saturation: int = Query(default=0),
     brightness: int = Query(default=255),
 ):
-    _send({"cmd": "strobe_all", "frequency": frequency, "duration": duration,
-           "hue": hue, "saturation": saturation, "brightness": brightness})
+    payload = {"cmd": "strobe_all", "frequency": frequency, "duration": duration,
+               "hue": hue, "saturation": saturation, "brightness": brightness}
+    settings = _load_settings()
+    if settings.get("resync_mode", "fast") != "off":
+        asyncio.create_task(_presync_then_send(payload, delay_s=20))
+    else:
+        _send(payload)
     return _ok()
 
 
@@ -304,6 +345,70 @@ async def command_sync_all():
 async def command_sync_fast():
     _send({"cmd": "sync_fast"})
     return _ok()
+
+
+@app.get("/commandTestSleepCycle")
+async def command_test_sleep_cycle(
+    sleep_duration_s: int = Query(default=15),
+    phase_duration_s: int = Query(default=60),
+) -> StreamingResponse:
+    """Run a compressed sleep cycle test, streaming JSON events as SSE."""
+    _send({"cmd": "test_sleep_cycle",
+           "sleep_duration_s": sleep_duration_s,
+           "phase_duration_s": phase_duration_s})
+
+    _SLEEP_TEST_EVENTS = {
+        "sleep_test_start", "sleep_test_resync_start", "sleep_test_resync_done",
+        "sleep_test_broadcast_start", "sleep_test_cycle_heartbeat",
+        "sleep_test_unexpected_wakeup", "sleep_test_broadcast_end",
+        "sleep_test_waiting_for_wakeup", "sleep_test_client_back", "sleep_test_done",
+    }
+
+    queue = bridge.subscribe()
+
+    async def generator() -> AsyncGenerator[str, None]:
+        timeout_s = phase_duration_s + sleep_duration_s + 120
+        deadline = asyncio.get_event_loop().time() + timeout_s
+        try:
+            while True:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    yield f"event: sleep_test_timeout\ndata: {{}}\n\n"
+                    break
+                try:
+                    frame = await asyncio.wait_for(queue.get(), timeout=min(remaining, 15))
+                    if frame.get("event") not in _SLEEP_TEST_EVENTS:
+                        continue
+                    yield f"event: {frame['event']}\ndata: {json.dumps(frame)}\n\n"
+                    if frame.get("event") == "sleep_test_done":
+                        break
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            bridge.unsubscribe(queue)
+
+    return StreamingResponse(generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/appSettings")
+async def get_app_settings():
+    return _load_settings()
+
+
+class AppSettingsUpdate(BaseModel):
+    resync_mode: str | None = None  # "fast" | "slow" | "off"
+
+
+@app.post("/appSettings")
+async def set_app_settings(body: AppSettingsUpdate):
+    settings = _load_settings()
+    if body.resync_mode is not None:
+        if body.resync_mode not in ("fast", "slow", "off"):
+            raise HTTPException(status_code=422, detail="resync_mode must be fast, slow, or off")
+        settings["resync_mode"] = body.resync_mode
+    _save_settings(settings)
+    return settings
 
 
 # ---------------------------------------------------------------------------

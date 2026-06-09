@@ -39,9 +39,7 @@ struct FastResyncArgs {
 
 static void fastResyncWorker(void* pv) {
     FastResyncArgs* a = (FastResyncArgs*)pv;
-    a->self->setCurrentTimerIndex(a->index);
-    a->self->setTimerReset(false);
-    a->self->runTimerSync();
+    a->self->runTimerSyncAt(a->index);
     delete a;
     vTaskDelete(NULL);
 }
@@ -229,6 +227,35 @@ void MessageHandler::runClapSync() {
 }
 
 
+
+void MessageHandler::runTimerSyncAt(int index) {
+    // Race-free version for parallel fast resync — index passed directly, not via shared state.
+    // Sends TIMER_ARRAY_COUNT + 5 packets then stops; no shared counter state touched.
+    message_timer timerMessage;
+    message_data messageData;
+    messageData.messageType = MSG_TIMER;
+
+    addPeer(addressList[index].address);
+    ESP_LOGI("TIMER", "Fast resync index %d start", index);
+
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
+        lastWakeTime = xTaskGetTickCount();
+        timerMessage.counter   = i;
+        timerMessage.sendTime  = esp_timer_get_time();
+        timerMessage.lastDelay = 0;
+        timerMessage.reset     = (i == 0);
+        timerMessage.addressId = index;
+        memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
+        esp_now_send(addressList[index].address, (uint8_t*)&messageData, ESPNOW_CLIENT_COMPAT_SIZE);
+        vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY / portTICK_PERIOD_MS);
+    }
+
+    removePeer(addressList[index].address);
+    addressList[index].active = ACTIVE;
+    addressList[index].lastUpdateTime = millis();
+    ESP_LOGI("TIMER", "Fast resync index %d done", index);
+}
 
 void MessageHandler::runTimerSync() {
     message_timer timerMessage;

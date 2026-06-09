@@ -147,6 +147,7 @@ public:
     void handleSend();
     void runAnnounceAddress();
     void runTimerSync();
+    void runTimerSyncAt(int index);
     void runBatterySync();
     void toggleWiFiTask();
     void runClapTask();

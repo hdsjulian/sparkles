@@ -41,4 +41,12 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
+# Allow sparkles service user to stop/start these services without a password
+# (needed so compile.py can release /dev/sparkles before flashing master)
+SUDOERS_LINE="julian ALL=(ALL) NOPASSWD: /bin/systemctl stop serial_mux, /bin/systemctl start serial_mux, /bin/systemctl start sparkles, /bin/systemctl stop sparkles"
+SUDOERS_FILE=/etc/sudoers.d/sparkles-flash
+echo "$SUDOERS_LINE" | sudo tee "$SUDOERS_FILE" > /dev/null
+sudo chmod 440 "$SUDOERS_FILE"
+echo ">> Sudoers entry written to $SUDOERS_FILE"
+
 echo "=== Services installed ==="

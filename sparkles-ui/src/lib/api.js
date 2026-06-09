@@ -148,3 +148,13 @@ export const commandAbortDistanceCalibration = () =>
 
 export const commandTestCalibration = () =>
   fetch(`${BASE}/commandTestCalibration`).then(r => r.json());
+
+
+export const getAppSettings = () =>
+  fetch(`${BASE}/appSettings`).then(r => r.json());
+
+export const setAppSettings = (body) =>
+  fetch(`${BASE}/appSettings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+
+export const commandTestSleepCycle = (sleepDurationS = 15, phaseDurationS = 60) =>
+  new EventSource(`/commandTestSleepCycle?sleep_duration_s=${sleepDurationS}&phase_duration_s=${phaseDurationS}`);
