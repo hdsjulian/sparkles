@@ -49,6 +49,10 @@ void MessageHandler::startFastResyncTask() {
         ESP_LOGI("TIMER", "Fast resync already running");
         return;
     }
+    if (animationLoopHandle != NULL) {
+        vTaskDelete(animationLoopHandle);
+        animationLoopHandle = NULL;
+    }
     xTaskCreatePinnedToCore([](void* pv) {
         MessageHandler* self = (MessageHandler*)pv;
         ESP_LOGI("TIMER", "Fast resync starting");
@@ -82,6 +86,7 @@ void MessageHandler::startFastResyncTask() {
 
         ESP_LOGI("TIMER", "Fast resync done");
         self->fastResyncHandle = NULL;
+        self->startAnimationLoopTask();
         vTaskDelete(NULL);
     }, "fastResync", 4096, this, 2, &fastResyncHandle, 1);
 }
@@ -314,18 +319,18 @@ void MessageHandler::runTimerSync() {
             ESP_LOGI("ESP-NOW", "Peer does not exist, can't delete");
         }
         removePeer(addressList[timerIndex].address);
-        if (xTaskGetCurrentTaskHandle() == timerSyncHandle) {
-            timerSyncHandle = NULL;
-            vTaskDelete(NULL); // Safely delete self
-        } else if (timerSyncHandle != NULL) {
-            vTaskDelete(timerSyncHandle); // Delete from another task
-            timerSyncHandle = NULL;
-        }
         if (addressList[timerIndex].active == INACTIVE) {
             addressList[timerIndex].active = ACTIVE;
             addressList[timerIndex].lastUpdateTime = millis();
         }
         startAnimationLoopTask();
+        if (xTaskGetCurrentTaskHandle() == timerSyncHandle) {
+            timerSyncHandle = NULL;
+            vTaskDelete(NULL);
+        } else if (timerSyncHandle != NULL) {
+            vTaskDelete(timerSyncHandle);
+            timerSyncHandle = NULL;
+        }
     }
     
 }

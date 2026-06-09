@@ -221,7 +221,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
     ESP_LOGI("LED", "Current position set to: %d", ledInstance->getCurrentPosition());
     unsigned long long timeDiff = timerMessage.receiveTime-getLastReceiveTime();
     unsigned long long timerFrequencyMicros = TIMER_FREQUENCY*1000;
-    if (timeDiffAbs(timeDiff, timerFrequencyMicros) < 100000 and timerMessage.lastDelay < 100000) {
+    if (timeDiffAbs(timeDiff, timerFrequencyMicros) < 2500 and timerMessage.lastDelay < 6000) {
 
         unsigned long long offset;
         if (timerMessage.receiveTime < timerMessage.sendTime) {
