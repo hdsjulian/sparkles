@@ -291,10 +291,6 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
             instance.setRequestingOTAUpdate(false);
             ESP_LOGI("MSG", "Requesting OTA update sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
         }
-        else {
-            ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-        }
-        
     }
     else {
         if (instance.getRequestingOTAUpdate() == true) {
@@ -303,11 +299,6 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
             ESP_LOGI("MSG", "Address id cannot be reached: %d", instance.getOTAUpdateAddressId());
             instance.setNextOTAAddress(true);
         }
-
-        else {
-            ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-        }
-        ESP_LOGI("MSG", "Send failed");
     }
 }
 
@@ -381,16 +372,18 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     else {
         memcpy(&message.targetAddress, addressList[addressId].address, sizeof(addressList[addressId].address));
     }
-    // Master blinks immediately when queued; clients use the original startTime
+    // Master blinks immediately; clients use the original startTime
     message_animation masterAnimation = animationMessage;
     masterAnimation.animationParams.blink.startTime = esp_timer_get_time() + 10000;
     ledInstance->setAnimation(masterAnimation);
-    ESP_LOGI("MSG", "Sending animation message to %02x:%02x:%02x:%02x:%02x:%02x", message.targetAddress[0], message.targetAddress[1], message.targetAddress[2], message.targetAddress[3], message.targetAddress[4], message.targetAddress[5]);
-    ESP_LOGI("MSG", "Animation type: %d", animationMessage.animationType);
-    ESP_LOGI("MSG", "Animation params: %d", animationMessage.animationParams.blink.repetitions);
-    ESP_LOGI("MSG", "Animation timeStamp: %lu", animationMessage.timeStamp);
-    //ESP_LOGI("MSG", "Animation params: %d",
-    pushToSendQueue(message);
+    // Latency-sensitive animations bypass the send queue and go direct
+    if (animationMessage.animationType == BACKGROUND_SHIMMER ||
+        animationMessage.animationType == MIDI) {
+        WiFi.macAddress(message.senderAddress);
+        esp_now_send(broadcastAddress, (uint8_t*)&message, ESPNOW_CLIENT_COMPAT_SIZE);
+    } else {
+        pushToSendQueue(message);
+    }
 }
 void MessageHandler::startOTAUpdateTask() {
     xTaskCreatePinnedToCore(runOTAUpdateTaskWrapper, "runOTAUpdate", 10000, this, 2, &otaUpdateHandle, 0);
