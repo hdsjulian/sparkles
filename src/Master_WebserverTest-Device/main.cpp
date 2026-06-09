@@ -72,7 +72,13 @@ static void handleSerialCommand(const String& line) {
 
     const char* cmd = doc["cmd"] | "";
 
-    if (strcmp(cmd, "animate_toggle") == 0) {
+    if (strcmp(cmd, "set_log_level") == 0) {
+        int level = doc["level"] | 0;
+        esp_log_level_set("*", (esp_log_level_t)level);
+        JsonDocument r; r["event"] = "log_level"; r["level"] = level;
+        serialSendDoc(r);
+
+    } else if (strcmp(cmd, "animate_toggle") == 0) {
         bool running = msgHandler.isAnimationLoopRunning();
         running ? msgHandler.stopAllAnimations() : msgHandler.startAnimationLoopTask();
         JsonDocument r;

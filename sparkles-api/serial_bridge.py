@@ -267,9 +267,7 @@ class SerialBridge:
             line = json.dumps(payload) + "\n"
             self._send_queue.put_nowait(line)
             logger.debug("TX → %s", line.strip())
-            if self._log_file:
-                import time as _time
-                self._log_file.write(f"{_time.strftime('%H:%M:%S')} TX {line.strip()}\n")
+            self._append_log(line.strip(), "TX")
         except queue.Full:
             logger.warning("Send queue full, dropping: %s", payload)
 
@@ -306,16 +304,17 @@ class SerialBridge:
             except ValueError:
                 pass
 
-    def _append_log(self, line: str):
+    def _append_log(self, line: str, direction: str = "RX"):
+        entry = {"dir": direction, "line": line}
         with self._subscribers_lock:
-            self._log_buffer.append(line)
+            self._log_buffer.append(entry)
             subs = list(self._log_subscribers)
         if self._log_file:
             import time as _time
-            self._log_file.write(f"{_time.strftime('%H:%M:%S')} RX {line}\n")
+            self._log_file.write(f"{_time.strftime('%H:%M:%S')} {direction} {line}\n")
         for q in subs:
             try:
-                self._loop.call_soon_threadsafe(q.put_nowait, line)
+                self._loop.call_soon_threadsafe(q.put_nowait, entry)
             except (asyncio.QueueFull, AttributeError):
                 pass
 

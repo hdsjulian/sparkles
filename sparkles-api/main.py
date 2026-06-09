@@ -255,6 +255,11 @@ async def serial_log(request: Request) -> StreamingResponse:
 # Animation
 # ---------------------------------------------------------------------------
 
+@app.get("/commandSetLogLevel")
+async def command_set_log_level(level: int = 0):
+    _send({"cmd": "set_log_level", "level": level})
+    return _ok()
+
 @app.get("/commandAnimate")
 async def command_animate():
     _send({"cmd": "animate_toggle"})

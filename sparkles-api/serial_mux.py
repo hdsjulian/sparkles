@@ -125,14 +125,28 @@ def _handle_client(conn: socket.socket, addr: str):
 
 
 # ---------------------------------------------------------------------------
-# Serial worker — owns the port, reads and writes
+# Serial worker — owns the port, separate read/write threads
 # ---------------------------------------------------------------------------
+
+def _serial_write_thread(ser: serial.Serial, stop_event: threading.Event):
+    """Dedicated thread: drains _write_queue to serial as fast as possible."""
+    while not stop_event.is_set():
+        try:
+            line_out = _write_queue.get(timeout=0.05)
+            ser.write(line_out.encode())
+            log.debug("MUX TX → serial: %s", line_out.strip())
+        except queue.Empty:
+            pass
+        except Exception:
+            break
+
 
 def _serial_worker():
     _was_connected = False
     _waiting_logged = False
     while True:
         ser = None
+        stop_event = threading.Event()
         try:
             ser = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
             _was_connected = True
@@ -149,17 +163,13 @@ def _serial_worker():
                     _log_raw(raw_boot.decode("utf-8", errors="replace").rstrip())
             ser.reset_input_buffer()
 
-            while True:
-                # drain write queue first
-                while True:
-                    try:
-                        line_out = _write_queue.get_nowait()
-                        ser.write(line_out.encode())
-                        log.debug("MUX TX → serial: %s", line_out.strip())
-                    except queue.Empty:
-                        break
+            # start dedicated write thread
+            write_thread = threading.Thread(
+                target=_serial_write_thread, args=(ser, stop_event), daemon=True)
+            write_thread.start()
 
-                # read one line from serial
+            # read loop runs in this thread
+            while True:
                 raw = ser.readline()
                 if not raw:
                     continue
@@ -182,6 +192,7 @@ def _serial_worker():
         except Exception as exc:
             log.exception("Serial worker error: %s", exc)
         finally:
+            stop_event.set()
             if ser and ser.is_open:
                 ser.close()
         time.sleep(RECONNECT_DELAY)

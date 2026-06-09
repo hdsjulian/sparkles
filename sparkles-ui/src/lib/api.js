@@ -23,6 +23,9 @@ export const commandStrobeAll = (params) => {
   return fetch(`${BASE}/commandStrobeAll?${qs}`).then(r => r.json());
 };
 
+export const setLogLevel = (level) =>
+  fetch(`${BASE}/commandSetLogLevel?level=${level}`).then(r => r.json());
+
 export const commandAnimate = () =>
   fetch(`${BASE}/commandAnimate`).then(r => r.json());
 
