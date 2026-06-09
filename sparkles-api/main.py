@@ -262,7 +262,11 @@ async def command_set_log_level(level: int = 0):
 
 @app.get("/commandAnimate")
 async def command_animate():
-    _send({"cmd": "animate_toggle"})
+    settings = _load_settings()
+    if settings.get("resync_mode", "fast") != "off":
+        asyncio.create_task(_presync_then_send({"cmd": "animate_toggle"}, delay_s=5))
+    else:
+        _send({"cmd": "animate_toggle"})
     return _ok()
 
 
@@ -298,11 +302,7 @@ async def _presync_then_send(payload: dict, delay_s: float):
 
 @app.get("/commandBlinkAll")
 async def command_blink_all():
-    settings = _load_settings()
-    if settings.get("resync_mode", "fast") != "off":
-        asyncio.create_task(_presync_then_send({"cmd": "blink_all"}, delay_s=5))
-    else:
-        _send({"cmd": "blink_all"})
+    _send({"cmd": "blink_all"})
     return _ok()
 
 
@@ -322,11 +322,7 @@ async def command_strobe_all(
 ):
     payload = {"cmd": "strobe_all", "frequency": frequency, "duration": duration,
                "hue": hue, "saturation": saturation, "brightness": brightness}
-    settings = _load_settings()
-    if settings.get("resync_mode", "fast") != "off":
-        asyncio.create_task(_presync_then_send(payload, delay_s=5))
-    else:
-        _send(payload)
+    _send(payload)
     return _ok()
 
 
