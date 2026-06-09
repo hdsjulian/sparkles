@@ -325,6 +325,7 @@ void MessageHandler::runTimerSync() {
             addressList[timerIndex].active = ACTIVE;
             addressList[timerIndex].lastUpdateTime = millis();
         }
+        startAnimationLoopTask();
     }
     
 }

@@ -110,6 +110,11 @@ void MessageHandler::handleReceive() {
                         ESP_LOGI("MSG", "Timer sync task already running, ignoring address message.");
                         continue;
                     }
+                    // Stop animation loop during sync so it doesn't interfere with lastDelay timing
+                    if (animationLoopHandle != NULL) {
+                        vTaskDelete(animationLoopHandle);
+                        animationLoopHandle = NULL;
+                    }
                     message_address address = (message_address)incomingData.payload.address;
                     int index = addOrGetAddressId(address.address);
                     ESP_LOGI("MSG", "Address from index %d, total %d", index, getNumDevices());
@@ -141,6 +146,7 @@ void MessageHandler::handleReceive() {
                 writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
                 sendSystemStatus();
                 serialEmitBoard(timerIndex, addressList[timerIndex]);
+                startAnimationLoopTask();
             }
             else if (incomingData.messageType == MSG_STATUS) {
                 for (int i = 0; i < NUM_DEVICES; i++) {
