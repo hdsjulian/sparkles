@@ -98,7 +98,10 @@ def _handle_client(conn: socket.socket, addr: str):
     buf = b""
     try:
         while True:
-            data = conn.recv(4096)
+            try:
+                data = conn.recv(4096)
+            except socket.timeout:
+                continue
             if not data:
                 break
             buf += data
