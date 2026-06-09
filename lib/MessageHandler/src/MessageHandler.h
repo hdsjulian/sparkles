@@ -131,6 +131,7 @@ public:
     void startWiFiToggleTask();
     void startAllTimerSyncTask();
     void startFastResyncTask();
+    bool isFastResyncRunning() { return fastResyncHandle != nullptr; }
     void startBroadcastSettleTask();
     void runBroadcastSettle();
     void startClapTask();

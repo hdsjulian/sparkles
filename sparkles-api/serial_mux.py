@@ -78,6 +78,7 @@ def _broadcast(line: str):
 
 
 def _add_client(conn: socket.socket):
+    conn.settimeout(0.5)  # never let a slow client block the serial worker
     with _clients_lock:
         _clients.append((conn, threading.Lock()))
 

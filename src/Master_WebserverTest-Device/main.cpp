@@ -39,7 +39,7 @@ static void sleepBroadcastTask(void* pvParameters) {
 
     // Resync all clients once before sending sleep so they wake up with aligned timers.
     msgHandler.startFastResyncTask();
-    while (msgHandler.fastResyncHandle != NULL) {
+    while (msgHandler.isFastResyncRunning()) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
@@ -407,7 +407,7 @@ static void handleSerialCommand(const String& line) {
             unsigned long t0 = millis();
             { JsonDocument r; emit("sleep_test_resync_start", r); }
             msgHandler.startFastResyncTask();
-            while (msgHandler.fastResyncHandle != NULL)
+            while (msgHandler.isFastResyncRunning())
                 vTaskDelay(pdMS_TO_TICKS(100));
             { JsonDocument r; r["elapsed_ms"] = (long)(millis() - t0);
               emit("sleep_test_resync_done", r); }
@@ -560,7 +560,7 @@ void loop()
 
         uint8_t address[6];
         WiFi.macAddress(address);
-        ESP_LOGI("TICK", "Tick %s", msgHandler.stringAddress(address, true).c_str());
+        ESP_LOGI("TICK", "Tick v2 %s", msgHandler.stringAddress(address, true).c_str());
         ESP_LOGI("TICK", "Ticks until end: %llu", (unsigned long long)ledInstance.getNextAnimationTicks());
         ESP_LOGI("", "Battery: %.2f%%", msgHandler.getBatteryPercentage());
 
