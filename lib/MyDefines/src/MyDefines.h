@@ -58,7 +58,7 @@
 
 //config variables
 #define NUM_CLIENTS 200
-#define TIMER_FREQUENCY 100
+#define TIMER_FREQUENCY 20
 #define TIMER_ARRAY_COUNT 10
 #define WIFI_SSID "SPARKLES"
 #define WIFI_PASSWORD "sparklesAdmin"
