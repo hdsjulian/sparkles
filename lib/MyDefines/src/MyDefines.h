@@ -230,6 +230,7 @@ struct client_address {
   int tries;
   float distanceFromCenter;
   unsigned long lastUpdateTime;
+  uint64_t timerQuerySendTime;
 } ;
 
 struct clap_table {

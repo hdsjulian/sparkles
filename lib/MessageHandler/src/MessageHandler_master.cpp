@@ -246,15 +246,15 @@ void MessageHandler::handleReceive() {
              }
             else if (incomingData.messageType == MSG_TIMER_RESPONSE) {
                 int64_t masterNow = (int64_t)esp_timer_get_time();
-                int halfTrip = 0;
+                int64_t delta = 0;
                 for (int i = 0; i < NUM_DEVICES; i++) {
                     if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
-                        halfTrip = addressList[i].delay / 2;
+                        int64_t halfTrip = (int64_t)(masterNow - (int64_t)addressList[i].timerQuerySendTime) / 2;
+                        delta = masterNow - (incomingData.payload.timerResponse.estimatedMasterTime + halfTrip);
+                        if (delta < 0) delta = -delta;
                         break;
                     }
                 }
-                int64_t delta = masterNow - (incomingData.payload.timerResponse.estimatedMasterTime + halfTrip);
-                if (delta < 0) delta = -delta;
                 JsonDocument doc;
                 doc["event"]       = "timer_test_result";
                 doc["boardId"]     = incomingData.payload.timerResponse.addressId;

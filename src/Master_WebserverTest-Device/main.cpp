@@ -155,6 +155,8 @@ static void handleSerialCommand(const String& line) {
                 memcpy(q.targetAddress, a.address, 6);
                 WiFi.macAddress(q.senderAddress);
                 mh.addPeer(a.address);
+                a.timerQuerySendTime = esp_timer_get_time();
+                mh.setItemFromAddressList(i, a);
                 esp_now_send(a.address, (uint8_t*)&q, ESPNOW_CLIENT_COMPAT_SIZE);
                 mh.removePeer(a.address);
                 vTaskDelay(pdMS_TO_TICKS(50));
