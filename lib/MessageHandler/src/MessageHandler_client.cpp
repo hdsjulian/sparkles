@@ -246,15 +246,15 @@ void MessageHandler::handleTimer(message_data incomingData) {
         offsetSum += offset;
         offsetCount++;
 
-        setTimeOffset(offsetMultiplier*(offsetSum / offsetCount));
+        setTimeOffset((long long)offsetMultiplier * (long long)(offsetSum / offsetCount));
         if (delayCounter < TIMER_ARRAY_COUNT) {
-            delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);    
+            delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);
             ESP_LOGI("MSG", "Delay average: %d", delayAverage);
             delayCounter++;
-            
+
         }
-        else {  
-            long long correctedOffset = offsetMultiplier * (offsetSum / offsetCount) + offsetMultiplier * (delayAverage / 2);
+        else {
+            long long correctedOffset = (long long)offsetMultiplier * (long long)(offsetSum / offsetCount) + (long long)offsetMultiplier * (long long)(delayAverage / 2);
             setTimeOffset(correctedOffset);
             message_data gotTimerMessage;
             unsigned long long now = esp_timer_get_time();
