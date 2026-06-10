@@ -199,6 +199,17 @@ void MessageHandler::handleReceive() {
                 }
             }
 
+            else if (incomingData.messageType == MSG_TIMER_QUERY) {
+                message_data reply{};
+                reply.messageType = MSG_TIMER_RESPONSE;
+                memcpy(reply.targetAddress, hostAddress, 6);
+                WiFi.macAddress(reply.senderAddress);
+                reply.payload.timerResponse.estimatedMasterTime = (int64_t)esp_timer_get_time() + getTimeOffset();
+                reply.payload.timerResponse.addressId = ledInstance->getCurrentPosition();
+                addPeer(hostAddress);
+                esp_now_send(hostAddress, (uint8_t*)&reply, ESPNOW_CLIENT_COMPAT_SIZE);
+                removePeer(hostAddress);
+            }
             else {
                 ESP_LOGI("MSG", "Unknown message type %d", incomingData.messageType);
             }

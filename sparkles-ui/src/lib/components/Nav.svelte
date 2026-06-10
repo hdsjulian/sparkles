@@ -16,6 +16,7 @@
     { href: '/darkroom',    label: 'Darkroom',     icon: '🌑', roles: ['admin', 'user'] },
     { href: '/calibration', label: 'Calibration',  icon: '📐', roles: ['admin'] },
     { href: '/log',         label: 'Serial Log',   icon: '📋', roles: ['admin'] },
+    { href: '/timertest',   label: 'Timer Test',   icon: '⏱',  roles: ['admin'] },
   ];
 
   $: role = authUser?.role ?? 'user';

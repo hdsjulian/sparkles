@@ -143,6 +143,25 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "sync_fast") == 0) {
         msgHandler.startFastResyncTask();
 
+    } else if (strcmp(cmd, "timer_test") == 0) {
+        xTaskCreatePinnedToCore([](void* pv) {
+            MessageHandler& mh = *((MessageHandler*)pv);
+            int n = mh.getNumDevices();
+            for (int i = 0; i < n; i++) {
+                client_address a = mh.getItemFromAddressList(i);
+                if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+                message_data q{};
+                q.messageType = MSG_TIMER_QUERY;
+                memcpy(q.targetAddress, a.address, 6);
+                WiFi.macAddress(q.senderAddress);
+                mh.addPeer(a.address);
+                esp_now_send(a.address, (uint8_t*)&q, ESPNOW_CLIENT_COMPAT_SIZE);
+                mh.removePeer(a.address);
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
+            vTaskDelete(NULL);
+        }, "timerTest", 4096, &msgHandler, 2, NULL, 1);
+
     } else if (strcmp(cmd, "submit_positions") == 0) {
         msgHandler.setBoardPosition(doc["boardId"].as<int>(), doc["xpos"].as<float>(), doc["ypos"].as<float>());
 

@@ -134,6 +134,8 @@ static constexpr size_t ESPNOW_CLIENT_COMPAT_SIZE = 80;
 #define MSG_MIDI_PARAMS 16
 #define MSG_DARKROOM_PARAMS 17
 #define MSG_LOG 18
+#define MSG_TIMER_QUERY 19
+#define MSG_TIMER_RESPONSE 20
 
 #if DEVICE_MODE == MASTER
 extern bool g_loggingEnabled;
@@ -463,6 +465,12 @@ struct message_log {
   char text[180];
 };
 
+struct message_timer_response {
+  int64_t estimatedMasterTime;
+  int     addressId;
+  message_timer_response() : estimatedMasterTime(0), addressId(-1) {}
+};
+
 union message_payload {
   struct message_address        address;
   struct message_timer          timer;
@@ -479,6 +487,7 @@ union message_payload {
   struct message_midi_params    midiParams;
   struct message_darkroom_params  darkroomParams;
   struct message_log              log;
+  struct message_timer_response  timerResponse;
   message_payload() {}
   message_payload(const message_payload& other) {
       if (this != &other) memcpy(this, &other, sizeof(message_payload));

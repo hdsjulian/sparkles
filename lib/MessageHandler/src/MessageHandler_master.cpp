@@ -244,6 +244,16 @@ void MessageHandler::handleReceive() {
                 }
 
              }
+            else if (incomingData.messageType == MSG_TIMER_RESPONSE) {
+                int64_t masterNow = (int64_t)esp_timer_get_time();
+                int64_t delta = masterNow - incomingData.payload.timerResponse.estimatedMasterTime;
+                if (delta < 0) delta = -delta;
+                JsonDocument doc;
+                doc["event"]       = "timer_test_result";
+                doc["boardId"]     = incomingData.payload.timerResponse.addressId;
+                doc["deltaUs"]     = (long long)delta;
+                String out; serializeJson(doc, out); Serial.println(out);
+            }
             else {
                 ESP_LOGI("MSG", "Unknown message type  %d received", incomingData.messageType);
             }

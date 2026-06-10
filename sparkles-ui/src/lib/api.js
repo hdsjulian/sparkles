@@ -39,6 +39,9 @@ export const submitPositions = (boardId, xpos, ypos, zpos) =>
 export const commandBlink = (boardId) =>
   fetch(`${BASE}/commandBlink?boardId=${boardId}`).then(r => r.json());
 
+export const commandTimerTest = () =>
+  fetch(`${BASE}/commandTimerTest`).then(r => r.json());
+
 export const commandMessage = (boardId) =>
   fetch(`${BASE}/commandMessage?boardId=${boardId}`).then(r => r.json());
 
