@@ -146,10 +146,10 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "timer_test") == 0) {
         xTaskCreatePinnedToCore([](void* pv) {
             MessageHandler& mh = *((MessageHandler*)pv);
-            int n = mh.getNumDevices();
-            for (int i = 0; i < n; i++) {
+            for (int i = 0; i < NUM_DEVICES; i++) {
                 client_address a = mh.getItemFromAddressList(i);
                 if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+                if (a.active != ACTIVE) continue;
                 message_data q{};
                 q.messageType = MSG_TIMER_QUERY;
                 memcpy(q.targetAddress, a.address, 6);
