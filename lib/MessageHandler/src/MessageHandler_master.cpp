@@ -123,9 +123,24 @@ void MessageHandler::handleReceive() {
                     startTimerSyncTask();
                 }
             }
+            else if (incomingData.messageType == MSG_SOUND_DEVICE) {
+                // clap/chirp device announce, learn its address so either board works
+                if (memcmp(clapDeviceAddress, incomingData.senderAddress, 6) != 0) {
+                    memcpy(clapDeviceAddress, incomingData.senderAddress, 6);
+                    setClapDeviceDelay(0); // measured delay belonged to the previous device
+                    ESP_LOGI("MSG", "Learned sound device address %02x:%02x:%02x:%02x:%02x:%02x",
+                             clapDeviceAddress[0], clapDeviceAddress[1], clapDeviceAddress[2],
+                             clapDeviceAddress[3], clapDeviceAddress[4], clapDeviceAddress[5]);
+                }
+                if (clapSyncHandle != NULL) {
+                    vTaskDelete(clapSyncHandle);
+                    clapSyncHandle = NULL;
+                }
+                startClapSyncTask();
+            }
             else if (incomingData.messageType == MSG_GOT_TIMER) {
                 ESP_LOGI("MSG", "Received got timer message");
-                // Chirp device sends MSG_GOT_TIMER but is not in addressList — remove peer and stop timer, skip addressList writes.
+                // Chirp device sends MSG_GOT_TIMER but is not in addressList, remove peer and stop timer, skip addressList writes.
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
                     ESP_LOGI("MSG", "Got timer from chirp device, delay avg %d", incomingData.payload.gotTimer.delayAverage);
                     removePeer(clapDeviceAddress);
@@ -185,7 +200,13 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_CLAP) {
                 int clapIndex = getClapIndex();
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
-                    setLastClapTime(micros() - getClapDeviceDelay());
+                    // sound devices send their emission timestamp in master time,
+                    // 0 means old firmware or unsynced device
+                    if (incomingData.payload.clap.clapTime != 0) {
+                        setLastClapTime(incomingData.payload.clap.clapTime);
+                    } else {
+                        setLastClapTime(micros() - getClapDeviceDelay());
+                    }
                     {
                         JsonDocument doc;
                         doc["event"]    = "calibration_status";
@@ -295,6 +316,7 @@ void MessageHandler::handleSend() {
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     MessageHandler& instance = getInstance();
     if (status == ESP_NOW_SEND_SUCCESS) {
+        instance.recordTxDelay(mac_addr);
         if (instance.getSettingTimer() == true) {
             instance.setTimerReset(false);
             instance.setLastTimerCounter();
@@ -338,7 +360,7 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         if (syncIndex < 0 || memcmp(mac->src_addr, instance.addressList[syncIndex].address, 6) != 0) return;
     }
 
-    // Drop MSG_ADDRESS if queue is backing up — clients re-announce every second
+    // Drop MSG_ADDRESS if queue is backing up, clients re-announce every second
     if (incomingData[0] == MSG_ADDRESS && uxQueueMessagesWaiting(instance.receiveQueue) > 10) return;
 
     ESP_LOGD("MSG", "Recv type %d from %02x:%02x:%02x:%02x:%02x:%02x",
@@ -557,7 +579,7 @@ void MessageHandler::endCalibration() {
 }
 
 void MessageHandler::abortDistanceCalibration() {
-    ESP_LOGI("MSG", "Aborting distance calibration — resetting all data");
+    ESP_LOGI("MSG", "Aborting distance calibration, resetting all data");
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         clapIndex = 0;
         memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
@@ -636,10 +658,36 @@ void MessageHandler::startDistanceCalibrationMaster() {
         ESP_LOGI("MSG", "Starting Distance calibration as master");
         clapIndex = 0;
         memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
-        message_data startMessage = createCommandMessage(CMD_START_DISTANCE_CALIBRATION, true);
-        pushToSendQueue(startMessage);
         xSemaphoreGive(configMutex);
+        startDistanceCalibrationCommandTask(CMD_START_DISTANCE_CALIBRATION);
     }
+}
+
+// Clock offsets drift tens of µs per second, refresh every participant
+// right before the measurement, then send the calibration command
+struct DistCalPresyncArgs { MessageHandler* self; int commandType; };
+
+void MessageHandler::startDistanceCalibrationCommandTask(int commandType) {
+    auto* args = new DistCalPresyncArgs{this, commandType};
+    xTaskCreatePinnedToCore([](void* pv) {
+        auto* a = (DistCalPresyncArgs*)pv;
+        MessageHandler* self = a->self;
+        int commandType = a->commandType;
+        delete a;
+        bool animationWasRunning = self->animationLoopHandle != NULL;
+        if (animationWasRunning) {
+            vTaskDelete(self->animationLoopHandle);
+            self->animationLoopHandle = NULL;
+        }
+        self->runFastResyncAll();
+        self->runClapDeviceTimerSync();
+        message_data commandMessage = self->createCommandMessage(commandType, true);
+        self->pushToSendQueue(commandMessage);
+        if (animationWasRunning) {
+            self->startAnimationLoopTask();
+        }
+        vTaskDelete(NULL);
+    }, "distCalSync", 4096, args, 2, NULL, 1);
 }
 
 void MessageHandler::cancelCalibration() {
@@ -666,8 +714,7 @@ void MessageHandler::continueDistanceCalibration() {
     ESP_LOGI("MSG", "Continuing distance calibration");
     setClap(0, 0); // Set clap position to 0,0 for distance calibration
     clapIndex++;
-    message_data continueMessage = createCommandMessage(CMD_CONTINUE_DISTANCE_CALIBRATION, true);
-    pushToSendQueue(continueMessage);
+    startDistanceCalibrationCommandTask(CMD_CONTINUE_DISTANCE_CALIBRATION);
 }
 void MessageHandler::commandCalibrate(int boardId) {
     ESP_LOGI("MSG", "Sending calibration command to board ID: %d", boardId);

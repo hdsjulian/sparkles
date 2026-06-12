@@ -68,6 +68,11 @@
 #define BATTERY_LOW_THRESHOLD 7.0 // Percentage below which battery is considered low
 #define CLAP_TIMEOUT 10000
 static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+// Chirp waveform, shared between Chirp-Device (emitter) and the client
+// correlation template, must stay identical on both sides
+#define CHIRP_STEPS 8
+#define CHIRP_STEP_MS 3
+static constexpr int chirpFrequencies[CHIRP_STEPS] = {1000, 1700, 1200, 2000, 1500, 1100, 1800, 1300};
 // Clients compiled before message_log was added to the payload union have sizeof(message_data)==80.
 // Their pushToRecvQueue strictly checks len==80 and drops anything else.
 // Send exactly this size to stay compatible until all clients are OTA-updated.
@@ -136,6 +141,7 @@ static constexpr size_t ESPNOW_CLIENT_COMPAT_SIZE = 80;
 #define MSG_LOG 18
 #define MSG_TIMER_QUERY 19
 #define MSG_TIMER_RESPONSE 20
+#define MSG_SOUND_DEVICE 21 // clap/chirp device announce, master learns its address from this
 
 #if DEVICE_MODE == MASTER
 extern bool g_loggingEnabled;

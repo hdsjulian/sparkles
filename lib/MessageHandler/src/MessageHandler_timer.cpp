@@ -27,9 +27,49 @@ void MessageHandler::startAllTimerSyncTask() {
         }
 }
 
-// ---------------------------------------------------------------------------
-// Fast resync — parallel pool of FAST_RESYNC_POOL workers, one per client
-// ---------------------------------------------------------------------------
+int MessageHandler::acquireTxSlot(const uint8_t *mac) {
+    int slot = -1;
+    portENTER_CRITICAL(&txSlotsMux);
+    for (int i = 0; i < TX_SLOT_COUNT; i++) {
+        if (!txSlots[i].inUse) {
+            memcpy(txSlots[i].mac, mac, 6);
+            txSlots[i].sendTime = 0;
+            txSlots[i].lastDelay = 0;
+            txSlots[i].inUse = true;
+            slot = i;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&txSlotsMux);
+    if (slot < 0) {
+        ESP_LOGW("TIMER", "No free TX slot");
+    }
+    return slot;
+}
+
+void MessageHandler::releaseTxSlot(int slot) {
+    if (slot >= 0 && slot < TX_SLOT_COUNT) {
+        txSlots[slot].inUse = false;
+    }
+}
+
+void MessageHandler::recordTxDelay(const uint8_t *mac) {
+    unsigned long long now = esp_timer_get_time();
+    for (int i = 0; i < TX_SLOT_COUNT; i++) {
+        if (txSlots[i].inUse && txSlots[i].sendTime != 0 && memcmp(txSlots[i].mac, mac, 6) == 0) {
+            txSlots[i].lastDelay = (int)(now - txSlots[i].sendTime);
+            txSlots[i].sendTime = 0; // consumed, one measurement per send
+            return;
+        }
+    }
+}
+
+// lastDelay is uint16 on the wire, 0 tells the device to skip the sample
+static uint16_t clampTxDelay(int delay) {
+    return (delay > 0 && delay < 60000) ? (uint16_t)delay : 0;
+}
+
+// Fast resync, parallel pool of FAST_RESYNC_POOL workers, one per client
 #define FAST_RESYNC_POOL 5
 
 struct FastResyncArgs {
@@ -44,6 +84,39 @@ static void fastResyncWorker(void* pv) {
     vTaskDelete(NULL);
 }
 
+void MessageHandler::runFastResyncAll() {
+    ESP_LOGI("TIMER", "Fast resync starting");
+
+    // count known clients
+    int total = 0;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(getItemFromAddressList(i).address, emptyAddress, 6) == 0) break;
+        total++;
+    }
+
+    // dispatch clients in batches of FAST_RESYNC_POOL
+    for (int i = 0; i < total; i += FAST_RESYNC_POOL) {
+        int batch = min(FAST_RESYNC_POOL, total - i);
+        TaskHandle_t handles[FAST_RESYNC_POOL] = {};
+        for (int j = 0; j < batch; j++) {
+            FastResyncArgs* args = new FastResyncArgs{this, i + j};
+            char name[16];
+            snprintf(name, sizeof(name), "frsync_%d", i + j);
+            xTaskCreatePinnedToCore(fastResyncWorker, name, 4096, args, 2, &handles[j], 1);
+        }
+        // wait for batch to finish before starting next
+        for (int j = 0; j < batch; j++) {
+            if (handles[j]) {
+                while (eTaskGetState(handles[j]) != eDeleted) {
+                    vTaskDelay(10 / portTICK_PERIOD_MS);
+                }
+            }
+        }
+    }
+
+    ESP_LOGI("TIMER", "Fast resync done");
+}
+
 void MessageHandler::startFastResyncTask() {
     if (fastResyncHandle != NULL) {
         ESP_LOGI("TIMER", "Fast resync already running");
@@ -55,36 +128,7 @@ void MessageHandler::startFastResyncTask() {
     }
     xTaskCreatePinnedToCore([](void* pv) {
         MessageHandler* self = (MessageHandler*)pv;
-        ESP_LOGI("TIMER", "Fast resync starting");
-
-        // count known clients
-        int total = 0;
-        for (int i = 0; i < NUM_DEVICES; i++) {
-            if (memcmp(self->getItemFromAddressList(i).address, self->emptyAddress, 6) == 0) break;
-            total++;
-        }
-
-        // dispatch clients in batches of FAST_RESYNC_POOL
-        for (int i = 0; i < total; i += FAST_RESYNC_POOL) {
-            int batch = min(FAST_RESYNC_POOL, total - i);
-            TaskHandle_t handles[FAST_RESYNC_POOL] = {};
-            for (int j = 0; j < batch; j++) {
-                FastResyncArgs* args = new FastResyncArgs{self, i + j};
-                char name[16];
-                snprintf(name, sizeof(name), "frsync_%d", i + j);
-                xTaskCreatePinnedToCore(fastResyncWorker, name, 4096, args, 2, &handles[j], 1);
-            }
-            // wait for batch to finish before starting next
-            for (int j = 0; j < batch; j++) {
-                if (handles[j]) {
-                    while (eTaskGetState(handles[j]) != eDeleted) {
-                        vTaskDelay(10 / portTICK_PERIOD_MS);
-                    }
-                }
-            }
-        }
-
-        ESP_LOGI("TIMER", "Fast resync done");
+        self->runFastResyncAll();
         self->fastResyncHandle = NULL;
         self->startAnimationLoopTask();
         vTaskDelete(NULL);
@@ -202,29 +246,8 @@ void MessageHandler::runClapSync() {
     ESP_LOGI("CLAP", "Clap device delay set to %d", getClapDeviceDelay());
 
     // Send MSG_TIMER to chirp device for clock offset sync.
-    // Does not expect MSG_GOT_TIMER — chirp device accumulates offset silently.
-    ESP_LOGI("CLAP", "Starting chirp device timer sync");
-    addPeer(clapDeviceAddress);
-    {
-        message_data timerData;
-        timerData.messageType = MSG_TIMER;
-        memcpy(timerData.targetAddress, clapDeviceAddress, 6);
-        message_timer t = {};
-        t.lastDelay = delayAverage / 2;
-        t.reset     = false;
-        t.addressId = -1;
-        TickType_t wake = xTaskGetTickCount();
-        for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
-            wake = xTaskGetTickCount();
-            t.counter  = i;
-            t.sendTime = esp_timer_get_time();
-            memcpy(&timerData.payload.timer, &t, sizeof(t));
-            esp_now_send(clapDeviceAddress, (uint8_t*)&timerData, ESPNOW_CLIENT_COMPAT_SIZE);
-            vTaskDelayUntil(&wake, TIMER_FREQUENCY / portTICK_PERIOD_MS);
-        }
-    }
-    removePeer(clapDeviceAddress);
-    ESP_LOGI("CLAP", "Chirp device timer sync done");
+    // Does not expect MSG_GOT_TIMER, chirp device accumulates offset silently.
+    runClapDeviceTimerSync();
 
     ESP_LOGI("CLAP", "Clap sync finished");
     clapSyncHandle = NULL;
@@ -233,8 +256,40 @@ void MessageHandler::runClapSync() {
 
 
 
+void MessageHandler::runClapDeviceTimerSync() {
+    if (getClapDeviceDelay() == 0) {
+        // Clap/chirp device never completed a delay sync, nothing to refresh
+        return;
+    }
+    ESP_LOGI("CLAP", "Starting chirp device timer sync");
+    addPeer(clapDeviceAddress);
+    {
+        message_data timerData;
+        timerData.messageType = MSG_TIMER;
+        memcpy(timerData.targetAddress, clapDeviceAddress, 6);
+        message_timer t = {};
+        t.addressId = -1;
+        int txSlot = acquireTxSlot(clapDeviceAddress);
+        TickType_t wake = xTaskGetTickCount();
+        for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
+            wake = xTaskGetTickCount();
+            t.counter   = i;
+            t.lastDelay = (txSlot >= 0) ? clampTxDelay(txSlots[txSlot].lastDelay) : 0;
+            t.reset     = (i == 0);
+            t.sendTime  = esp_timer_get_time();
+            memcpy(&timerData.payload.timer, &t, sizeof(t));
+            if (txSlot >= 0) txSlots[txSlot].sendTime = t.sendTime;
+            esp_now_send(clapDeviceAddress, (uint8_t*)&timerData, ESPNOW_CLIENT_COMPAT_SIZE);
+            vTaskDelayUntil(&wake, TIMER_FREQUENCY / portTICK_PERIOD_MS);
+        }
+        releaseTxSlot(txSlot);
+    }
+    removePeer(clapDeviceAddress);
+    ESP_LOGI("CLAP", "Chirp device timer sync done");
+}
+
 void MessageHandler::runTimerSyncAt(int index) {
-    // Race-free version for parallel fast resync — index passed directly, not via shared state.
+    // Race-free version for parallel fast resync, index passed directly, not via shared state.
     // Sends TIMER_ARRAY_COUNT + 5 packets then stops; no shared counter state touched.
     message_timer timerMessage;
     message_data messageData;
@@ -243,18 +298,21 @@ void MessageHandler::runTimerSyncAt(int index) {
     addPeer(addressList[index].address);
     ESP_LOGI("TIMER", "Fast resync index %d start", index);
 
+    int txSlot = acquireTxSlot(addressList[index].address);
     TickType_t lastWakeTime = xTaskGetTickCount();
     for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
         lastWakeTime = xTaskGetTickCount();
         timerMessage.counter   = i;
-        timerMessage.sendTime  = esp_timer_get_time();
-        timerMessage.lastDelay = 0;
+        timerMessage.lastDelay = (txSlot >= 0) ? clampTxDelay(txSlots[txSlot].lastDelay) : 0;
         timerMessage.reset     = (i == 0);
         timerMessage.addressId = index;
+        timerMessage.sendTime  = esp_timer_get_time();
         memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
+        if (txSlot >= 0) txSlots[txSlot].sendTime = timerMessage.sendTime;
         esp_now_send(addressList[index].address, (uint8_t*)&messageData, ESPNOW_CLIENT_COMPAT_SIZE);
         vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY / portTICK_PERIOD_MS);
     }
+    releaseTxSlot(txSlot);
 
     removePeer(addressList[index].address);
     addressList[index].active = ACTIVE;
@@ -281,16 +339,17 @@ void MessageHandler::runTimerSync() {
         ESP_LOGI("TIMER", "Timer Sync: Addres is -1");
     }
     unsigned long long lastTick = 0;
+    int txSlot = acquireTxSlot(timerIndex > -1 ? addressList[timerIndex].address : broadcastAddress);
     while (getSettingTimer() == true) {
         lastWakeTime = xTaskGetTickCount();
         timerMessage.counter = incrementTimerCounter();
-        timerMessage.sendTime = esp_timer_get_time();
-        timerMessage.lastDelay = getLastDelay();
+        timerMessage.lastDelay = (txSlot >= 0) ? clampTxDelay(txSlots[txSlot].lastDelay) : getLastDelay();
         timerMessage.reset = getTimerReset();
         timerMessage.addressId = getCurrentTimerIndex();
-        memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
         timerMessage.sendTime = esp_timer_get_time();
+        memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
         setLastSendTime(timerMessage.sendTime);
+        if (txSlot >= 0) txSlots[txSlot].sendTime = timerMessage.sendTime;
         if (timerIndex == -1) {
             esp_now_send(broadcastAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
         }
@@ -302,17 +361,18 @@ void MessageHandler::runTimerSync() {
         }
 
         if ((getLastTimerCounter() < getTimerCounter()-5 || getTimerCounter() > 100)   && timerIndex > -1) {
-            setUnavailable(getCurrentTimerIndex()); 
+            setUnavailable(getCurrentTimerIndex());
             removePeer(addressList[timerIndex].address);
             setSettingTimer(false);
             ESP_LOGI("TIMER", "Setting unavailable. Last counter: %d, current counter: %d, index: %d", getLastTimerCounter(), getTimerCounter(), timerIndex);
         }
-        
+
         //ESP_LOGI("TIMER", "TIMER %d SENT AT %llu - exact difference %llu", timerMessage.counter, timerMessage.sendTime, timerMessage.sendTime-lastTick);
         //ESP_LOGI("TIMER", "Last Delay was %d", timerMessage.lastDelay);
         lastTick = timerMessage.sendTime;
          vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY/portTICK_PERIOD_MS);
     }
+    releaseTxSlot(txSlot);
     if (getSettingTimer() == false)   {
         ESP_LOGI("TIMER", "Timer sync finished for index %d with address %02x:%02x:%02x:%02x:%02x:%02x", timerIndex, addressList[timerIndex].address[0], addressList[timerIndex].address[1], addressList[timerIndex].address[2], addressList[timerIndex].address[3], addressList[timerIndex].address[4], addressList[timerIndex].address[5]);
         if (!esp_now_is_peer_exist(addressList[timerIndex].address)) {

@@ -70,7 +70,7 @@ void MessageHandler::setLastSendTime(unsigned long long time) {
     }
 }
 unsigned long long MessageHandler::getLastSendTime() {
-    int returnTime;
+    unsigned long long returnTime = 0;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         returnTime = lastSendTime;
         xSemaphoreGive(configMutex);
@@ -173,7 +173,7 @@ void MessageHandler::setLastReceiveTime(unsigned long long time) {
     }
 }
 unsigned long long MessageHandler::getLastReceiveTime() {
-    int returnTime;
+    unsigned long long returnTime = 0;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         returnTime = lastReceiveTime;
         xSemaphoreGive(configMutex);
@@ -610,7 +610,7 @@ unsigned long MessageHandler::getSleepDuration() {
     return duration;
 }
 unsigned long MessageHandler::getAdminPresent() {
-    unsigned long returnTime;
+    unsigned long returnTime = 0;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         returnTime = lastAdminPresent;
         xSemaphoreGive(configMutex);

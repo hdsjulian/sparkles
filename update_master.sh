@@ -13,9 +13,16 @@ cp .pio/build/Client_Device/firmware.bin ./data/firmware_client.bin
 
 # 3. Download clientAddress from 192.168.1.4 with timeout and fallback
 echo "Downloading clientAddress..."
-if ! curl -f --max-time 5 http://192.168.1.4/clientAddress -o .data/clientAddress; then
-  echo "Download failed, creating empty clientAddress file."
-  > ./data/clientAddress
+if curl -f --max-time 5 http://192.168.1.4/clientAddress -o ./data/clientAddress.tmp; then
+  mv ./data/clientAddress.tmp ./data/clientAddress
+else
+  rm -f ./data/clientAddress.tmp
+  if [ -f ./data/clientAddress ]; then
+    echo "Download failed, keeping existing clientAddress file."
+  else
+    echo "Download failed, creating empty clientAddress file."
+    > ./data/clientAddress
+  fi
 fi
 
 # 4. Upload the data folder to the master device (SPIFFS/LittleFS)

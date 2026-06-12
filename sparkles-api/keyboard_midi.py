@@ -223,8 +223,10 @@ def _handle_cmd_client(conn: socket.socket, out_port: mido.ports.BaseOutput):
                 log.info("Command received: %s", cmd)
 
                 if action == "play":
-                    filepath = os.path.join(args.songs_dir, cmd.get("file", ""))
-                    if not os.path.isfile(filepath):
+                    songs_root = os.path.realpath(args.songs_dir)
+                    filepath = os.path.realpath(os.path.join(songs_root, cmd.get("file", "")))
+                    # realpath + prefix check keeps ../ and absolute paths inside songs_dir
+                    if not filepath.startswith(songs_root + os.sep) or not os.path.isfile(filepath):
                         log.warning("Song not found: %s", filepath)
                         resp = {"event": "keyboard_playback", "status": "error",
                                 "detail": f"File not found: {cmd.get('file')}"}

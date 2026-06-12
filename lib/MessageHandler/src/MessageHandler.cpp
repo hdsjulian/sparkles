@@ -34,7 +34,7 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
         handleAddressStruct();
         startBroadcastSettleTask();
         if (noClientList) {
-            ESP_LOGI("MSG", "No client list found — broadcasting CMD_REANNOUNCE");
+            ESP_LOGI("MSG", "No client list found, broadcasting CMD_REANNOUNCE");
             delay(500);
             broadcastReannounce();
         }
@@ -56,9 +56,7 @@ void MessageHandler::pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t
     }
     message_data msg;
     memcpy(&msg, incomingData, len);
-    if (msg.messageType == MSG_TIMER) {
-        msg.payload.timer.receiveTime = micros();
-    }
+    // MSG_TIMER receiveTime is already stamped 64-bit in onDataRecv, don't re-stamp here
     if (xQueueSend(receiveQueue, &msg, 0) != pdTRUE) {
         ESP_LOGW("MSG", "Receive queue full, dropping message type %d", msg.messageType);
     }
@@ -67,7 +65,7 @@ void MessageHandler::pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t
 
 void MessageHandler::pushToSendQueue(message_data& msg) {
     if (xQueueSend(sendQueue, &msg, pdMS_TO_TICKS(200)) != pdTRUE) {
-        ESP_LOGE("MSG", "Send queue full — message dropped");
+        ESP_LOGE("MSG", "Send queue full, message dropped");
     }
 }
 

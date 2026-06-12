@@ -7,6 +7,7 @@ Cookie: sparkles_token (HTTP-only, SameSite=Lax)
 
 import os
 import logging
+import secrets
 import yaml
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,7 +18,24 @@ from passlib.context import CryptContext
 logger = logging.getLogger("auth")
 
 _CONFIG_PATH = Path(__file__).parent / "auth_config.yaml"
-SECRET_KEY    = os.environ.get("SPARKLES_SECRET", "sparkles-dev-secret-change-me")
+
+
+def _get_secret() -> str:
+    env_secret = os.environ.get("SPARKLES_SECRET")
+    if env_secret:
+        return env_secret
+    # No env secret: generate one and persist it so tokens survive restarts.
+    secret_file = Path(__file__).parent / ".secret_key"
+    if secret_file.exists():
+        return secret_file.read_text().strip()
+    secret = secrets.token_hex(32)
+    secret_file.write_text(secret)
+    secret_file.chmod(0o600)
+    logger.warning("SPARKLES_SECRET not set — generated persistent secret at %s", secret_file)
+    return secret
+
+
+SECRET_KEY    = _get_secret()
 ALGORITHM     = "HS256"
 TOKEN_TTL_H   = 24 * 7   # 1 week
 COOKIE_NAME   = "sparkles_token"

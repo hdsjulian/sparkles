@@ -24,13 +24,72 @@ bool startUp = true;
 #define CLAP_PIN 47
 volatile bool buttonPressed = false;
 static bool isInterruptAttached = false;
-unsigned long buttonPressTime = 0;
+volatile unsigned long long buttonPressTime = 0;
 void IRAM_ATTR handleButtonPress() {
-  if (buttonPressed == false and (micros()-buttonPressTime)>2500000) {
-    buttonPressTime = micros();
+  unsigned long long now = esp_timer_get_time();
+  if (buttonPressed == false and (now - buttonPressTime) > 2500000ULL) {
+    buttonPressTime = now;
     buttonPressed = true;
-  } 
+  }
 }
+
+// Timer sync, same algorithm as the client handleTimer: each packet carries the
+// measured TX latency of the previous one (paired by counter), the burst's median wins.
+unsigned long long lastReceiveTime = 0;
+int delayAverage = 0;
+int delayCounter = 0;
+volatile long long timeOffset = 0;
+volatile bool timerSynced = false;
+long long pendingRaw = 0;
+uint16_t pendingCounter = 0;
+bool pendingValid = false;
+long long samples[TIMER_ARRAY_COUNT];
+int sampleCount = 0;
+
+static void handleTimer(const message_data &msg) {
+    const message_timer &timerMessage = msg.payload.timer;
+
+    unsigned long long sinceLast = timerMessage.receiveTime - lastReceiveTime;
+    if (timerMessage.reset || sinceLast > 1000000ULL) {
+        // new burst, drop stale state
+        sampleCount = 0;
+        pendingValid = false;
+        delayCounter = 0;
+        delayAverage = 0;
+    }
+
+    if (pendingValid && timerMessage.counter == (uint16_t)(pendingCounter + 1)
+        && timerMessage.lastDelay > 0 && timerMessage.lastDelay < 6000) {
+        if (sampleCount < TIMER_ARRAY_COUNT) {
+            samples[sampleCount++] = pendingRaw + (long long)timerMessage.lastDelay;
+        }
+        delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);
+        delayCounter++;
+    }
+    pendingRaw = (long long)timerMessage.sendTime - (long long)timerMessage.receiveTime;
+    pendingCounter = timerMessage.counter;
+    pendingValid = true;
+    lastReceiveTime = timerMessage.receiveTime;
+
+    if (sampleCount >= TIMER_ARRAY_COUNT) {
+        long long sorted[TIMER_ARRAY_COUNT];
+        memcpy(sorted, samples, sizeof(sorted));
+        for (int i = 1; i < TIMER_ARRAY_COUNT; i++) {
+            long long v = sorted[i];
+            int j = i - 1;
+            while (j >= 0 && sorted[j] > v) { sorted[j + 1] = sorted[j]; j--; }
+            sorted[j + 1] = v;
+        }
+        timeOffset = (sorted[TIMER_ARRAY_COUNT / 2 - 1] + sorted[TIMER_ARRAY_COUNT / 2]) / 2;
+        timerSynced = true;
+        ESP_LOGI("CLAP", "Timer synced. Offset %lld, delay average %d", (long long)timeOffset, delayAverage);
+        sampleCount = 0;
+        pendingValid = false;
+        delayCounter = 0;
+        delayAverage = 0;
+    }
+}
+
 static void clapTask(void *pvParameters) {
     ESP_LOGI("CLAP", "Clap2 task started");
     // Simulate clap detection
@@ -38,22 +97,28 @@ static void clapTask(void *pvParameters) {
         attachInterrupt(digitalPinToInterrupt(CLAP_PIN), handleButtonPress, RISING);
         isInterruptAttached = true;
         Serial.println("Interrupt attached");
-    }        
+    }
     while (true) {
         if (buttonPressed == true) {
-            buttonPressed = false;      
-            Serial.println("CLAP! BPT: "+String(buttonPressTime) );
+            buttonPressed = false;
+            Serial.printf("CLAP! BPT: %llu\n", buttonPressTime);
             message_data clapMessage;
             clapMessage.messageType = MSG_CLAP;
             memcpy(clapMessage.targetAddress, broadcastAddress, 6);
             WiFi.macAddress(clapMessage.senderAddress);
+            // contact-closure timestamp in master time, 0 when unsynced so the
+            // master falls back to its local receive stamp
+            if (timerSynced) {
+                clapMessage.payload.clap.clapTime = (unsigned long long)((long long)buttonPressTime + timeOffset);
+            }
+            clapMessage.payload.clap.clapHappened = true;
             esp_now_send(clapMessage.targetAddress, (uint8_t *)&clapMessage, sizeof(clapMessage));
             vTaskDelay(1000 / portTICK_PERIOD_MS); // Allow some time for the message to be sent
             vTaskDelete(NULL);
-        }        
-    } 
+        }
+    }
 
-  } 
+  }
   // Detach the interrupt if the state is not MODE_CALIBRATE
 
 
@@ -64,6 +129,11 @@ static void handleReceive(void *pvParameters) {
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
             ESP_LOGI("MSG", "Received from queue %d", incomingData.messageType);
+            if (incomingData.messageType == MSG_TIMER) {
+                startUp = false;
+                handleTimer(incomingData);
+                continue;
+            }
             if (incomingData.messageType == MSG_COMMAND) {
                 startUp = false;
                 switch (incomingData.payload.command.commandType) {
@@ -110,6 +180,7 @@ static void handleSend(void *pvParameters) {
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_ADDRESS:
+                case MSG_SOUND_DEVICE:
                     ESP_LOGI("MSG", "Sending address message");
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
@@ -126,14 +197,29 @@ void clapDetection() {
 }
 
 
-void pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
-    if (len != sizeof(message_data)) return;
-    message_data *msg = (message_data *)incomingData;
-     if (msg->messageType == MSG_TIMER) {
-        msg->payload.timer.receiveTime = micros();
-     }
+// Map the 32-bit hardware MAC-time RX stamp into the esp_timer domain. The smallest
+// observed span over a burst is the clock-domain offset, jitter only ever adds delay.
+static unsigned long long timerRxTimestamp(const esp_now_recv_info *info, unsigned long long cbTime) {
+    if (info == nullptr || info->rx_ctrl == nullptr) return cbTime;
+    int32_t span = (int32_t)((uint32_t)cbTime - info->rx_ctrl->timestamp);
+    static int32_t minSpan = INT32_MAX;
+    static unsigned long long lastCbTime = 0;
+    if (cbTime - lastCbTime > 1000000ULL) minSpan = INT32_MAX; // stale after a 1 s gap
+    lastCbTime = cbTime;
+    if (span < minSpan) minSpan = span;
+    return cbTime - (unsigned long long)(span - minSpan);
+}
 
-    if (xQueueSend(receiveQueue, msg, portMAX_DELAY) != pdTRUE) {
+void pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
+    // Master sends 80-byte ESPNOW_CLIENT_COMPAT_SIZE frames, accept anything up to full size
+    if (len < 1 || len > (int)sizeof(message_data)) return;
+    message_data msg;
+    memcpy(&msg, incomingData, len);
+    if (msg.messageType == MSG_TIMER) {
+        msg.payload.timer.receiveTime = timerRxTimestamp(mac, esp_timer_get_time());
+    }
+    // don't block the WiFi task, drop instead of waiting on a full queue
+    if (xQueueSend(receiveQueue, &msg, 0) != pdTRUE) {
         ESP_LOGE("MSG", "Failed to send data to receive queue");
     }
 }
@@ -223,8 +309,8 @@ void loop()
 {
     if (startUp == true) {
         message_data addressMessage;
-        addressMessage.messageType = MSG_ADDRESS;
-        memcpy(addressMessage.targetAddress, hostAddress, 6);
+        addressMessage.messageType = MSG_SOUND_DEVICE;
+        memcpy(addressMessage.targetAddress, broadcastAddress, 6);
         WiFi.macAddress(addressMessage.payload.address.address);
         memcpy(addressMessage.senderAddress, addressMessage.payload.address.address, 6);
         addressMessage.payload.address.version = VERSION;

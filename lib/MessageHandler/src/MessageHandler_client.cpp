@@ -115,7 +115,7 @@ void MessageHandler::handleReceive() {
                     ESP_LOGI("MSG", "Max distance from center set to %.2f m", commandMessage.param);
                 }
                 if (commandMessage.commandType == CMD_OTA_UPDATE) {
-                    ESP_LOGI("MSG", "CMD_OTA_UPDATE received — connecting to %s", OTA_WIFI_SSID);
+                    ESP_LOGI("MSG", "CMD_OTA_UPDATE received, connecting to %s", OTA_WIFI_SSID);
                     WiFi.mode(WIFI_OFF);
                     delay(100);
                     WiFi.mode(WIFI_STA);
@@ -152,7 +152,7 @@ void MessageHandler::handleReceive() {
                 
             }
             else if (incomingData.messageType == MSG_STATUS) {
-                // another client's status broadcast — ignore
+                // another client's status broadcast, ignore
             }
             else if (incomingData.messageType == MSG_CLAP) {
                 message_clap clapMessage = incomingData.payload.clap;
@@ -230,63 +230,67 @@ void MessageHandler::handleTimer(message_data incomingData) {
 
     }
     ESP_LOGI("LED", "Current position set to: %d", ledInstance->getCurrentPosition());
-    unsigned long long timeDiff = timerMessage.receiveTime-getLastReceiveTime();
-    unsigned long long timerFrequencyMicros = TIMER_FREQUENCY*1000;
-    if (timeDiffAbs(timeDiff, timerFrequencyMicros) < 2500 and timerMessage.lastDelay < 6000) {
 
-        unsigned long long offset;
-        if (timerMessage.receiveTime < timerMessage.sendTime) {
-            offset = timerMessage.sendTime-timerMessage.receiveTime;
-            offsetMultiplier = 1;
-        }
-        else {
-            offset = timerMessage.receiveTime-timerMessage.sendTime;
-            offsetMultiplier = -1;
-        }
-        offsetSum += offset;
-        offsetCount++;
+    // Each packet carries the measured TX latency of the previous one (paired by
+    // counter), so queueing/backoff and retransmission delays cancel out per sample.
+    static long long pendingRaw = 0;
+    static uint16_t pendingCounter = 0;
+    static bool pendingValid = false;
+    static long long samples[TIMER_ARRAY_COUNT];
+    static int sampleCount = 0;
 
-        setTimeOffset((long long)offsetMultiplier * (long long)(offsetSum / offsetCount));
-        if (delayCounter < TIMER_ARRAY_COUNT) {
-            delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);
-            ESP_LOGI("MSG", "Delay average: %d", delayAverage);
-            delayCounter++;
-
-        }
-        else {
-            long long correctedOffset = (long long)offsetMultiplier * (long long)(offsetSum / offsetCount) + (long long)offsetMultiplier * (long long)(delayAverage / 2);
-            setTimeOffset(correctedOffset);
-            message_data gotTimerMessage;
-            unsigned long long now = esp_timer_get_time();
-            long long timeOffset = getTimeOffset();
-            gotTimerMessage.messageType = MSG_GOT_TIMER;
-            gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
-            gotTimerMessage.payload.gotTimer.batteryPercentage = getBatteryPercentage();
-            gotTimerMessage.payload.gotTimer.offset = getTimeOffset();           
-            memcpy(gotTimerMessage.targetAddress, hostAddress, 6);
-            ESP_LOGI("MSG", "Sending got timer message with perceived time: %lld, delay average: %d, battery percentage: %f", gotTimerMessage.payload.gotTimer.perceivedTime, gotTimerMessage.payload.gotTimer.delayAverage, gotTimerMessage.payload.gotTimer.batteryPercentage);
-            xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
-            setTimerSet(true);
-            ledInstance->blink(esp_timer_get_time(), 300, 3, 100, 255, 127);
-            ESP_LOGI("MSG", "Timer set. time offset: %lld", getTimeOffset());
-            startBatterySyncTask();
-            delayCounter = 0;
-            delayAverage = 0;
-          }
+    unsigned long long sinceLast = timerMessage.receiveTime - getLastReceiveTime();
+    if (timerMessage.reset || sinceLast > 1000000ULL) {
+        // new burst, drop stale state
+        sampleCount = 0;
+        pendingValid = false;
+        delayCounter = 0;
+        delayAverage = 0;
     }
-    else {
-        //ESP_LOGI("MSG", "Time diff too large %lld or delay too large  %d", timeDiff, timerMessage.lastDelay);
-        if (timerMessage.lastDelay > 4000) {
-            //ESP_LOGI("MSG", "Last delay too large, %d", timerMessage.lastDelay);       
-         }
-        else {
-            //ESP_LOGI("MSG", "Time diff too large: %lld", timeDiff);
+
+    if (pendingValid && timerMessage.counter == (uint16_t)(pendingCounter + 1)
+        && timerMessage.lastDelay > 0 && timerMessage.lastDelay < 6000) {
+        if (sampleCount < TIMER_ARRAY_COUNT) {
+            samples[sampleCount++] = pendingRaw + (long long)timerMessage.lastDelay;
         }
+        delayAverage = (delayAverage * delayCounter + timerMessage.lastDelay) / (delayCounter + 1);
+        delayCounter++;
     }
+    pendingRaw     = (long long)timerMessage.sendTime - (long long)timerMessage.receiveTime;
+    pendingCounter = timerMessage.counter;
+    pendingValid   = true;
     setLastReceiveTime(timerMessage.receiveTime);
 
+    if (sampleCount >= TIMER_ARRAY_COUNT) {
+        // median of the burst, robust to outliers the gates didn't catch
+        long long sorted[TIMER_ARRAY_COUNT];
+        memcpy(sorted, samples, sizeof(sorted));
+        for (int i = 1; i < TIMER_ARRAY_COUNT; i++) {
+            long long v = sorted[i];
+            int j = i - 1;
+            while (j >= 0 && sorted[j] > v) { sorted[j + 1] = sorted[j]; j--; }
+            sorted[j + 1] = v;
+        }
+        long long median = (sorted[TIMER_ARRAY_COUNT / 2 - 1] + sorted[TIMER_ARRAY_COUNT / 2]) / 2;
+        setTimeOffset(median);
 
-}   
+        message_data gotTimerMessage;
+        gotTimerMessage.messageType = MSG_GOT_TIMER;
+        gotTimerMessage.payload.gotTimer.delayAverage = delayAverage;
+        gotTimerMessage.payload.gotTimer.batteryPercentage = getBatteryPercentage();
+        gotTimerMessage.payload.gotTimer.offset = getTimeOffset();
+        memcpy(gotTimerMessage.targetAddress, hostAddress, 6);
+        ESP_LOGI("MSG", "Timer set. Offset (burst median): %lld, delay average: %d", median, delayAverage);
+        xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
+        setTimerSet(true);
+        ledInstance->blink(esp_timer_get_time(), 300, 3, 100, 255, 127);
+        startBatterySyncTask();
+        sampleCount  = 0;
+        pendingValid = false;
+        delayCounter = 0;
+        delayAverage = 0;
+    }
+}
 
 void MessageHandler::goToSleep() {
     message_animation animationMessage = ledInstance->createAnimation(OFF);
@@ -338,25 +342,42 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
     }
 }
 
+// Map the 32-bit hardware MAC-time RX stamp into the esp_timer domain. The smallest
+// observed span over a burst is the clock-domain offset, jitter only ever adds delay.
+static unsigned long long timerRxTimestamp(const esp_now_recv_info *info, unsigned long long cbTime) {
+    if (info == nullptr || info->rx_ctrl == nullptr) return cbTime;
+    int32_t span = (int32_t)((uint32_t)cbTime - info->rx_ctrl->timestamp);
+    static int32_t minSpan = INT32_MAX;
+    static unsigned long long lastCbTime = 0;
+    if (cbTime - lastCbTime > 1000000ULL) minSpan = INT32_MAX; // stale after a 1 s gap
+    lastCbTime = cbTime;
+    if (span < minSpan) minSpan = span;
+    return cbTime - (unsigned long long)(span - minSpan);
+}
+
 void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *incomingData, int len) {
     unsigned long long receiveTime = esp_timer_get_time();
     MessageHandler& instance = getInstance();
-    if (incomingData[0] == MSG_TIMER) {
-        // Learn master MAC from the first MSG_TIMER we receive
+    if (len < 1 || len > (int)sizeof(message_data)) {
+        ESP_LOGW("RECV", "Bad size len=%d sizeof=%d, dropping", len, (int)sizeof(message_data));
+        return;
+    }
+    message_data localData;
+    memcpy(&localData, incomingData, len);
+    if (localData.messageType == MSG_TIMER) {
+        // learn master MAC from the first MSG_TIMER we receive
         if (!instance.hostAddressLearned) {
             memcpy(instance.hostAddress, mac->src_addr, 6);
             instance.hostAddressLearned = true;
             instance.addPeer(instance.hostAddress);
         }
-        message_data* messageData = (message_data*)incomingData;
-        messageData->payload.timer.receiveTime = receiveTime;
+        localData.payload.timer.receiveTime = timerRxTimestamp(mac, receiveTime);
     }
-    if (incomingData[0] == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
-        message_data* messageData = (message_data*)incomingData;
-        if (messageData->payload.animation.animationType == MIDI || messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
-            LedHandler& ledInstance = LedHandler::getInstance(); 
-            if (messageData->payload.animation.animationType == BACKGROUND_SHIMMER) {
-                auto& shimmer = messageData->payload.animation.animationParams.backgroundShimmer;
+    if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
+        if (localData.payload.animation.animationType == MIDI || localData.payload.animation.animationType == BACKGROUND_SHIMMER) {
+            LedHandler& ledInstance = LedHandler::getInstance();
+            if (localData.payload.animation.animationType == BACKGROUND_SHIMMER) {
+                auto& shimmer = localData.payload.animation.animationParams.backgroundShimmer;
                 if (shimmer.value > 0) {
                     uint8_t mac[6]; WiFi.macAddress(mac);
                     uint8_t range = (uint8_t)(shimmer.value * 0.1f);
@@ -364,19 +385,19 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
                     shimmer.value = (uint8_t)constrain((int)shimmer.value + offset, 0, 255);
                 }
             }
-            ledInstance.pushToAnimationQueue(messageData->payload.animation);
+            ledInstance.pushToAnimationQueue(localData.payload.animation);
             return;
-            
+
         }
-        
+
     }
-    else if (incomingData[0] == MSG_ANIMATION && instance.getBatteryPercentage() <= BATTERY_LOW_THRESHOLD) {
+    else if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() <= BATTERY_LOW_THRESHOLD) {
         ESP_LOGI("RECV", "Threshold too low %f of %f", instance.getBatteryPercentage(), BATTERY_LOW_THRESHOLD);
     }
 
-    instance.pushToRecvQueue(mac, incomingData, len);
+    instance.pushToRecvQueue(mac, (const uint8_t*)&localData, len);
 
-    
+
 }
 
 
@@ -480,10 +501,10 @@ void MessageHandler::runBatterySync() {
                     pushToSendQueue(refreshMsg);
                     vTaskDelay(1500 / portTICK_PERIOD_MS);
                 } while (getAdminPresent());
-                // Admin left maintenance mode — fall through, next iteration sleeps 5 min
+                // Admin left maintenance mode, fall through, next iteration sleeps 5 min
                 ESP_LOGI("MSG", "Maintenance mode ended, returning to critical sleep cycle");
             }
-            // If maintenance mode is off, loop back immediately — next iteration sleeps 5 min again
+            // If maintenance mode is off, loop back immediately, next iteration sleeps 5 min again
         }
         else {
             setBatteryLow(false);

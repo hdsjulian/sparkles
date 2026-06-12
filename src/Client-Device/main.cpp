@@ -43,6 +43,7 @@ void setup()
 
   rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // modem sleep adds RX latency and skews hardware RX timestamps
   ESP_LOGI("", "Setup1");
   if (esp_now_init() != ESP_OK)
   {

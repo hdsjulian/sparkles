@@ -20,8 +20,6 @@ public:
     bool calibrationTest = false;
     int otaUpdateAddressId = -1;
     bool hasClapHappened = false;
-    unsigned long long offsetSum = 0;
-    int offsetCount = 0;
     uint8_t pendingBroadcastCommand = 0;
     unsigned long pendingBroadcastExpiry = 0;
     
@@ -149,6 +147,12 @@ public:
     void runAnnounceAddress();
     void runTimerSync();
     void runTimerSyncAt(int index);
+    void runFastResyncAll();
+    void runClapDeviceTimerSync();
+    void startDistanceCalibrationCommandTask(int commandType);
+    int acquireTxSlot(const uint8_t *mac);
+    void releaseTxSlot(int slot);
+    void recordTxDelay(const uint8_t *mac);
     void runBatterySync();
     void toggleWiFiTask();
     void runClapTask();
@@ -241,7 +245,6 @@ private:
     unsigned long long lastMidiTime = 0;
     long long timeOffset = 0;
     unsigned long long lastReceiveTime = 0;
-    int offsetMultiplier = 1;
     const int wifiSleepTime = 60000;
     bool nextCommandReceived = false;
     int currentCommandId = 0;
@@ -252,6 +255,17 @@ private:
     int wakeupTimeMinutes = 0;
     int wakeupTimeSeconds = 0;
     int clapDeviceDelay = 0;
+    // Per-target TX timing for sync bursts: a burst acquires a slot for its target,
+    // onDataSent measures the real send latency, the next packet ships it as lastDelay
+    static constexpr int TX_SLOT_COUNT = 8;
+    struct tx_slot {
+        bool inUse = false;
+        uint8_t mac[6] = {0};
+        volatile unsigned long long sendTime = 0;
+        volatile int lastDelay = 0;
+    };
+    tx_slot txSlots[TX_SLOT_COUNT];
+    portMUX_TYPE txSlotsMux = portMUX_INITIALIZER_UNLOCKED;
     bool isBatteryLow = false;
     static constexpr int BATTERY_HISTORY_SIZE = 10;
     float batteryHistory[BATTERY_HISTORY_SIZE] = {-1.0f};

@@ -1,2 +1,4 @@
 .pio
 .vscode
+sparkles-api/.secret_key
+__pycache__/
