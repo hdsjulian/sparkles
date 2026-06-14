@@ -134,7 +134,9 @@ for i in range(NUM_DEVICES):
         addr = empty_address
     output += pack_struct(addr, i)
 
-out_path = os.path.join(os.path.dirname(__file__), 'data', 'clientAddress')
+out_dir = os.path.join(os.path.dirname(__file__), 'data')
+os.makedirs(out_dir, exist_ok=True)
+out_path = os.path.join(out_dir, 'clientAddress')
 with open(out_path, 'wb') as f:
     f.write(output)
 

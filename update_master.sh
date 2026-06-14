@@ -2,16 +2,10 @@
 
 set -e
 
-# 1. Compile for Client-Device environment
-echo "Building firmware for Client-Device..."
-pio run -e Client_Device
+# data/ holds only clientAddress now, it gets uploaded to the master's LittleFS
+mkdir -p ./data
 
-# 2. Copy the firmware to Master-Device/data folder
-echo "Copying firmware.bin to Master-Device/data/..."
-cp .pio/build/Client_Device/firmware.bin ./data/firmware_client.bin
-
-
-# 3. Download clientAddress from 192.168.1.4 with timeout and fallback
+# 1. Download clientAddress from 192.168.1.4 with timeout and fallback
 echo "Downloading clientAddress..."
 if curl -f --max-time 5 http://192.168.1.4/clientAddress -o ./data/clientAddress.tmp; then
   mv ./data/clientAddress.tmp ./data/clientAddress
@@ -25,7 +19,7 @@ else
   fi
 fi
 
-# 4. Upload the data folder to the master device (SPIFFS/LittleFS)
+# 2. Upload the data folder to the master device (LittleFS) and flash firmware
 echo "Uploading data folder to Master-Device..."
 pio run -e Master_Device -t uploadfs
 pio run -e Master_Device -t upload
