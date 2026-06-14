@@ -16,13 +16,13 @@ API_DIR      = Path(__file__).parent.resolve()
 PIO_BIN      = Path(os.environ.get("PIO_BIN", str(API_DIR / ".venv" / "bin" / "pio")))
 DEFINES_PATH = REPO_DIR / "lib" / "MyDefines" / "src" / "MyDefines.h"
 CLIENT_ENV   = "Client_Device"
-MASTER_ENV   = "Master_WebserverTest_Pi"
+MASTER_ENV   = "Master_Pi"
 CLIENT_BIN   = REPO_DIR / ".pio" / "build" / CLIENT_ENV / "firmware.bin"
 MASTER_BIN   = REPO_DIR / ".pio" / "build" / MASTER_ENV / "firmware.bin"
 FIRMWARE_OUT = API_DIR / "firmware.bin"
 MASTER_HASH_FILE = API_DIR / ".master_src_hash"
 
-_MASTER_SRC_DIRS = ["src/Master_WebserverTest-Device", "lib"]
+_MASTER_SRC_DIRS = ["src/Master-Device", "lib"]
 _MASTER_SRC_EXTS = {".cpp", ".h", ".c", ".ini"}
 
 

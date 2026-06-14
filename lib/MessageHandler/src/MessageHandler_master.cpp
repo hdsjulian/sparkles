@@ -495,6 +495,9 @@ void MessageHandler::runCalculatePositionsTask() {
                 float xj = clapTable[j].xPos;
                 float yj = clapTable[j].yPos;
                 float dj = addressList[i].distances[j];
+                if (dj <= 0) {
+                    continue; // client missed this clap, a zero distance would corrupt the solve
+                }
 
                 if (!referenceSet) {
                     // Set the first clap as the reference point
@@ -533,10 +536,12 @@ void MessageHandler::runCalculatePositionsTask() {
                 Atb[1] += A[row][1] * b[row];
             }
 
-            // Calculate the determinant of AtA
+            // det near zero relative to the matrix scale means the claps are
+            // (nearly) collinear and the solution would explode
             float det = AtA[0][0] * AtA[1][1] - AtA[0][1] * AtA[1][0];
-            if (det == 0) {
-                ESP_LOGE("MSG", "Trilateration failed: Determinant is zero");
+            float trace = AtA[0][0] + AtA[1][1];
+            if (fabsf(det) < 1e-3f * trace * trace) {
+                ESP_LOGE("MSG", "Trilateration failed: claps are (nearly) collinear");
                 continue;
             }
 
