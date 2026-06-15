@@ -6,11 +6,9 @@ LedHandler::LedHandler()
 {
     configMutex = xSemaphoreCreateMutex();
     if (configMutex == NULL) {
-        ESP_LOGI("ERROR", "Failed to create configMutex");
     }
     ledQueue = xQueueCreate(512, sizeof(message_animation)); // Ensure the queue is created
     if (ledQueue == NULL) {
-        Serial.println("Failed to create ledQueue");
     }
     // Create background shimmer queue to receive continuous updates
     backgroundShimmerQueue = xQueueCreate(100, sizeof(message_animation));
@@ -19,7 +17,6 @@ LedHandler::LedHandler()
     }
     midiNoteTableMutex = xSemaphoreCreateMutex();
     if (midiNoteTableMutex == NULL) {
-        ESP_LOGI("ERROR", "Failed to create midiNoteTableMutex");
     }
 }
 
@@ -36,9 +33,7 @@ void LedHandler::setup()
     ledcAttach(LEDPINBLUE2, LEDC_BASE_FREQ, LEDC_TIMER_12_BIT);
     
     ledsOff();
-    ESP_LOGI("LED", "LED SETUP ENDED");
     startLedTask();
-    ESP_LOGI("LED", "LED TASK STARTED");
 }
 
 
@@ -65,16 +60,13 @@ void LedHandler:: writeLeds(CRGB color) {
 
 void LedHandler::startLedTask()
 {
-    ESP_LOGI("LED", "Starting ledTask");
     xTaskCreatePinnedToCore(ledTaskWrapper, "ledTask", 10000, this, 2, NULL, 1);
 }
 
 void LedHandler::ledTaskWrapper(void *pvParameters)
 {
-    ESP_LOGI("LED", "Starting ledTaskWraphab ich beper");
 
     LedHandler *LedHandlerInstance = (LedHandler *)pvParameters;
-    ESP_LOGI("LED", "Starting ledTaskWrapper2");
     LedHandlerInstance->ledTask();
 }
 void LedHandler::runMidiWrapper(void *pvParameters) {
@@ -120,7 +112,6 @@ void LedHandler::ledTask()
             if (xQueueReceive(ledQueue, &animationData, portMAX_DELAY) == pdTRUE) 
             {   
                 if (isTimedAnimation(animationData.animationType)) {
-                    ESP_LOGI("LED", "Received timed animation while OFF: %d", animationData.animationType);
                 }
                 memcpy(&animation, &animationData, sizeof(message_animation));
                 int timeSpent = micros()-animationData.timeStamp;
@@ -129,7 +120,6 @@ void LedHandler::ledTask()
                     //ESP_LOGI("LED", "Strobe. Hue: %d, Saturation: %d, Brightness: %d", animation.animationParams.strobe.hue, animation.animationParams.strobe.saturation, animation.animationParams.strobe.brightness);
                 }
                 else if (animation.animationType == BLINK) {
-                    ESP_LOGI("LED", "sBlink. Hue: %d, Saturation: %d, Brightness: %d", animation.animationParams.blink.hue, animation.animationParams.blink.saturation, animation.animationParams.blink.brightness);
                 }
             }
             continue;
@@ -137,14 +127,11 @@ void LedHandler::ledTask()
         else {
             if (xQueueReceive(ledQueue, &animationData, 0) == pdTRUE) 
             {   
-                ESP_LOGI("LED", "received new animation %d current animation is %d", animationData.animationType, getCurrentAnimation() );
                 if (isTimedAnimation(animationData.animationType)) {
                     unsigned long long startTime = 0;
                     switch (animationData.animationType) {
                         case BLINK:
                             startTime = animationData.animationParams.blink.startTime;
-                            ESP_LOGI("LED", "Received blink");
-                            ESP_LOGI("LED", "Blink start time: %llu, current time: %llu", startTime, micros());
                             break;
                         case STROBE:
                             startTime = animationData.animationParams.strobe.startTime;
@@ -162,7 +149,6 @@ void LedHandler::ledTask()
                     unsigned long long microsUntilStart = calculateMicrosUntilStart(startTime);
                     TickType_t ticksUntilStart = microsToTicks(microsUntilStart);
                     TickType_t currentTicks = xTaskGetTickCount();
-                    ESP_LOGI("LED", "Delaying until start: %llu micros, %llu ticks", microsUntilStart, ticksUntilStart);
                     if (ticksUntilStart > 0) {
                         vTaskDelayUntil(&currentTicks, ticksUntilStart);
                     }
@@ -325,14 +311,11 @@ void LedHandler::runBlink() {
     float saturation = animation.animationParams.blink.saturation;
     float value = animation.animationParams.blink.brightness;
     CRGB color = CHSV(hue, saturation, value);
-    ESP_LOGI("LED", "Blink. Hue: %d, Saturation: %d, Brightness: %d, Repetitions: %d, Duration: %d", 
-        (int)hue, (int)saturation, (int)value, animation.animationParams.blink.repetitions, animation.animationParams.blink.duration);
     unsigned long long masterStartTime = animation.animationParams.blink.startTime;
 
     setMicrosUntilStart(masterStartTime);
     if (microsUntilStart < 0) {
         setMicrosUntilStart(100);
-        ESP_LOGI("LED", "Corrected negative microsUntilStart to 100");
     }
     vTaskDelay(10/portTICK_PERIOD_MS);
     if (getMicrosUntilStart() > 0) {
@@ -343,14 +326,10 @@ void LedHandler::runBlink() {
 
     for (int i = 0; i < animation.animationParams.blink.repetitions; i++) {
         writeLeds(color);
-        ESP_LOGI("LED", "written leds");
         vTaskDelay(animation.animationParams.blink.duration);
         ledsOff();
-        ESP_LOGI("LED", "LEDS OFF");
         vTaskDelay(animation.animationParams.blink.duration);
-        ESP_LOGI("LED", "Blink %d/%d", i + 1, animation.animationParams.blink.repetitions);
     }
-    ESP_LOGI("LED", "Blink Task Ended");
     setCurrentAnimation(OFF);
     animationTaskHandle = NULL;
     vTaskDelete(NULL);
@@ -395,8 +374,6 @@ void LedHandler::runSyncAsyncBlink() {
     int pause = animation.animationParams.syncAsyncBlink.pause;
     uint8_t baseFraction = animation.animationParams.syncAsyncBlink.fraction;
 
-    ESP_LOGI("LED", "Sync Async Blink. Hue: %d, Saturation: %d, Brightness: %d, Repetitions: %d, Animation Reps: %d, Spread Time: %d, Blink Duration: %d, Pause: %d, Fraction: %d", 
-        (int)hue, (int)saturation, (int)value, repetitions, animationReps, spreadTime, blinkDuration, pause, baseFraction); 
     if (baseFraction < 1) baseFraction = 1; // Prevent division/modulo by zero
     unsigned long long masterStartTime = animation.animationParams.syncAsyncBlink.startTime;
     setMicrosUntilStart(masterStartTime);
@@ -404,7 +381,6 @@ void LedHandler::runSyncAsyncBlink() {
     // Calculate fraction based on lamp position and modulo of baseFraction
     int lampPosition = getCurrentPosition();
     uint8_t fraction = (lampPosition % baseFraction) + 1; // Ensure nonzero fraction
-    ESP_LOGI("LED", "Lamp position: %d, Base Fraction: %d, Calculated Fraction: %d", lampPosition, baseFraction, fraction);
     if (getMicrosUntilStart() > 0) {
         TickType_t ticksUntilStart = microsToTicks((unsigned long long)microsUntilStart);
         TickType_t currentTicks = xTaskGetTickCount();
@@ -428,7 +404,6 @@ void LedHandler::runSyncAsyncBlink() {
     for (int i = 0; i < animationReps; i++) {
         for (int j = 0; j < repetitions; j++) {
 
-            ESP_LOGI("LED" , "Sync Async Blink Animation Rep %d, Blink %d/%d", i + 1, j + 1, repetitions);
             // Subsequent repetitions: wave effect
             if (j == 0) {
                 float brightness = value;
@@ -469,8 +444,6 @@ unsigned long long LedHandler::calculateSyncAsyncBlink(message_animation& animat
     uint8_t fraction = baseFraction; // Use the base fraction for overall runtime
     unsigned long long totalTime = 0;
     int divisor = repetitions / 2;
-    ESP_LOGI("LED", "Calculating sync async blink time. Repetitions: %d, Animation Reps: %d, Spread Time: %d, Blink Duration: %d, Pause: %d, Fraction: %d", 
-        repetitions, animationReps, spreadTime, blinkDuration, pause, fraction);    
     if (repetitions < 2) repetitions = 2;
     if (divisor < 1) divisor = 1;
     if (animationReps < 1) return 0;
@@ -492,10 +465,8 @@ unsigned long long LedHandler::calculateSyncAsyncBlink(message_animation& animat
     // Add initial delay from runSyncAsyncBlink (vTaskDelay(1000);)
     totalTime = totalTime * 1000 + 1000000ULL;
     if (totalTime > 600000000) { 
-        ESP_LOGI("LED", "Calculated sync async blink time too long: %llu us, capping to 10min", totalTime);
         totalTime = 600000000;
     }
-    ESP_LOGI("LED", "Calculated sync async blink time: %llu us that is %llu s %llu min %llu h", totalTime, totalTime / 1000000ULL, (totalTime / 1000000ULL % 3600) / 60, (totalTime / 1000000ULL % 3600) % 60);
     return totalTime;
 }
 
@@ -706,7 +677,6 @@ void LedHandler::pushToAnimationQueue(message_animation& animation)
 }
 
 void placeholder(int octave, int octaveDistance, float distanceFactor, float currentBrightness, float midiDecayFactor, float note) {
-    ESP_LOGI("PLACEHOLDER", "octave: %d, octaveDistance: %d, distanceFactor: %.2f, currentBrightness: %.2f, midiDecayFactor: %.2f, note: %.2f", octave, octaveDistance, distanceFactor, currentBrightness, midiDecayFactor, note);
     return;
 }
 
@@ -780,11 +750,6 @@ void LedHandler::runMidi()
         // Evaluate MIC table
         /*for (int i = 0; i < OCTAVESONKEYBOARD; i++) {
             if (localMicNoteTableArray[i].velocity == 0) continue;
-            ESP_LOGI("LED", "Evaluating MIC Note: %d, Velocity: %d, Start Time: %llu", 
-                localMicNoteTableArray[i].note, 
-                localMicNoteTableArray[i].velocity, 
-                localMicNoteTableArray[i].startTime);
-            ESP_LOGI("LED", "Index: %d", i);
 
             float micDecayFactor = calculateMidiDecay(localMicNoteTableArray[i].startTime, localMicNoteTableArray[i].velocity, localMicNoteTableArray[i].note);
             if (micDecayFactor == 0.0) continue;
@@ -932,13 +897,11 @@ void LedHandler::resetLedTask() {
     // Set current animation to OFF
     setCurrentAnimation(OFF);
     startLedTask();
-    ESP_LOGI("LED", "LED task and state reset");
 }
 
 void LedHandler::candleLight(unsigned long long duration, float hue, float saturation, float value) {
     // Clamp hue and saturation for colorful candle effect
        // Ensure deeper, vivid color
-    ESP_LOGI("LED", "Candle light for %llu", duration);
     unsigned long long fadeTime = duration * 0.35;
     unsigned long long steadyTime = duration - 2 * fadeTime;
     int steps = 24; // Fewer steps for smoother fade

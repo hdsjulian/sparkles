@@ -166,9 +166,7 @@ public:
     void sendAnimation(message_animation animationMessage, int addressId);
     //helpers
 
-    void printAllPeers();
     void printAllAddresses();
-    void printAddress(const uint8_t * mac_addr);
     String stringAddress(const uint8_t * mac_addr, bool debug);
     void stringAllAddresses();
     void removePeer(uint8_t * address); 

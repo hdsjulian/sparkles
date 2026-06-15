@@ -21,7 +21,6 @@ void MessageHandler::handleReceive() {
                     /*
                     batteryLow.messageType = MSG_STATUS;
                     batteryLow.payload.status.batteryPercentage = getBatteryPercentage();
-                    ESP_LOGI("MSG", "Battery percentage: %f", batteryLow.payload.status.batteryPercentage);
                     memcpy(batteryLow.targetAddress, hostAddress, 6);
                     xQueueSend(sendQueue, &batteryLow, portMAX_DELAY);
                     */
@@ -29,7 +28,6 @@ void MessageHandler::handleReceive() {
                 }
                 else {
                     message_animation animation = (message_animation)incomingData.payload.animation;
-                    ESP_LOGI("MSG", "Received Animation type %d", animation.animationType);
 
                     if (animation.animationType == BATTERY_BLINK) {
                         float pct = constrain(getBatteryPercentage(), 0.0f, 100.0f);
@@ -49,7 +47,6 @@ void MessageHandler::handleReceive() {
                 handleSystemStatus(incomingData);
             }
             else if (incomingData.messageType == MSG_WAIT_FOR_INSTRUCTIONS) {
-                ESP_LOGI("MSG", "Do nothing");
             }
             else if (incomingData.messageType == MSG_SLEEP_WAKEUP) {
                 handleSleepWakeup(incomingData);
@@ -89,7 +86,6 @@ void MessageHandler::handleReceive() {
                     ESP_LOGI("MSG", "Admin present, not going to sleep");
                 }
                 if (commandMessage.commandType == CMD_MESSAGE) {
-                    ESP_LOGI("MSG", "Received message command");
                 }
                 if (commandMessage.commandType == CMD_RESET_SYSTEM) {
                     ESP_LOGI("MSG", "Received reset system command");
@@ -156,7 +152,6 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_CLAP) {
                 message_clap clapMessage = incomingData.payload.clap;
-                ESP_LOGI("MSG", "Received clap message");
                 setHasClapHappened(true);
                 
             }
@@ -169,14 +164,12 @@ void MessageHandler::handleReceive() {
                     ESP_LOGI("MSG", "Setting distance from center to: %f", configData.distance);
                 }
                 else {
-                    ESP_LOGI("MSG", "Received config data with no distance, not setting distance from center");
                 }
                 if (configData.xPos != 0.0 || configData.yPos != 0.0) {
                     ledInstance->setLocation(configData.xPos, configData.yPos);
                     ESP_LOGI("MSG", "Setting position to: (%f, %f)", configData.xPos, configData.yPos);
                 }
                 else {
-                    ESP_LOGI("MSG", "Received config data with no position, not setting position");
                 }
             }
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
@@ -226,10 +219,8 @@ void MessageHandler::handleTimer(message_data incomingData) {
     }
     if (timerMessage.addressId >=0) {
         ledInstance->setCurrentPosition(timerMessage.addressId);
-            ESP_LOGI("MSG", "Board position: %d", timerMessage.addressId);
 
     }
-    ESP_LOGI("LED", "Current position set to: %d", ledInstance->getCurrentPosition());
 
     // Each packet carries the measured TX latency of the previous one (paired by
     // counter), so queueing/backoff and retransmission delays cancel out per sample.
@@ -319,26 +310,20 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
     esp_light_sleep_start();
     Serial.begin(115200);
     vTaskDelay(200 / portTICK_PERIOD_MS);
-    ESP_LOGI("MSG", "Woke up");
     turnWifiOn();
     ledInstance->resetLedTask();
     ledInstance->blink(esp_timer_get_time(), 150, 2, 160, 255, 127);
-    ESP_LOGI("MSG", "Woke up from sleep, current time: %llu", micros());
     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    ESP_LOGI("MSG", "Should be back up");
 }
 
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     if (status == ESP_NOW_SEND_SUCCESS) {
         if (memcmp(mac_addr, broadcastAddress, 6) == 0) {
-            ESP_LOGI("MSG", "Broadcast message sent");
         }
         else {
-            ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
         }
     }
     else {
-        ESP_LOGI("MSG", "Send failed");
     }
 }
 
@@ -392,7 +377,6 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
 
     }
     else if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() <= BATTERY_LOW_THRESHOLD) {
-        ESP_LOGI("RECV", "Threshold too low %f of %f", instance.getBatteryPercentage(), BATTERY_LOW_THRESHOLD);
     }
 
     instance.pushToRecvQueue(mac, (const uint8_t*)&localData, len);
@@ -526,7 +510,6 @@ void MessageHandler::turnWifiOn() {
     esp_now_register_send_cb(onDataSent);
     esp_now_register_recv_cb(onDataRecv);
     addPeer(const_cast<uint8_t*>(broadcastAddress));
-    Serial.println("should initialize");
 }
 
  void MessageHandler::toggleWiFiTask() {

@@ -119,7 +119,6 @@ void MessageHandler::runFastResyncAll() {
 
 void MessageHandler::startFastResyncTask() {
     if (fastResyncHandle != NULL) {
-        ESP_LOGI("TIMER", "Fast resync already running");
         return;
     }
     if (animationLoopHandle != NULL) {
@@ -190,7 +189,6 @@ void MessageHandler::runClapSyncWrapper(void *pvParameters) {
 void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
     messageHandlerInstance->setAddressListInactive();
-    ESP_LOGI("TIMER", "Starting all timer sync");
     int numAdresses = 0;
     for (int j = 0; j < 3; j++) {
         numAdresses = 0;
@@ -203,13 +201,11 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
             }
             activeStatus status = messageHandlerInstance->getActiveStatus(i);
             if (status == INACTIVE) {
-                ESP_LOGI("TIMER", "Syncing index %d", i);
                 messageHandlerInstance->setCurrentTimerIndex(i);
                 messageHandlerInstance->setTimerReset(true);
                 messageHandlerInstance->runTimerSync();
             }
         }
-        ESP_LOGI("TIMER", "All timer sync iteration %d done, %d devices", j, numAdresses);
     }
     if (numAdresses > 0) {
         ESP_LOGI("TIMER", "RUNNING ANIMATION LOOP TASK FROM ALL TIMER SYNC");
@@ -230,11 +226,9 @@ void MessageHandler::runClapSync() {
     int delayAverage = 0;
     addPeer(clapDeviceAddress);
     for (int i = 0; i < 11; i++) {
-        ESP_LOGI("CLAP", "Clap sync iteration %d", i);
         if (i > 0) {
             delayAverage += getLastDelay();
         }
-        ESP_LOGI("CLAP", "Last delay: %d", getLastDelay());
         lastWakeTime = xTaskGetTickCount();
          setLastSendTime(esp_timer_get_time());
         esp_now_send(clapDeviceAddress, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
@@ -296,7 +290,6 @@ void MessageHandler::runTimerSyncAt(int index) {
     messageData.messageType = MSG_TIMER;
 
     addPeer(addressList[index].address);
-    ESP_LOGI("TIMER", "Fast resync index %d start", index);
 
     int txSlot = acquireTxSlot(addressList[index].address);
     TickType_t lastWakeTime = xTaskGetTickCount();
@@ -317,7 +310,6 @@ void MessageHandler::runTimerSyncAt(int index) {
     removePeer(addressList[index].address);
     addressList[index].active = ACTIVE;
     addressList[index].lastUpdateTime = millis();
-    ESP_LOGI("TIMER", "Fast resync index %d done", index);
 }
 
 void MessageHandler::runTimerSync() {
@@ -332,11 +324,9 @@ void MessageHandler::runTimerSync() {
 
     if (timerIndex > -1) {
         addPeer(addressList[timerIndex].address);
-        ESP_LOGI("TIMER", "Starting timer sync for index %d with address %02x:%02x:%02x:%02x:%02x:%02x", timerIndex, addressList[timerIndex].address[0], addressList[timerIndex].address[1], addressList[timerIndex].address[2], addressList[timerIndex].address[3], addressList[timerIndex].address[4], addressList[timerIndex].address[5]);
         //setCommand(messageData, addressList[timerIndex].address);
     }
     else {
-        ESP_LOGI("TIMER", "Timer Sync: Addres is -1");
     }
     unsigned long long lastTick = 0;
     int txSlot = acquireTxSlot(timerIndex > -1 ? addressList[timerIndex].address : broadcastAddress);
@@ -356,7 +346,6 @@ void MessageHandler::runTimerSync() {
         else if (timerIndex > -1) {
             esp_now_send(addressList[timerIndex].address, (uint8_t *) &messageData, ESPNOW_CLIENT_COMPAT_SIZE);
             if (!esp_now_is_peer_exist(addressList[timerIndex].address)) {
-                ESP_LOGI("ESP-NOW", "Peer does not exist");
             }
         }
 
@@ -374,9 +363,7 @@ void MessageHandler::runTimerSync() {
     }
     releaseTxSlot(txSlot);
     if (getSettingTimer() == false)   {
-        ESP_LOGI("TIMER", "Timer sync finished for index %d with address %02x:%02x:%02x:%02x:%02x:%02x", timerIndex, addressList[timerIndex].address[0], addressList[timerIndex].address[1], addressList[timerIndex].address[2], addressList[timerIndex].address[3], addressList[timerIndex].address[4], addressList[timerIndex].address[5]);
         if (!esp_now_is_peer_exist(addressList[timerIndex].address)) {
-            ESP_LOGI("ESP-NOW", "Peer does not exist, can't delete");
         }
         removePeer(addressList[timerIndex].address);
         if (addressList[timerIndex].active == INACTIVE) {

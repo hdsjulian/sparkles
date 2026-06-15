@@ -3,43 +3,6 @@
 #include "esp_now.h"
 #include "WiFi.h"
 
-void MessageHandler::printAllPeers() {
-       // Get the peer list
-    esp_now_peer_info_t peerList;
-    for (int i = 0;i<2;i++) {
-        if (i == 0) {
-            esp_now_fetch_peer(true, &peerList);
-        }
-        else {
-            esp_now_fetch_peer(true, &peerList);
-        }
-        Serial.print("Peer ");
-        Serial.print(": MAC Address=");
-        for (int j = 0; j < 6; ++j) {
-            Serial.print(peerList.peer_addr[j], HEX);
-            if (j < 5) {
-                Serial.print(":");
-            }
-        }
-        Serial.print(", Channel=");
-        Serial.print(peerList.channel);
-        Serial.println();
-
-    }
-      
-}
-
-void MessageHandler::printAddress(const uint8_t * mac_addr){
-    if (memcmp(mac_addr, hostAddress, 6) == 0) {
-        Serial.println("HOST ADDRESS");
-        return;
-    }
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-            mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-    Serial.println(macStr);
-}
-
 String MessageHandler::stringAddress(const uint8_t * mac_addr, bool debug){
     String macStr;
     if (memcmp(mac_addr, hostAddress, 6) == 0) {
@@ -94,11 +57,9 @@ int MessageHandler::addPeer(uint8_t * address) {
 
 void MessageHandler::removePeer(uint8_t address[6]) {
     if (!esp_now_is_peer_exist(address)) {
-        ESP_LOGI("peer", "peer does not exist");
         return;
     }
     if (esp_now_del_peer(address) != ESP_OK) {
-        ESP_LOGI("peer", "coudln't delete peer");
     }
     return;
 }
@@ -135,7 +96,6 @@ bool MessageHandler::readStructsFromFile(client_address* data, int count, const 
         return false;
     }
     else {
-        ESP_LOGI("FS", "File size is large enough");
     }
     for (int i = 0; i < count; i++) {
         size_t bytesRead = file.read((uint8_t*)&data[i], sizeof(client_address));
@@ -155,7 +115,6 @@ bool MessageHandler::readStructsFromFile(client_address* data, int count, const 
 
 void MessageHandler::writeStructsToFile(client_address* data, int count, const char* filename) {
     if (!LittleFS.exists(filename)) {
-        ESP_LOGE("FS", "File does not exist");
     }
     File file = LittleFS.open(filename, "w");
     if (!file) {
@@ -207,7 +166,6 @@ float MessageHandler::getBatteryPercentage() {
 
 void MessageHandler::handleSystemStatus(message_data incomingData) {
     message_system_status systemStatus = incomingData.payload.systemStatus;
-    ESP_LOGI("System Status", "Number of devices: %d", systemStatus.numDevices);
     setNumDevices(systemStatus.numDevices);
 }
 

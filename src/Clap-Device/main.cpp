@@ -91,7 +91,6 @@ static void handleTimer(const message_data &msg) {
 }
 
 static void clapTask(void *pvParameters) {
-    ESP_LOGI("CLAP", "Clap2 task started");
     // Simulate clap detection
     if (!isInterruptAttached) {
         attachInterrupt(digitalPinToInterrupt(CLAP_PIN), handleButtonPress, RISING);
@@ -128,7 +127,6 @@ static void handleReceive(void *pvParameters) {
     while (true) {
         if (xQueueReceive(receiveQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             //BETA
-            ESP_LOGI("MSG", "Received from queue %d", incomingData.messageType);
             if (incomingData.messageType == MSG_TIMER) {
                 startUp = false;
                 handleTimer(incomingData);
@@ -141,15 +139,12 @@ static void handleReceive(void *pvParameters) {
                     case CMD_START_DISTANCE_CALIBRATION:
                     case CMD_CONTINUE_CALIBRATION:
                     case CMD_CONTINUE_DISTANCE_CALIBRATION:
-                    ESP_LOGI("MSG", "Starting calibration");
                         xTaskCreatePinnedToCore(clapTask, "clapTask", 10000, NULL, 10, &clapTaskHandle, 1);
                         break;
                     case CMD_MESSAGE:
-                        ESP_LOGI("MSG", "Received message command");
                         break;
                     case CMD_CANCEL_CALIBRATION:
                     case CMD_END_CALIBRATION:
-                        ESP_LOGI("MSG", "Cancel calibration command received");
                         if (isInterruptAttached) {
                             detachInterrupt(digitalPinToInterrupt(CLAP_PIN));
                             isInterruptAttached = false;
@@ -176,12 +171,10 @@ static void handleSend(void *pvParameters) {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
             switch (messageData.messageType) {
                 case MSG_COMMAND:
-                    ESP_LOGI("MSG", "Sending command message");
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 case MSG_ADDRESS:
                 case MSG_SOUND_DEVICE:
-                    ESP_LOGI("MSG", "Sending address message");
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                     
@@ -226,7 +219,6 @@ void pushToRecvQueue(const esp_now_recv_info *mac, const uint8_t *incomingData, 
 
 
 void pushToSendQueue(message_data& msg) {
-    ESP_LOGI("MSG", "Pushing to send queue");
     if (xQueueSend(sendQueue, &msg, portMAX_DELAY) != pdTRUE) {
         ESP_LOGE("MSG", "Failed to send data to send queue");
 
@@ -235,7 +227,6 @@ void pushToSendQueue(message_data& msg) {
 
 
 void OnDataRecv(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
-ESP_LOGI("Received", "Data at %d", micros());
     pushToRecvQueue(mac, incomingData, len);
 }
 
@@ -288,7 +279,6 @@ void setup()
   if (xtalCal != 0) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); ESP_LOGI("XTAL", "32kHz xtal OK (cal=%u)", xtalCal); }
   else { rtc_clk_32k_enable(false); ESP_LOGW("XTAL", "32kHz xtal failed, using internal RC"); }
   WiFi.mode(WIFI_STA);
-  ESP_LOGI("", "Setup1");
   if (esp_now_init() != ESP_OK)
   {
     Serial.println("Error initializing ESP-NOW");
@@ -324,10 +314,7 @@ void loop()
     uint8_t address[6];
     WiFi.macAddress(address);
     
-    ESP_LOGI("", "My Address %02x:%02x:%02x:%02x:%02x:%02x", address[0], address[1], address[2], address[3], address[4], address[5]);
     unsigned long long currentTime = micros();
-    ESP_LOGI("", "Current Time %llu", currentTime);
-    ESP_LOGI("", "Current Time %llu", micros());
 
   }
   // put your main code here, to run repeatedly:

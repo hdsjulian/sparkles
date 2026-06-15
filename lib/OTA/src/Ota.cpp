@@ -22,7 +22,6 @@ void OTAHandler::connectToWiFi() {
     int retryCount = 0;
     while (WiFi.status() != WL_CONNECTED && retryCount < 20) {
         delay(500);
-        ESP_LOGI("OTA", "Attempting to connect to WiFi... (%d)", retryCount + 1);
         retryCount++;
     }
     if (WiFi.status() == WL_CONNECTED) {

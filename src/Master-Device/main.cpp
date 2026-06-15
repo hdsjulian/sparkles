@@ -21,7 +21,6 @@ MessageHandler& getMessageHandlerInstance() { return msgHandler; }
 bool lfs_started = true;
 
 void OnDataRecv(const esp_now_recv_info *mac, const uint8_t *incomingData, int len) {
-    ESP_LOGI("Received", "Data at %d", micros());
 }
 
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {
@@ -399,7 +398,6 @@ static void handleSerialCommand(const String& line) {
     } else if (strcmp(cmd, "sustain_pedal") == 0) {
         // sustain pedal: value >= 64 = down, < 64 = up
         // extend animation decay when pedal is held — placeholder for future effect
-        ESP_LOGI("MSG", "Sustain pedal: %d", doc["value"] | 0);
 
     } else if (strcmp(cmd, "test_sleep_cycle") == 0) {
         struct SleepTestParams { int sleepDurationS; int phaseDurationS; };
@@ -587,9 +585,6 @@ void loop()
 
         uint8_t address[6];
         WiFi.macAddress(address);
-        ESP_LOGI("TICK", "Tick v2 %s", msgHandler.stringAddress(address, true).c_str());
-        ESP_LOGI("TICK", "Ticks until end: %llu", (unsigned long long)ledInstance.getNextAnimationTicks());
-        ESP_LOGI("", "Battery: %.2f%%", msgHandler.getBatteryPercentage());
 
         // Send animate status to Pi so it stays in sync
         {

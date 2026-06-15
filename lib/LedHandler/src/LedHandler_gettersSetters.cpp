@@ -1,6 +1,5 @@
 #include <LedHandler.h>
 void LedHandler::setTimerOffset(long long newOffset) {
-    ESP_LOGI("LED", "Setting LED Timer Offset %lld", newOffset);
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         timerOffset = newOffset;
         xSemaphoreGive(configMutex);
@@ -25,7 +24,6 @@ animationEnum LedHandler::getCurrentAnimation() {
         xSemaphoreGive(configMutex);
     }
     else {
-        ESP_LOGI("LED", "Failed to get current animation");
     }
     return animation;
 }
@@ -43,7 +41,6 @@ int LedHandler::getCurrentPosition() {
         return currentPosition;
     }
     else {
-        ESP_LOGI("LED", "Failed to get current position");
         return -1;
     }
 }
@@ -65,7 +62,6 @@ float LedHandler::getDistanceFromCenter() {
 void LedHandler::setDistanceFromCenter(float distance) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         distanceFromCenter = distance;
-        ESP_LOGI("LED", "Setting distance from center: %f", distanceFromCenter);
         xSemaphoreGive(configMutex);
     }
 }
@@ -152,7 +148,6 @@ void LedHandler::setMicrosUntilStart(unsigned long long masterStartTime) {
 unsigned long long LedHandler::calculateMicrosUntilStart(unsigned long long masterStartTime) {
     unsigned long long clientNow = esp_timer_get_time();
     long long microsUntilStartCalc;
-    ESP_LOGI("LED", "Calculating micros until start. Master start time: %llu, client now: %llu, timer offset: %lld", masterStartTime, clientNow, timerOffset);
     if (timerOffset < 0) {
         microsUntilStartCalc = masterStartTime - ((long long)clientNow - timerOffset);
     }
@@ -177,7 +172,6 @@ long long LedHandler::getMicrosUntilStart() {
 void LedHandler::setNumDevices(int num) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         numDevices = num;
-        ESP_LOGI("LED", "Setting number of devices: %d", numDevices);
         xSemaphoreGive(configMutex);
     }
 }
@@ -217,7 +211,6 @@ bool LedHandler::getBackgroundShimmerFadeout() {
 void LedHandler::setBackgroundShimmerFadeout(bool fadeout) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         backgroundShimmerFadeout = fadeout;
-        ESP_LOGI("LED", "Setting background shimmer fadeout to %s", fadeout ? "true" : "false");
         xSemaphoreGive(configMutex);        
     }
 }
@@ -225,7 +218,6 @@ void LedHandler::setBackgroundShimmerFadeout(bool fadeout) {
 void LedHandler::setMaxDistanceFromCenter(int distance) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         maxDistanceFromCenter = distance;
-        ESP_LOGI("LED", "Setting max distance from center: %d", maxDistanceFromCenter);
         xSemaphoreGive(configMutex);
     }
 }
@@ -250,7 +242,6 @@ bool LedHandler::getUseDistanceSwitch() {
 void LedHandler::setUseDistanceSwitch(bool use) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         useDistanceSwitch = use;
-        ESP_LOGI("LED", "Setting use distance switch: %s", use ? "true" : "false");
         xSemaphoreGive(configMutex);
     }
 }
@@ -267,7 +258,6 @@ int LedHandler::getDistanceMode() {
 void LedHandler::setDistanceMode(int mode) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         distanceMode = mode;
-        ESP_LOGI("LED", "Distance mode: %s", mode == 1 ? "delay" : "brightness");
         xSemaphoreGive(configMutex);
     }
 }   

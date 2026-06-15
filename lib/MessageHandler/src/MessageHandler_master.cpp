@@ -38,7 +38,6 @@ void MessageHandler::turnWifiOn() {
     esp_now_register_recv_cb(onDataRecv);
     addPeer(const_cast<uint8_t*>(hostAddress));
     addPeer(const_cast<uint8_t*>(broadcastAddress));
-    Serial.println("should initialize");
 }
 
 
@@ -63,10 +62,8 @@ void MessageHandler::handleAddressStruct() {
 
 void MessageHandler::handleReceive() {
     message_data incomingData;
-    ESP_LOGI("MSG", "handleReceive task started");
     while (true) {
         if (xQueueReceive(receiveQueue, &incomingData, pdMS_TO_TICKS(5000)) == pdTRUE) {
-            ESP_LOGI("MSG", "Received from queue %d", incomingData.messageType);
             // Set lastMidiTime if animation message of type MIDI is received
             
             
@@ -81,7 +78,6 @@ void MessageHandler::handleReceive() {
                     pendingBroadcastCommand = 0;
                 }
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
-                    ESP_LOGI("MSG", "Received address from clap device, ignoring");
                     if (clapSyncHandle != NULL) {
                         vTaskDelete(clapSyncHandle);
                         clapSyncHandle = NULL;
@@ -96,18 +92,15 @@ void MessageHandler::handleReceive() {
                 //ESP_LOGI("MSG", "Midi velocity: %d", animation->animationParams.midi.velocity);
                 if (incomingData.payload.address.version != version) {
                     ESP_LOGI("MSG", "Received address with lower version, ignoring. Version: %d, Current Version: %d", incomingData.payload.address.version, version);
-                    ESP_LOGI("MSG", "Address: %02x:%02x:%02x:%02x:%02x:%02x", incomingData.senderAddress[0], incomingData.senderAddress[1], incomingData.senderAddress[2], incomingData.senderAddress[3], incomingData.senderAddress[4], incomingData.senderAddress[5]);
                     ESP_LOGI("MSG", "This version is %s vs other version is %s", version.toString().c_str(), incomingData.payload.address.version.toString().c_str());
                     message_data updateVersionMessage = createUpdateVersionMessage(version);
                     memcpy(updateVersionMessage.targetAddress, incomingData.payload.address.address, 6);
-                    ESP_LOGI("MSG", "Sending update version message to %02x:%02x:%02x:%02x:%02x:%02x", incomingData.payload.address.address[0], incomingData.payload.address.address[1], incomingData.payload.address.address[2], incomingData.payload.address.address[3], incomingData.payload.address.address[4], incomingData.payload.address.address[5]);
                     xQueueSend(sendQueue, &updateVersionMessage, portMAX_DELAY);
                     continue;
                 }
                 else if (!isOTAUpdating) {
                     // If timerSyncHandle is running, ignore this message
                     if (timerSyncHandle != NULL && eTaskGetState(timerSyncHandle) != eDeleted) {
-                        ESP_LOGI("MSG", "Timer sync task already running, ignoring address message.");
                         continue;
                     }
                     // Stop animation loop during sync so it doesn't interfere with lastDelay timing
@@ -139,7 +132,6 @@ void MessageHandler::handleReceive() {
                 startClapSyncTask();
             }
             else if (incomingData.messageType == MSG_GOT_TIMER) {
-                ESP_LOGI("MSG", "Received got timer message");
                 // Chirp device sends MSG_GOT_TIMER but is not in addressList, remove peer and stop timer, skip addressList writes.
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
                     ESP_LOGI("MSG", "Got timer from chirp device, delay avg %d", incomingData.payload.gotTimer.delayAverage);
@@ -169,7 +161,6 @@ void MessageHandler::handleReceive() {
                         addressList[i].batteryPercentage = incomingData.payload.status.batteryPercentage;
                         addressList[i].lastUpdateTime = millis();
                         
-                        ESP_LOGI("MSG", "Updating address %d", i);
                         serialEmitBoard(i, addressList[i]);
                         break;
                     }
@@ -191,9 +182,6 @@ void MessageHandler::handleReceive() {
             // #BATSAVE
             /*
             else if (incomingData.messageType == MSG_ASK_COMMAND) {
-                ESP_LOGI("MSG", "Received ask command message");
-                ESP_LOGI("MSG", "Battery Percentage %.2f",incomingData.payload.askCommand.batteryPercentage );
-                ESP_LOGI("MSG", "Perceived Time %llu", incomingData.payload.askCommand.perceivedTime);
                 retrieveCommand(incomingData.senderAddress);
             }*/
 
@@ -215,20 +203,13 @@ void MessageHandler::handleReceive() {
                         doc["clapTime"] = (unsigned long long)incomingData.payload.clap.clapTime;
                         String out; serializeJson(doc, out); Serial.println(out);
                     }
-                    ESP_LOGI("CLAP", "Clap time %llu", getLastClapTime());
 
                 }
                 else {
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
-                            ESP_LOGI("CLAP", "Received clap from address %d", i);
-                            ESP_LOGI("CLAP", "Clap time %llu", incomingData.payload.clap.clapTime);
-                            ESP_LOGI("CLAP", "Locally measured clap time %llu", incomingData.msgReceiveTime
-                                +addressList[i].delay/2);
                             addressList[i].distances[clapIndex] = convertMicrosToMeters(incomingData.payload.clap.clapTime-getLastClapTime());
-                            ESP_LOGI("CLAP", "Distance: %.2f", addressList[i].distances[clapIndex]);
                             float distance = convertMicrosToMeters((incomingData.msgReceiveTime - addressList[i].delay / 2)-getLastClapTime());
-                            ESP_LOGI("CLAP", "Distance2: %.2f", addressList[i].distances[clapIndex]);
                             {
                                 JsonDocument doc;
                                 doc["event"]        = "client_clap";
@@ -241,7 +222,6 @@ void MessageHandler::handleReceive() {
                             break;
                         }
                     }
-                    ESP_LOGI("CLAP", "Received clap from unknown address");
                 }
                 
             }
@@ -252,7 +232,6 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_COMMAND && incomingData.payload.command.commandType == CMD_ASK_ADMIN_PRESENT) {
 
                 if (getAdminPresent() + 60000 > millis()) {
-                    ESP_LOGI("MSG", "Received ask admin present message");
                     message_data commandMessage = createCommandMessage(CMD_SET_ADMIN_PRESENT);
                     memcpy(commandMessage.targetAddress, incomingData.senderAddress, 6);
                     pushToSendQueue(commandMessage);
@@ -261,7 +240,6 @@ void MessageHandler::handleReceive() {
                     message_data commandMessage = createCommandMessage(CMD_SET_ADMIN_NOT_PRESENT);
                     memcpy(commandMessage.targetAddress, incomingData.senderAddress, 6);
                     pushToSendQueue(commandMessage);
-                    ESP_LOGI("MSG", "Admin hasn't been present for a while");
                 }
 
              }
@@ -294,7 +272,6 @@ void MessageHandler::handleSend() {
     while(true) {
         if (xQueueReceive(sendQueue, &messageData, portMAX_DELAY) == pdTRUE) {
             if (memcmp(messageData.targetAddress, broadcastAddress, 6) != 0) {
-                ESP_LOGI("MSG", "Adding Peer %02x:%02x:%02x:%02x:%02x:%02x", messageData.targetAddress[0], messageData.targetAddress[1], messageData.targetAddress[2], messageData.targetAddress[3], messageData.targetAddress[4], messageData.targetAddress[5]);
                 addPeer(messageData.targetAddress);
             }
             WiFi.macAddress(messageData.senderAddress);
@@ -324,12 +301,10 @@ void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t s
                 instance.setLastDelay(esp_timer_get_time() - instance.getLastSendTime());   
             }
             else {
-                ESP_LOGI("MSG", "Message sent to %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
             }
         }
         else if (instance.getSettingClapSync() == true) {
             int lastDelay = esp_timer_get_time() - instance.getLastSendTime();
-            ESP_LOGI("CLAP", "Last delay: %d", lastDelay);
             instance.setLastDelay(lastDelay);
         }
         else if (instance.getRequestingOTAUpdate() == true) {
@@ -399,7 +374,6 @@ void MessageHandler::tickInactiveTimeout() {
 void MessageHandler::sendSystemStatus() {
     message_system_status systemStatus;
     systemStatus.numDevices = getNumDevices();
-    ESP_LOGI("MSG", "Sending system status message with %d devices", systemStatus.numDevices);
     message_data message;
     message.messageType = MSG_SYSTEM_STATUS;
     memcpy(&message.payload, &systemStatus, sizeof(systemStatus));
@@ -470,13 +444,11 @@ void MessageHandler::calculatePositionsTaskWrapper(void *pvParameters) {
     messageHandlerInstance->runCalculatePositionsTask();
 }
 void MessageHandler::runCalculatePositionsTask() {
-    ESP_LOGI("MSG", "Running calculate positions task");
     while (true) {
         for (int i = 0; i < NUM_DEVICES; i++) {
             if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
                 continue;
             }
-            ESP_LOGI("MSG", "Calculating position for device %d", i);
 
             // Prepare matrices for least squares
             int validClaps = 0;
@@ -606,7 +578,6 @@ void MessageHandler::endDistanceCalibration() {
 }
 
 void MessageHandler::calculateDistances() {
-    ESP_LOGI("MSG", "Calculating distances");
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
             continue;
@@ -708,7 +679,6 @@ void MessageHandler::cancelCalibration() {
     }
 }
 void MessageHandler::continueCalibration(float xPos, float yPos) {
-    ESP_LOGI("MSG", "Continuing calibration");
     setClap(xPos, yPos);
     clapIndex++;
     message_data continueMessage = createCommandMessage(CMD_CONTINUE_CALIBRATION, true);
@@ -716,13 +686,11 @@ void MessageHandler::continueCalibration(float xPos, float yPos) {
 }
 
 void MessageHandler::continueDistanceCalibration() {
-    ESP_LOGI("MSG", "Continuing distance calibration");
     setClap(0, 0); // Set clap position to 0,0 for distance calibration
     clapIndex++;
     startDistanceCalibrationCommandTask(CMD_CONTINUE_DISTANCE_CALIBRATION);
 }
 void MessageHandler::commandCalibrate(int boardId) {
-    ESP_LOGI("MSG", "Sending calibration command to board ID: %d", boardId);
     message_data commandMessage = createCommandMessage(CMD_START_CALIBRATION, false);
     memcpy(commandMessage.targetAddress, addressList[boardId].address, sizeof(addressList[boardId].address));
     pushToSendQueue(commandMessage);
@@ -738,23 +706,18 @@ void MessageHandler::runAnimationLoopWrapper(void *pvParameters) {
 }
 
 void MessageHandler::runAnimationLoop() {
-    ESP_LOGI("MSG", "Running animation loop task");
     ledInstance->resetMicrosUntilEnd();
     while (true) {
         TickType_t ticksUntilStart = ledInstance->getNextAnimationTicks();
-        ESP_LOGI("MSG", "Ticks until next animation start: %d", ticksUntilStart);
         if (ticksUntilStart > 0 ) {
-            ESP_LOGI("MSG", "Waiting for next animation to start, ticks until start: %d", ticksUntilStart);
             TickType_t currentTicks = xTaskGetTickCount();
             vTaskDelayUntil(&currentTicks, ticksUntilStart);
         }   else {
-            ESP_LOGI("MSG", "No animation to run, waiting for next tick");
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
         message_animation newAnimation;
         newAnimation = ledInstance->createSyncAsyncBlinkRandom();
         newAnimation.animationParams.syncAsyncBlink.startTime = esp_timer_get_time() + 1000000;
-        ESP_LOGI("MSG", "Starting animation loop with start time %lu", newAnimation.animationParams.syncAsyncBlink.startTime);
         sendAnimation(newAnimation, -1);
 
     }
@@ -764,7 +727,6 @@ void MessageHandler::runAnimationLoop() {
 void MessageHandler::stopAllAnimations() {
     if (animationLoopHandle != NULL) {
         vTaskDelete(animationLoopHandle);
-        ESP_LOGI("MSG", "Deleted animation loop task");
         animationLoopHandle = NULL;
     }
     ESP_LOGI("MSG", "Stopping all animations");
@@ -786,16 +748,13 @@ void MessageHandler::runDarkroomTaskWrapper(void *pvParameters) {
     messageHandlerInstance->runDarkroomTask();
 }
 void MessageHandler::runDarkroomTask() {
-    ESP_LOGI("MSG", "Running darkroom task");
     while (true) {
         message_animation darkroomStrobe = ledInstance->createFlash(esp_timer_get_time() + 100000, 150, 1, 255, 0, 255);
         sendAnimation(darkroomStrobe, -1);
-        ESP_LOGI("LED", "Strobe happening");
         vTaskDelay(200 / portTICK_PERIOD_MS);
         int nextBlink = random(darkroomParams.strobeMin, darkroomParams.strobeMax);
         message_animation darkroomCandle = ledInstance->createCandle(esp_timer_get_time() + 100000 + 150, nextBlink * 1000, 255, 255, darkroomParams.redlightMax);
         sendAnimation(darkroomCandle, -1);
-        ESP_LOGI("MSG", "Next darkroom blink in %d seconds", nextBlink);
         vTaskDelay(nextBlink * 1000 / portTICK_PERIOD_MS);
     }
 }

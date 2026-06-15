@@ -152,7 +152,6 @@ int MessageHandler::addOrGetAddressId(uint8_t * address) {
 void MessageHandler::setTimeOffset(long long offsetAvg) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         timeOffset = offsetAvg;
-        ESP_LOGI("MSG", "Setting time offset: %lld", timeOffset);
         xSemaphoreGive(configMutex);
     }
     ledInstance->setTimerOffset(timeOffset);
@@ -337,9 +336,6 @@ message_data MessageHandler::createClapMessage(bool isHost) {
     }
     message_clap clapPayload;
     
-    ESP_LOGI("CLAP", "Peak Detected at %lu", micros());
-    ESP_LOGI("CLAP", "Timer Offset: %lld", ledInstance->getTimerOffset());
-    ESP_LOGI("CLAP", "Clap Time: %llu", clapPayload.clapTime);
     clapPayload.clapTime = micros() + ledInstance->getTimerOffset();
     memcpy(&clapMessage.payload.clap, &clapPayload, sizeof(clapPayload));
     WiFi.macAddress(clapMessage.senderAddress);
@@ -514,7 +510,6 @@ void MessageHandler::setSleepTime(int hours, int minutes, int seconds) {
         sleepTimeHours = hours;
         sleepTimeMinutes = minutes;
         sleepTimeSeconds = seconds;
-        ESP_LOGI("Sleep", "Setting sleep time to %02d:%02d:%02d", sleepTimeHours, sleepTimeMinutes, sleepTimeSeconds);
         xSemaphoreGive(configMutex);
     }
 }
@@ -523,7 +518,6 @@ void MessageHandler::setWakeupTime(int hours, int minutes, int seconds) {
         wakeupTimeHours = hours;
         wakeupTimeMinutes = minutes;
         wakeupTimeSeconds = seconds;
-        ESP_LOGI("Sleep", "Setting wakeup time to %02d:%02d:%02d", wakeupTimeHours, wakeupTimeMinutes, wakeupTimeSeconds);
         xSemaphoreGive(configMutex);
     }
 }
@@ -538,7 +532,6 @@ unsigned long MessageHandler::getSleepTime() {
             return sleepTime;
         }
         else {
-            ESP_LOGI("Sleep Time", "Sleep time hours %d, minutes %d, seconds %d", sleepTimeHours,sleepTimeMinutes, sleepTimeSeconds);
         }
         unsigned long currentMillis = millis();
         struct timeval tv;
@@ -712,9 +705,7 @@ void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSa
         midiParams.distanceMode = distanceMode;
         xSemaphoreGive(configMutex);
     }
-    ESP_LOGI("MIDI", "Set Midi Params");
     message_data midiParamsMessage = createMidiParamsMessage(midiParams);
-    ESP_LOGI("MIDI", "midi params message %.2f -- %.2f ", midiParams.rmsMin, midiParams.rmsMax);
     pushToSendQueue(midiParamsMessage);
 }
 message_midi_params MessageHandler::getMidiParams() {
@@ -775,7 +766,6 @@ void MessageHandler::setDarkroomParams(int strobeMin, int strobeMax, int redligh
         darkroomParams.candlelightEnabled = candlelightEnabled;
         xSemaphoreGive(configMutex);
     }
-    ESP_LOGI("Darkroom", "Set Darkroom Params");
     stopAllAnimations();
     startDarkroomTask();
 

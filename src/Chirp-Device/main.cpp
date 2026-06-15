@@ -223,7 +223,6 @@ void handleReceiveTask(void *) {
             case CMD_START_DISTANCE_CALIBRATION:
             case CMD_CONTINUE_DISTANCE_CALIBRATION:
                 if (chirpTaskHandle == nullptr) {
-                    ESP_LOGI("CHIRP", "Trigger received");
                     xTaskCreatePinnedToCore(chirpTask, "chirpTask", 8192, nullptr, 10, &chirpTaskHandle, 1);
                 }
                 break;

@@ -99,7 +99,6 @@ void LedHandler::stopAnimationTask() {
         animationTaskHandle = NULL;
     }
     setCurrentAnimation(OFF);
-    ESP_LOGI("LED", "Animation task stopped");
 }
 
 void LedHandler::turnOff() {
@@ -109,7 +108,6 @@ void LedHandler::turnOff() {
         vTaskDelete(animationTaskHandle);
         animationTaskHandle = NULL;
     }
-    ESP_LOGI("LED", "LEDs turned off and animation task stopped");
 }
 
 void LedHandler::blink(unsigned long long startTime, unsigned long long duration, int repetitions, int hue, int saturation, int brightness) {
@@ -149,7 +147,6 @@ TickType_t LedHandler::getNextAnimationTicks() {
         return nextTicks;
     }
     else {
-        ESP_LOGI("LED", "Failed to get next animation ticks");
         return 0;
     }
 }
@@ -161,28 +158,23 @@ void LedHandler::setMicrosUntilEnd(message_animation& animationData) {
         xSemaphoreGive(configMutex);
     }
     else {
-        ESP_LOGI("LED", "Failed to set micros until end");
     }
 }
 
 void LedHandler::resetMicrosUntilEnd() {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         microsUntilEnd = esp_timer_get_time() + 1000000;
-        ESP_LOGI("LED", "Reset micros until end to %llu", microsUntilEnd);
         xSemaphoreGive(configMutex);
     }
     else {
-        ESP_LOGI("LED", "Failed to reset micros until end");
     }
 }
 
 bool LedHandler::isTimedAnimation(animationEnum type) {
     if (type == STROBE || type == SYNC_ASYNC_BLINK || type == BLINK || type == BATTERY_BLINK) {
-        ESP_LOGI("LED", "Animation %d is timed", type);
         return true;
     }
     else {
-        ESP_LOGI("LED", "Animation %d is not timed", type);
         return false;
     }
 }
