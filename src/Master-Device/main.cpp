@@ -368,32 +368,17 @@ static void handleSerialCommand(const String& line) {
         anim.animationParams.candle.value      = doc["brightness"] | 180;
         msgHandler.sendAnimation(anim, -1);
 
-    } else if (strcmp(cmd, "aubio_shimmer") == 0) {
-        message_animation anim;
-        anim.animationType = BACKGROUND_SHIMMER;
-        anim.animationParams.backgroundShimmer.hue        = doc["hue"]        | 22;
-        anim.animationParams.backgroundShimmer.saturation = doc["saturation"] | 255;
-        anim.animationParams.backgroundShimmer.value      = doc["value"]      | 0;
+    } else if (strcmp(cmd, "music_active") == 0) {
+        // music output lives on the dedicated music device now, this 1 Hz ping
+        // just keeps the master from starting its idle animation loop while
+        // people are making music
         msgHandler.setLastMidiTime(millis());
-        msgHandler.sendAnimation(anim, -1);
 
-    } else if (strcmp(cmd, "aubio_midi") == 0) {
-        message_animation anim;
-        anim.animationType = MIDI;
-        anim.animationParams.midi.note       = doc["note"]     | 0;
-        anim.animationParams.midi.velocity   = doc["velocity"] | 0;
-        anim.animationParams.midi.instrument = 0; // mic
-        msgHandler.setLastMidiTime(millis());
-        msgHandler.sendAnimation(anim, -1);
-
-    } else if (strcmp(cmd, "keyboard_midi") == 0) {
-        message_animation anim;
-        anim.animationType = MIDI;
-        anim.animationParams.midi.note       = doc["note"]     | 0;
-        anim.animationParams.midi.velocity   = doc["velocity"] | 0;
-        anim.animationParams.midi.instrument = 1; // keyboard
-        msgHandler.setLastMidiTime(millis());
-        msgHandler.sendAnimation(anim, -1);
+    } else if (strcmp(cmd, "identify") == 0) {
+        JsonDocument r;
+        r["event"] = "identity";
+        r["role"]  = "master";
+        serialSendDoc(r);
 
     } else if (strcmp(cmd, "sustain_pedal") == 0) {
         // sustain pedal: value >= 64 = down, < 64 = up

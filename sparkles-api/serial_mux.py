@@ -1,13 +1,20 @@
 """
-serial_mux.py — serial multiplexer daemon
+serial_mux.py — serial multiplexer daemon (dual device)
 
-Owns /dev/ttyACM0 and exposes a Unix socket at /tmp/sparkles.sock.
-Multiple clients (serial_bridge, aubioAlgo, keyboard script) connect to
-the socket and share the serial port with no contention:
-  - Client → mux: JSON lines are queued and written to serial in order
-  - Serial → clients: every incoming line is broadcast to all clients
+Owns the ESP32 serial ports and exposes a Unix socket at /tmp/sparkles.sock.
+Two devices share the air: a "master" (sync, calibration, management) and a
+"music" device (the 30 Hz aubio/MIDI broadcast). The mux figures out which
+physical port is which by asking each one: it sends {"cmd":"identify"} and the
+device answers {"event":"identity","role":"master"|"music"}. Role is declared
+by firmware, so boards and USB ports can be swapped freely.
+
+Clients (serial_bridge, aubioAlgo, keyboard script) connect to the socket and
+are unchanged: they send JSON lines, the mux routes each to the right device by
+its "cmd", and every line read from either device is broadcast back to all
+clients.
 """
 
+import glob
 import json
 import logging
 import os
@@ -25,15 +32,26 @@ logging.basicConfig(
 log = logging.getLogger("serial_mux")
 
 SOCKET_PATH  = os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock")
-SERIAL_PORT  = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
 SERIAL_BAUD  = int(os.environ.get("SPARKLES_BAUD", "115200"))
+PORT_GLOB    = os.environ.get("SPARKLES_PORT_GLOB", "/dev/ttyACM*")
 LOG_PATH     = os.environ.get("SPARKLES_SERIAL_LOG", "/home/julian/sparkles/logs/serial.log")
 RAW_LOG_PATH = os.environ.get("SPARKLES_RAW_LOG", "/home/julian/sparkles/logs/serial_raw.log")
-RECONNECT_DELAY = 3.0
+DISCOVER_INTERVAL = 3.0
+IDENTIFY_TIMEOUT  = 3.0
 
-_write_queue: queue.Queue = queue.Queue(maxsize=256)
-_clients: list[tuple[socket.socket, threading.Lock]] = []
+# commands that belong to the music device, everything else goes to the master
+MUSIC_CMDS = {"aubio_shimmer", "aubio_midi", "keyboard_midi"}
+
+# explicit per-role overrides skip identification when set
+ROLE_ENV = {
+    "master": os.environ.get("SPARKLES_MASTER_PORT"),
+    "music":  os.environ.get("SPARKLES_MUSIC_PORT"),
+}
+
+_clients: list = []
 _clients_lock = threading.Lock()
+_last_music = 0.0
+
 
 # ---------------------------------------------------------------------------
 # Serial log files
@@ -47,20 +65,20 @@ try:
 except Exception as exc:
     log.warning("Could not open serial log: %s", exc)
 
-def _log_line(direction: str, line: str):
-    """Write a TX/RX line to the structured log file."""
-    if _log_file:
-        _log_file.write(f"{time.strftime('%H:%M:%S')} {direction} {line}\n")
 
-def _log_raw(line: str):
-    """Write every raw serial line to the raw log, including boot noise and crash dumps."""
+def _log_line(direction: str, role: str, line: str):
+    if _log_file:
+        _log_file.write(f"{time.strftime('%H:%M:%S')} {direction} [{role}] {line}\n")
+
+
+def _log_raw(role: str, line: str):
     if _raw_log_file:
         ts = time.strftime('%H:%M:%S.') + f"{int(time.time() * 1000) % 1000:03d}"
-        _raw_log_file.write(f"{ts} {line}\n")
+        _raw_log_file.write(f"{ts} [{role}] {line}\n")
 
 
 # ---------------------------------------------------------------------------
-# Client broadcast helpers
+# Client broadcast
 # ---------------------------------------------------------------------------
 
 def _broadcast(line: str):
@@ -78,7 +96,7 @@ def _broadcast(line: str):
 
 
 def _add_client(conn: socket.socket):
-    conn.settimeout(0.5)  # never let a slow client block the serial worker
+    conn.settimeout(0.5)
     with _clients_lock:
         _clients.append((conn, threading.Lock()))
 
@@ -89,7 +107,191 @@ def _remove_client(conn: socket.socket):
 
 
 # ---------------------------------------------------------------------------
-# Per-client handler — reads lines from socket, enqueues for serial write
+# Device port — one per role, owns its serial handle and write queue
+# ---------------------------------------------------------------------------
+
+class Port:
+    def __init__(self, role: str):
+        self.role = role
+        self.path = None
+        self.ser = None
+        self.connected = False
+        self.write_queue: queue.Queue = queue.Queue(maxsize=256)
+
+    def enqueue(self, line: str):
+        try:
+            self.write_queue.put_nowait(line)
+        except queue.Full:
+            log.warning("%s write queue full, dropping: %s", self.role, line.strip())
+
+
+ports = {"master": Port("master"), "music": Port("music")}
+_assigned_paths: set = set()
+_assigned_lock = threading.Lock()
+_last_drop_warn = {"master": 0.0, "music": 0.0}
+
+
+def route(line_no_nl: str):
+    """Send a client line to the correct device by its cmd."""
+    role = "master"
+    try:
+        obj = json.loads(line_no_nl)
+        if obj.get("cmd") in MUSIC_CMDS:
+            role = "music"
+    except Exception:
+        pass  # non-JSON goes to the master
+
+    p = ports[role]
+    if not p.connected:
+        now = time.time()
+        if now - _last_drop_warn[role] > 2.0:
+            log.warning("%s device not connected, dropping %s", role, line_no_nl[:60])
+            _last_drop_warn[role] = now
+        return
+    p.enqueue(line_no_nl + "\n")
+    _log_line("TX", role, line_no_nl)
+    if role == "music":
+        global _last_music
+        _last_music = time.time()
+
+
+# ---------------------------------------------------------------------------
+# Port read/write threads
+# ---------------------------------------------------------------------------
+
+def _write_thread(p: Port, stop_event: threading.Event):
+    while not stop_event.is_set():
+        try:
+            line_out = p.write_queue.get(timeout=0.05)
+            p.ser.write(line_out.encode())
+        except queue.Empty:
+            pass
+        except Exception:
+            break
+
+
+def _run_port(p: Port, ser: serial.Serial, path: str):
+    """Own an identified port: spawn its writer, read+broadcast until it dies."""
+    p.ser = ser
+    p.path = path
+    p.connected = True
+    log.info("%s device connected on %s", p.role, path)
+    _broadcast(json.dumps({"event": "device_status", "role": p.role, "connected": True}))
+
+    stop_event = threading.Event()
+    writer = threading.Thread(target=_write_thread, args=(p, stop_event), daemon=True)
+    writer.start()
+    try:
+        while True:
+            raw = ser.readline()
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            _log_line("RX", p.role, line)
+            _log_raw(p.role, line)
+            _broadcast(line)
+    except Exception:
+        pass
+    finally:
+        stop_event.set()
+        p.connected = False
+        p.ser = None
+        p.path = None
+        try:
+            ser.close()
+        except Exception:
+            pass
+        with _assigned_lock:
+            _assigned_paths.discard(path)
+        log.warning("%s device disconnected (%s)", p.role, path)
+        _broadcast(json.dumps({"event": "device_status", "role": p.role, "connected": False}))
+
+
+# ---------------------------------------------------------------------------
+# Identification — ask a port who it is
+# ---------------------------------------------------------------------------
+
+def _identify(path: str):
+    """Open a port, send identify, return (role, open_serial) or (None, None)."""
+    try:
+        ser = serial.Serial(path, SERIAL_BAUD, timeout=0.5)
+    except Exception:
+        return None, None
+    try:
+        time.sleep(0.3)            # let boot noise settle
+        ser.reset_input_buffer()
+        ser.write(b'{"cmd":"identify"}\n')
+        deadline = time.monotonic() + IDENTIFY_TIMEOUT
+        while time.monotonic() < deadline:
+            raw = ser.readline()
+            if not raw:
+                continue
+            try:
+                obj = json.loads(raw.decode("utf-8", errors="replace").strip())
+            except Exception:
+                continue
+            if obj.get("event") == "identity" and obj.get("role") in ports:
+                return obj["role"], ser
+    except Exception:
+        pass
+    try:
+        ser.close()
+    except Exception:
+        pass
+    return None, None
+
+
+def _discover_loop():
+    """Periodically probe ports, identify unassigned ones, run each role."""
+    while True:
+        for role, forced in ROLE_ENV.items():
+            if forced and not ports[role].connected and os.path.exists(forced):
+                with _assigned_lock:
+                    if forced in _assigned_paths:
+                        continue
+                    _assigned_paths.add(forced)
+                try:
+                    ser = serial.Serial(forced, SERIAL_BAUD, timeout=1)
+                except Exception:
+                    with _assigned_lock:
+                        _assigned_paths.discard(forced)
+                    continue
+                threading.Thread(target=_run_port, args=(ports[role], ser, forced), daemon=True).start()
+
+        if not all(ROLE_ENV.values()):
+            for path in sorted(glob.glob(PORT_GLOB)):
+                with _assigned_lock:
+                    if path in _assigned_paths:
+                        continue
+                if all(p.connected for p in ports.values()):
+                    break
+                role, ser = _identify(path)
+                if role and not ports[role].connected:
+                    with _assigned_lock:
+                        _assigned_paths.add(path)
+                    ser.timeout = 1
+                    threading.Thread(target=_run_port, args=(ports[role], ser, path), daemon=True).start()
+                elif ser is not None:
+                    try:
+                        ser.close()
+                    except Exception:
+                        pass
+        time.sleep(DISCOVER_INTERVAL)
+
+
+def _music_heartbeat():
+    """While music is flowing, ping the master ~1 Hz so it suppresses its idle
+    animation loop. Far cheaper than routing the 30 Hz stream through it."""
+    while True:
+        time.sleep(1.0)
+        if time.time() - _last_music < 3.0 and ports["master"].connected:
+            ports["master"].enqueue('{"cmd":"music_active"}\n')
+
+
+# ---------------------------------------------------------------------------
+# Per-client handler
 # ---------------------------------------------------------------------------
 
 def _handle_client(conn: socket.socket, addr: str):
@@ -108,14 +310,8 @@ def _handle_client(conn: socket.socket, addr: str):
             while b"\n" in buf:
                 raw, buf = buf.split(b"\n", 1)
                 line = raw.strip().decode("utf-8", errors="ignore")
-                if not line:
-                    continue
-                try:
-                    _write_queue.put_nowait(line + "\n")
-                    log.debug("MUX TX ← client: %s", line)
-                    _log_line("TX", line)
-                except queue.Full:
-                    log.warning("Write queue full, dropping: %s", line)
+                if line:
+                    route(line)
     except Exception as exc:
         log.debug("Client error: %s", exc)
     finally:
@@ -123,84 +319,6 @@ def _handle_client(conn: socket.socket, addr: str):
         conn.close()
         log.info("Client disconnected: %s", addr)
 
-
-# ---------------------------------------------------------------------------
-# Serial worker — owns the port, separate read/write threads
-# ---------------------------------------------------------------------------
-
-def _serial_write_thread(ser: serial.Serial, stop_event: threading.Event):
-    """Dedicated thread: drains _write_queue to serial as fast as possible."""
-    while not stop_event.is_set():
-        try:
-            line_out = _write_queue.get(timeout=0.05)
-            ser.write(line_out.encode())
-            log.debug("MUX TX → serial: %s", line_out.strip())
-        except queue.Empty:
-            pass
-        except Exception:
-            break
-
-
-def _serial_worker():
-    _was_connected = False
-    _waiting_logged = False
-    while True:
-        ser = None
-        stop_event = threading.Event()
-        try:
-            ser = serial.Serial(SERIAL_PORT, SERIAL_BAUD, timeout=1)
-            _was_connected = True
-            _waiting_logged = False
-            log.info("Master ESP32 connected on %s", SERIAL_PORT)
-            _broadcast(json.dumps({"event": "serial_status", "connected": True}))
-
-            # drain boot noise — log it raw so crash dumps aren't lost
-            _log_raw("--- connected ---")
-            deadline = time.monotonic() + 2.0
-            while time.monotonic() < deadline:
-                raw_boot = ser.readline()
-                if raw_boot:
-                    _log_raw(raw_boot.decode("utf-8", errors="replace").rstrip())
-            ser.reset_input_buffer()
-
-            # start dedicated write thread
-            write_thread = threading.Thread(
-                target=_serial_write_thread, args=(ser, stop_event), daemon=True)
-            write_thread.start()
-
-            # read loop runs in this thread
-            while True:
-                raw = ser.readline()
-                if not raw:
-                    continue
-                line = raw.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                log.debug("MUX RX ← serial: %s", line)
-                _log_line("RX", line)
-                _log_raw(line)
-                _broadcast(line)
-
-        except serial.SerialException as exc:
-            if _was_connected:
-                log.warning("Master ESP32 disconnected — waiting for reconnect")
-                _broadcast(json.dumps({"event": "serial_status", "connected": False}))
-                _was_connected = False
-            elif not _waiting_logged:
-                log.info("Waiting for master ESP32 on %s ...", SERIAL_PORT)
-                _waiting_logged = True
-        except Exception as exc:
-            log.exception("Serial worker error: %s", exc)
-        finally:
-            stop_event.set()
-            if ser and ser.is_open:
-                ser.close()
-        time.sleep(RECONNECT_DELAY)
-
-
-# ---------------------------------------------------------------------------
-# Unix socket server
-# ---------------------------------------------------------------------------
 
 def _socket_server():
     if os.path.exists(SOCKET_PATH):
@@ -214,17 +332,10 @@ def _socket_server():
 
     while True:
         conn, _ = server.accept()
-        threading.Thread(
-            target=_handle_client,
-            args=(conn, conn.fileno()),
-            daemon=True,
-        ).start()
+        threading.Thread(target=_handle_client, args=(conn, conn.fileno()), daemon=True).start()
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    threading.Thread(target=_serial_worker, daemon=True, name="serial-worker").start()
+    threading.Thread(target=_discover_loop, daemon=True, name="discover").start()
+    threading.Thread(target=_music_heartbeat, daemon=True, name="music-heartbeat").start()
     _socket_server()  # blocks

@@ -25,6 +25,7 @@
 #define WEBSERVER 2
 #define CLAP_DEVICE 3
 #define RASPI_DEVICE 4
+#define MUSIC_DEVICE 6
 #if DEVICE_MODE != CLIENT
   #define VERSION "1.0.2"
 #elif DEVICE_MODE == CLIENT
