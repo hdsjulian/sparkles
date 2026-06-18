@@ -288,6 +288,13 @@ def get_current_note():
     start_time   = time.time()
     last_output  = start_time
 
+    # instrumentation to find intermittent lag: how far behind real time the
+    # loop gets (backlog) and how long per-hop processing takes
+    last_backlog_warn  = 0.0
+    max_backlog_frames = 0
+    max_work_ms        = 0.0
+    last_stat          = start_time
+
     while True:
         if args.random:
             pitch_val  = random.uniform(50, 1000)
@@ -298,6 +305,13 @@ def get_current_note():
                 rms = random.uniform(0.01, 1.0)
                 db  = 20 * np.log10(rms)
         else:
+            backlog = stream.get_read_available()
+            if backlog > max_backlog_frames:
+                max_backlog_frames = backlog
+            if backlog > hop_s * 4 and time.time() - last_backlog_warn > 1.0:
+                log.warning("audio backlog %d frames, ~%.0f ms behind real time",
+                            backlog, backlog / samplerate * 1000.0)
+                last_backlog_warn = time.time()
             try:
                 data = stream.read(hop_s, exception_on_overflow=False)
             except Exception as e:
@@ -310,10 +324,14 @@ def get_current_note():
                     pass
                 p, stream = open_audio()
                 continue
+            work_t0   = time.perf_counter()
             samples   = np.frombuffer(data, dtype=aubio.float_type)
             pitch_val = pitch_o(samples)[0]
             rms       = np.sqrt(np.mean(samples ** 2))
             db        = 20 * np.log10(rms) if rms > 0 else -96.0
+            work_ms   = (time.perf_counter() - work_t0) * 1000.0
+            if work_ms > max_work_ms:
+                max_work_ms = work_ms
 
         if pitch_val > 0:
             buffer_pitch.append(pitch_val)
@@ -343,6 +361,14 @@ def get_current_note():
             buffer_pitch.clear()
             buffer_rms.clear()
             last_output = now
+
+        if now - last_stat >= 2.0:
+            log.info("loop stats: backlog<=%.0f ms, work<=%.1f ms (hop budget %.1f ms)",
+                     max_backlog_frames / samplerate * 1000.0, max_work_ms,
+                     hop_s / samplerate * 1000.0)
+            max_backlog_frames = 0
+            max_work_ms        = 0.0
+            last_stat          = now
 
 if __name__ == '__main__':
     get_current_note()
