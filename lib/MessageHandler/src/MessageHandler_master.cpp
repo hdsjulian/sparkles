@@ -399,7 +399,10 @@ void MessageHandler::sendAnimation(message_animation animationMessage, int addre
     if (animationMessage.animationType == BACKGROUND_SHIMMER ||
         animationMessage.animationType == MIDI) {
         WiFi.macAddress(message.senderAddress);
-        esp_now_send(broadcastAddress, (uint8_t*)&message, ESPNOW_CLIENT_COMPAT_SIZE);
+        esp_err_t r = esp_now_send(broadcastAddress, (uint8_t*)&message, ESPNOW_CLIENT_COMPAT_SIZE);
+        if (r != ESP_OK) {
+            ESP_LOGW("MSG", "esp_now_send failed: %d (TX queue full under shimmer load?)", r);
+        }
     } else {
         pushToSendQueue(message);
     }

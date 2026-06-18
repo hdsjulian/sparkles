@@ -561,6 +561,7 @@ void setup()
     ledInstance.setup();
     msgHandler.setup(ledInstance);
     // no webserver, the serial bridge handles all communication
+    enableLoopWDT(); // if loop() stalls past the watchdog timeout, panic with a backtrace
 }
 
 void loop()
@@ -591,6 +592,15 @@ void loop()
             JsonDocument r;
             r["event"]  = "animate_status";
             r["status"] = msgHandler.isAnimationLoopRunning();
+            serialSendDoc(r);
+        }
+
+        // Heap report, watch for a downward trend that ends in a hang
+        {
+            JsonDocument r;
+            r["event"] = "heap";
+            r["free"]  = ESP.getFreeHeap();
+            r["min"]   = ESP.getMinFreeHeap();
             serialSendDoc(r);
         }
 
