@@ -20,7 +20,12 @@ until curl -s http://localhost/ > /dev/null 2>&1; do
     sleep 1
 done
 
-chromium --noerrdialogs --disable-infobars --kiosk --no-first-run http://localhost/karaoke
+# loop so the kiosk self-heals on crash, and so `pkill chromium` (from update.sh)
+# relaunches it with the freshly built UI
+while true; do
+    chromium --noerrdialogs --disable-infobars --kiosk --no-first-run http://localhost/karaoke
+    sleep 2
+done
 EOF
 chmod +x /home/julian/.config/autostart.sh
 

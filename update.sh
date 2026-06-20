@@ -18,6 +18,10 @@ cd "$REPO/sparkles-ui"
 echo "=== Restarting services ==="
 systemctl restart serial_mux sparkles aubio keyboard_midi
 
+echo "=== Restarting kiosk browser ==="
+# the autostart loop relaunches chromium with the fresh build
+pkill -f chromium 2>/dev/null || true
+
 echo "=== Done ==="
 for svc in serial_mux sparkles aubio keyboard_midi; do
     status=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
