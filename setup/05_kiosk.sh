@@ -44,17 +44,35 @@ chmod +x /home/julian/.config/autostart.sh
 # digitizer still reports events while dark, so a tap wakes it.
 cat > /home/julian/.config/screen_idle.sh << 'EOF'
 #!/bin/bash
-BL=/sys/class/backlight/10-0045
-IDLE_MS=120000        # blank after 2 min of no touch
+# Blank the panel after IDLE_S of no touch, wake on the next touch.
+# This panel ignores bl_power/brightness for full-off, so we toggle the DSI
+# output at the KMS level (xrandr). The touch digitizer keeps reporting while
+# the output is off, so a blocking read of it gives instant wake.
+export DISPLAY=:0
+OUT=DSI-1
+IDLE_S=120            # blank after 2 min of no touch
+
+# find the touchscreen's event device (falls back to event6)
+TOUCH=$(grep -iE -A5 'touch|ft5|goodix|edt|ts' /proc/bus/input/devices | grep -oiE 'event[0-9]+' | head -1)
+TOUCH="/dev/input/${TOUCH:-event6}"
+
+# one whole input_event (bs >= event size; count=1 returns on the first touch)
+read_touch() { dd if="$TOUCH" bs=64 count=1 status=none >/dev/null 2>&1; }
+
 state=on
 while true; do
-    idle=$(xprintidle 2>/dev/null || echo 0)
-    if [ "$state" = on ] && [ "$idle" -gt "$IDLE_MS" ]; then
-        echo 1 > "$BL/bl_power" 2>/dev/null && state=off
-    elif [ "$state" = off ] && [ "$idle" -lt "$IDLE_MS" ]; then
-        echo 0 > "$BL/bl_power" 2>/dev/null && state=on
+    if [ "$state" = on ]; then
+        if timeout "$IDLE_S" dd if="$TOUCH" bs=64 count=1 status=none >/dev/null 2>&1; then
+            :                                  # touched, stay awake
+        else
+            xrandr --output "$OUT" --off       # idle, blank
+            state=off
+        fi
+    else
+        read_touch                             # block until a touch
+        xrandr --output "$OUT" --auto          # wake
+        state=on
     fi
-    sleep 1
 done
 EOF
 chmod +x /home/julian/.config/screen_idle.sh
@@ -81,6 +99,7 @@ sudo apt-get install -y xprintidle
 # Let the kiosk user set panel brightness / power without root (battery saving).
 # udev makes brightness + bl_power group-writable by 'video'; julian joins it.
 sudo usermod -aG video julian
+sudo usermod -aG input julian   # so the blanker can read the touch device for wake
 sudo tee /etc/udev/rules.d/90-backlight.rules > /dev/null << 'EOF'
 SUBSYSTEM=="backlight", ACTION=="add", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness", RUN+="/bin/chgrp video /sys/class/backlight/%k/bl_power", RUN+="/bin/chmod g+w /sys/class/backlight/%k/bl_power"
 EOF
