@@ -52,9 +52,10 @@ export DISPLAY=:0
 OUT=DSI-1
 IDLE_S=120            # blank after 2 min of no touch
 
-# find the touchscreen's event device (falls back to event6)
-TOUCH=$(grep -iE -A5 'touch|ft5|goodix|edt|ts' /proc/bus/input/devices | grep -oiE 'event[0-9]+' | head -1)
-TOUCH="/dev/input/${TOUCH:-event6}"
+# find the touchscreen's event device by name (event numbers shuffle across
+# reboots, so match the controller, not a fixed eventN)
+TOUCH=$(grep -iE -A5 'touch|ft[0-9]|goodix|edt|elan|ilitek|raspberrypi-ts' /proc/bus/input/devices | grep -oiE 'event[0-9]+' | head -1)
+TOUCH="/dev/input/${TOUCH:-event2}"
 
 # one whole input_event (bs >= event size; count=1 returns on the first touch)
 read_touch() { dd if="$TOUCH" bs=64 count=1 status=none >/dev/null 2>&1; }
