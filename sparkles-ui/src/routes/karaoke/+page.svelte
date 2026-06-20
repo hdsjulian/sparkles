@@ -46,7 +46,33 @@
     nowPlaying = '';
   }
 
-  onMount(loadSongs);
+  // Idle screensaver overlay. It also swallows the wake-up tap so waking the
+  // screen doesn't start a song. SAVER_MS should be <= the kiosk's hardware
+  // blank timeout so the overlay is already up when the panel powers off.
+  let showSaver = false;
+  let idleTimer;
+  const SAVER_MS = 110000;
+
+  function armIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => (showSaver = true), SAVER_MS);
+  }
+  function dismissSaver(e) {
+    e.stopPropagation();
+    showSaver = false;
+    armIdle();
+  }
+
+  onMount(() => {
+    loadSongs();
+    armIdle();
+    const onActivity = () => armIdle();
+    window.addEventListener('pointerdown', onActivity, true);
+    return () => {
+      clearTimeout(idleTimer);
+      window.removeEventListener('pointerdown', onActivity, true);
+    };
+  });
 </script>
 
 <svelte:head><title>Karaoke</title></svelte:head>
@@ -83,6 +109,13 @@
     <div class="eq" aria-hidden="true"><span></span><span></span><span></span></div>
     <span class="bar-text">{nowPlaying}</span>
     <button class="stop" on:click={stop}>stop</button>
+  </div>
+{/if}
+
+{#if showSaver}
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="saver" on:click={dismissSaver}>
+    <span class="saver-text">tap to begin</span>
   </div>
 {/if}
 
@@ -224,6 +257,24 @@
     cursor: none;
   }
   .stop:active { border-color: var(--amber); }
+
+  /* idle screensaver: full-black overlay that catches the wake-up tap */
+  .saver {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: none;
+  }
+  .saver-text {
+    color: #5a3a18;            /* very dim amber, minimal light */
+    font-size: 1.4rem;
+    letter-spacing: 0.25em;
+    text-transform: lowercase;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .eq span { animation: none; transform: scaleY(0.5); }
