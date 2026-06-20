@@ -13,7 +13,9 @@ cat > /home/julian/.config/autostart.sh << 'EOF'
 xset s off
 xset -dpms
 xset s noblank
-unclutter -idle 0 &
+# unclutter-xfixes: hide the pointer from boot (--start-hidden), not just after
+# the first mouse move like classic unclutter
+unclutter --timeout 2 --hide-on-touch --start-hidden &
 
 # dim the panel: saves battery and reduces light spill in the dark forest.
 # 0-255, tune to taste. write permission comes from 90-backlight.rules below.

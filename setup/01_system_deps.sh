@@ -19,7 +19,8 @@ sudo apt install -y \
     openbox \
     xorg \
     xinit \
-    unclutter \
+    unclutter-xfixes \
+    xprintidle \
     i2c-tools \
     git \
     curl \

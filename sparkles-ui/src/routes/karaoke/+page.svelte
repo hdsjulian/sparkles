@@ -91,9 +91,21 @@
      amber (not white/blue) preserves dark-adapted vision and reads with little
      light. brightness is carried by thin strokes on black, so most of the
      panel stays unlit. */
-  /* touchscreen kiosk: no mouse pointer, no scrollbar (swipe to scroll) */
-  :global(html), :global(body) { margin: 0; background: #000; cursor: none; scrollbar-width: none; }
-  :global(body)::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  /* touchscreen kiosk: no mouse pointer; slim dim scrollbar that fits the theme */
+  :global(html), :global(body) {
+    margin: 0;
+    background: #000;
+    cursor: none;
+    scrollbar-width: thin;                  /* firefox */
+    scrollbar-color: #7a4d20 transparent;   /* thumb / track (firefox) */
+  }
+  :global(body)::-webkit-scrollbar { width: 10px; }
+  :global(body)::-webkit-scrollbar-track { background: transparent; }
+  :global(body)::-webkit-scrollbar-thumb {
+    background: #7a4d20;                     /* amber-dim */
+    border-radius: 5px;
+  }
+  :global(body)::-webkit-scrollbar-thumb:active { background: #b9762f; }
 
   :root {
     --amber: #b9762f;        /* primary text */
