@@ -1,6 +1,7 @@
 #!/bin/bash
 # Pull latest code and restart all Sparkles services.
-# Run on the Pi: bash ~/sparkles/update.sh
+# Run on the Pi as julian (NOT sudo): bash ~/sparkles/update.sh
+# git/npm stay julian-owned; only the service restart uses sudo.
 
 set -e
 
@@ -16,7 +17,7 @@ cd "$REPO/sparkles-ui"
 /usr/bin/npm run build
 
 echo "=== Restarting services ==="
-systemctl restart serial_mux sparkles aubio keyboard_midi
+sudo systemctl restart serial_mux sparkles aubio keyboard_midi
 
 echo "=== Restarting kiosk browser ==="
 # the autostart loop relaunches chromium with the fresh build
