@@ -49,8 +49,9 @@ def _save_settings(data: dict):
         json.dump(data, f, indent=2)
 
 # Public paths that never require a token
-_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png"}
-_PUBLIC_PREFIXES = ("/_app/", "/login")
+_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png", "/karaoke"}
+# /keyboard/ is public so the karaoke page can list and play songs without login
+_PUBLIC_PREFIXES = ("/_app/", "/login", "/karaoke", "/keyboard/")
 
 
 async def _serial_status_broadcaster():

@@ -13,10 +13,11 @@
   let serialEs;
   let serialPollInterval;
 
-  $: isLoginPage = $page.url.pathname === '/login';
+  // pages that render standalone with no login / nav / SSE
+  $: isPublicPage = $page.url.pathname === '/login' || $page.url.pathname === '/karaoke';
 
   onMount(async () => {
-    if (isLoginPage) { authChecked = true; return; }
+    if (isPublicPage) { authChecked = true; return; }
 
     // Tell other tabs to close their SSE connections
     const bc = new BroadcastChannel('sparkles_tab');
@@ -76,7 +77,7 @@
   }
 </script>
 
-{#if isLoginPage}
+{#if isPublicPage}
   <slot />
 {:else if authChecked && authUser}
   <Nav {authUser} on:logout={logout} />
