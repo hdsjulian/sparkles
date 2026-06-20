@@ -20,7 +20,7 @@ until curl -s http://localhost/ > /dev/null 2>&1; do
     sleep 1
 done
 
-chromium --noerrdialogs --disable-infobars --kiosk --no-first-run http://localhost/
+chromium --noerrdialogs --disable-infobars --kiosk --no-first-run http://localhost/karaoke
 EOF
 chmod +x /home/julian/.config/autostart.sh
 
