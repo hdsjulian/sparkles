@@ -149,6 +149,12 @@ def _play_file(filepath: str, out_port: mido.ports.BaseOutput):
                 return
             if not msg.is_meta:
                 out_port.send(msg)
+                # also drive the cluster: forward notes to the mux, same path
+                # live key presses take to the music device and the LEDs
+                if msg.type == "note_on":
+                    _mux_send({"cmd": "keyboard_midi", "note": msg.note, "velocity": msg.velocity})
+                elif msg.type == "note_off":
+                    _mux_send({"cmd": "keyboard_midi", "note": msg.note, "velocity": 0})
     except Exception as e:
         log.error("Playback error: %s", e)
         _notify_fastapi({"event": "keyboard_playback", "status": "error",
