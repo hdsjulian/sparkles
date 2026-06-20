@@ -11,6 +11,7 @@
     return filename
       .replace(/\.(mid|midi)$/i, '')
       .replace(/[_-]+/g, ' ')
+      .replace(/\b0+(\d)/g, '$1')              // drop leading zeros: "01" -> "1"
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
