@@ -91,8 +91,9 @@
      amber (not white/blue) preserves dark-adapted vision and reads with little
      light. brightness is carried by thin strokes on black, so most of the
      panel stays unlit. */
-  /* touchscreen kiosk: no mouse pointer anywhere */
-  :global(html), :global(body) { margin: 0; background: #000; cursor: none; }
+  /* touchscreen kiosk: no mouse pointer, no scrollbar (swipe to scroll) */
+  :global(html), :global(body) { margin: 0; background: #000; cursor: none; scrollbar-width: none; }
+  :global(body)::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
   :root {
     --amber: #b9762f;        /* primary text */
