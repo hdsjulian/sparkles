@@ -90,7 +90,8 @@
      amber (not white/blue) preserves dark-adapted vision and reads with little
      light. brightness is carried by thin strokes on black, so most of the
      panel stays unlit. */
-  :global(html), :global(body) { margin: 0; background: #000; }
+  /* touchscreen kiosk: no mouse pointer anywhere */
+  :global(html), :global(body) { margin: 0; background: #000; cursor: none; }
 
   :root {
     --amber: #b9762f;        /* primary text */
@@ -142,11 +143,11 @@
     background: #000;                          /* unlit */
     border: 1px solid var(--amber-dim);
     border-radius: 12px;
-    cursor: pointer;
+    cursor: none;
     transition: border-color 0.15s, color 0.15s;
   }
   .song:active { border-color: var(--amber); }
-  .song:disabled { opacity: 0.5; cursor: default; }
+  .song:disabled { opacity: 0.5; }
   .song.active {
     color: var(--amber-hi);
     border-color: var(--amber-hi);
@@ -206,7 +207,7 @@
     background: #000;
     border: 1px solid var(--amber-dim);
     border-radius: 10px;
-    cursor: pointer;
+    cursor: none;
   }
   .stop:active { border-color: var(--amber); }
 
