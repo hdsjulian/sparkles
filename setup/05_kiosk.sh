@@ -49,8 +49,13 @@ cat > /home/julian/.config/screen_idle.sh << 'EOF'
 # output at the KMS level (xrandr). The touch digitizer keeps reporting while
 # the output is off, so a blocking read of it gives instant wake.
 export DISPLAY=:0
-OUT=DSI-1
 IDLE_S=120            # blank after 2 min of no touch
+
+# auto-detect the connected display output (DSI-1/DSI-2 depends on which DSI
+# port the panel is plugged into, and event/output names shuffle)
+OUT=$(xrandr --query 2>/dev/null | awk '/ connected/{print $1}' | grep -iE '^DSI' | head -1)
+[ -z "$OUT" ] && OUT=$(xrandr --query 2>/dev/null | awk '/ connected/{print $1; exit}')
+[ -z "$OUT" ] && OUT=DSI-1
 
 # find the touchscreen's event device by name (event numbers shuffle across
 # reboots, so match the controller, not a fixed eventN)
