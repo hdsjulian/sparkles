@@ -88,6 +88,11 @@ cat > /home/julian/.config/openbox/autostart << 'EOF'
 /home/julian/.config/autostart.sh &
 EOF
 
+# startx needs an .xinitrc to launch openbox (which then runs the autostart above)
+cat > /home/julian/.xinitrc << 'EOF'
+exec openbox-session
+EOF
+
 # Auto-start X on console login
 BASH_PROFILE=/home/julian/.bash_profile
 if ! grep -q "startx" "$BASH_PROFILE" 2>/dev/null; then
@@ -95,9 +100,13 @@ if ! grep -q "startx" "$BASH_PROFILE" 2>/dev/null; then
     echo "Added startx to $BASH_PROFILE"
 fi
 
+# Boot to console and auto-login julian on tty1, so .bash_profile runs startx
+sudo raspi-config nonint do_boot_behaviour B2
+
 chown julian:julian /home/julian/.config/autostart.sh
 chown julian:julian /home/julian/.config/openbox/autostart
 chown julian:julian /home/julian/.config/screen_idle.sh
+chown julian:julian /home/julian/.xinitrc
 
 # xprintidle lets the blanker measure how long there's been no touch
 sudo apt-get install -y xprintidle
