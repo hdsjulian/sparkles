@@ -268,23 +268,28 @@ def _cmd_server(out_port: mido.ports.BaseOutput):
 # MIDI port helpers
 # ---------------------------------------------------------------------------
 
-def _find_port_name(names: list[str]) -> str | None:
+def _pick_port(in_names: list[str], out_names: list[str]) -> str | None:
+    # only consider ports usable for BOTH input and output (rules out the
+    # input-only controller port)
+    both = [n for n in in_names if n in out_names]
     if args.midi_port:
-        return args.midi_port if args.midi_port in names else None
-    return names[0] if names else None
+        # substring match, so "NC2" matches "NC2:NC2-keyboard 16:0"
+        for n in both:
+            if args.midi_port.lower() in n.lower():
+                return n
+        return None
+    # auto: skip the "Midi Through" loopback and take the first real device
+    for n in both:
+        if "midi through" not in n.lower():
+            return n
+    return both[0] if both else None
 
 
 def _open_midi_ports():
     while True:
-        in_names  = mido.get_input_names()
-        out_names = mido.get_output_names()
-        name = _find_port_name(in_names)
+        name = _pick_port(mido.get_input_names(), mido.get_output_names())
         if not name:
-            log.warning("No MIDI input ports — retrying in %.0fs", RETRY_DELAY)
-            time.sleep(RETRY_DELAY)
-            continue
-        if name not in out_names:
-            log.warning("MIDI output port '%s' not available — retrying", name)
+            log.warning("No usable MIDI port (need in+out, non-loopback) — retrying in %.0fs", RETRY_DELAY)
             time.sleep(RETRY_DELAY)
             continue
         try:
