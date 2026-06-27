@@ -35,7 +35,7 @@ def inspect(path: str):
         print(f"  track {i:2}  ch={chans} prog={progs} notes={notes}  {name}")
 
 
-def pianofy(src: str, dst: str):
+def pianofy(src: str, dst: str, keep_channels=None, drop_channels=None):
     mid = mido.MidiFile(src)
     out = mido.MidiFile(ticks_per_beat=mid.ticks_per_beat)
     track = mido.MidiTrack()
@@ -44,16 +44,22 @@ def pianofy(src: str, dst: str):
     program = {}   # channel -> last program number
     carry = 0      # delta-time of dropped messages, rolled into the next kept one
     for msg in mido.merge_tracks(mid.tracks):
+        ch = getattr(msg, "channel", None)
+        if msg.type == "program_change":
+            program[msg.channel] = msg.program
+
         if msg.is_meta:
             keep = msg.type != "track_name"            # keep tempo/time-sig, drop names
-        elif msg.type == "program_change":
-            program[msg.channel] = msg.program
-            keep = msg.channel != DRUM_CHANNEL and msg.program in PIANO_PROGRAMS
-        elif hasattr(msg, "channel"):
-            # channels with no program default to 0 (piano), per GM
-            keep = msg.channel != DRUM_CHANNEL and program.get(msg.channel, 0) in PIANO_PROGRAMS
-        else:
+        elif ch is None:
             keep = True
+        elif keep_channels is not None:
+            keep = ch in keep_channels                 # explicit channel allow-list
+        elif drop_channels is not None:
+            keep = ch not in drop_channels             # explicit channel deny-list
+        else:
+            # default: piano-program channels only, no drums
+            # (channels with no program default to 0 = piano, per GM)
+            keep = ch != DRUM_CHANNEL and program.get(ch, 0) in PIANO_PROGRAMS
 
         if keep:
             track.append(msg.copy(time=msg.time + carry))
@@ -73,14 +79,25 @@ def main():
     ap.add_argument("files", nargs="+", help="MIDI file(s) to process")
     ap.add_argument("--inspect", action="store_true",
                     help="list tracks/channels/instruments instead of filtering")
+    ap.add_argument("--keep-channels",
+                    help="comma-separated channels to keep, e.g. 0,3 (overrides piano filter)")
+    ap.add_argument("--drop-channels",
+                    help="comma-separated channels to drop, keep the rest")
     args = ap.parse_args()
+
+    def parse(s):
+        return {int(x) for x in s.split(",") if x.strip() != ""} if s else None
+
+    keep = parse(args.keep_channels)
+    drop = parse(args.drop_channels)
 
     for f in args.files:
         try:
             if args.inspect:
                 inspect(f)
             else:
-                pianofy(f, f.rsplit(".", 1)[0] + "_piano.mid")
+                pianofy(f, f.rsplit(".", 1)[0] + "_piano.mid",
+                        keep_channels=keep, drop_channels=drop)
         except Exception as e:
             print(f"{f}: error: {e}", file=sys.stderr)
 
