@@ -49,7 +49,8 @@ def _save_settings(data: dict):
         json.dump(data, f, indent=2)
 
 # Public paths that never require a token
-_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png", "/karaoke"}
+_PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png", "/karaoke",
+                 "/internal/keyboard_event"}
 # /keyboard/ is public so the karaoke page can list and play songs without login
 _PUBLIC_PREFIXES = ("/_app/", "/login", "/karaoke", "/keyboard/")
 
@@ -849,6 +850,10 @@ async def upload_firmware(file: UploadFile = File(...)):
 _SONGS_DIR        = os.environ.get("SPARKLES_SONGS_DIR", "/home/julian/sparkles/songs")
 _KEYBOARD_CMD_SOCK = os.environ.get("SPARKLES_KEYBOARD_SOCK", "/tmp/keyboard_cmd.sock")
 
+# current playback state, so the (login-free) karaoke page can poll it and clear
+# itself when a song stops — including when a key press on the keyboard stops it
+_playback = {"song": None, "playing": False}
+
 
 def _keyboard_cmd(cmd: dict):
     """Send a command to keyboard_midi.py via its Unix socket."""
@@ -878,19 +883,30 @@ async def keyboard_songs():
 @app.post("/keyboard/play")
 async def keyboard_play(song: str = Query(...)):
     _keyboard_cmd({"cmd": "play", "file": song})
+    _playback.update(song=song, playing=True)
     return _ok()
 
 
 @app.post("/keyboard/stop")
 async def keyboard_stop():
     _keyboard_cmd({"cmd": "stop"})
+    _playback.update(playing=False)
     return _ok()
+
+
+@app.get("/keyboard/status")
+async def keyboard_status():
+    """Current playback state — polled by the karaoke page so it clears when a
+    song stops (including when a key press on the keyboard stops it)."""
+    return _playback
 
 
 @app.post("/internal/keyboard_event")
 async def keyboard_event(request: Request):
     """Receive status callbacks from keyboard_midi.py and fan out via SSE."""
     body = await request.json()
+    if body.get("event") == "keyboard_playback" and body.get("status") in ("stopped", "finished", "error"):
+        _playback.update(playing=False)
     bridge._dispatch(body)
     return {"ok": True}
 

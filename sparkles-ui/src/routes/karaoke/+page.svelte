@@ -46,6 +46,16 @@
     nowPlaying = '';
   }
 
+  // Poll real playback state so the page reflects when a song actually stops —
+  // e.g. it ends on its own, or someone presses a key on the keyboard.
+  async function pollStatus() {
+    try {
+      const r = await fetch('/keyboard/status');
+      const s = await r.json();
+      nowPlaying = (s.playing && s.song) ? prettify(s.song) : '';
+    } catch (_) {}
+  }
+
   // Idle screensaver overlay. It also swallows the wake-up tap so waking the
   // screen doesn't start a song. SAVER_MS should be <= the kiosk's hardware
   // blank timeout so the overlay is already up when the panel powers off.
@@ -66,10 +76,13 @@
   onMount(() => {
     loadSongs();
     armIdle();
+    pollStatus();
+    const statusTimer = setInterval(pollStatus, 1500);
     const onActivity = () => armIdle();
     window.addEventListener('pointerdown', onActivity, true);
     return () => {
       clearTimeout(idleTimer);
+      clearInterval(statusTimer);
       window.removeEventListener('pointerdown', onActivity, true);
     };
   });
