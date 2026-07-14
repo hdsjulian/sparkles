@@ -337,13 +337,13 @@ class SerialBridge:
                 pass
 
     def _append_log(self, line: str, direction: str = "RX"):
-        entry = {"dir": direction, "line": line}
+        # ts is the Pi clock so log timing survives master reboots
+        entry = {"dir": direction, "line": line, "ts": time.time()}
         with self._subscribers_lock:
             self._log_buffer.append(entry)
             subs = list(self._log_subscribers)
         if self._log_file:
-            import time as _time
-            self._log_file.write(f"{_time.strftime('%H:%M:%S')} {direction} {line}\n")
+            self._log_file.write(f"{time.strftime('%H:%M:%S')} {direction} {line}\n")
         for q in subs:
             try:
                 self._loop.call_soon_threadsafe(q.put_nowait, entry)

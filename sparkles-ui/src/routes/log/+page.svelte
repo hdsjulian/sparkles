@@ -16,6 +16,23 @@
 
   $: visible = lines.filter(l => filter === 'both' || l.dir?.toLowerCase() === filter);
 
+  // orange divider whenever messages cross into a new 5s bucket (Pi clock)
+  $: rendered = (() => {
+    const out = [];
+    let lastBucket = null;
+    for (const entry of visible) {
+      if (entry.ts) {
+        const bucket = Math.floor(entry.ts / 5);
+        if (bucket !== lastBucket) {
+          out.push({ divider: true, label: new Date(entry.ts * 1000).toLocaleTimeString() });
+          lastBucket = bucket;
+        }
+      }
+      out.push(entry);
+    }
+    return out;
+  })();
+
   onMount(() => {
     es = new EventSource('/serialLog');
     es.addEventListener('serial_log', (e) => {
@@ -65,10 +82,14 @@
   </div>
 
   <div class="log-box" bind:this={logEl} on:scroll={onScroll}>
-    {#each visible as entry}
-      <div class="log-line" class:rx={entry.dir === 'RX'} class:tx={entry.dir === 'TX'}>
-        <span class="dir-tag">{entry.dir ?? 'RX'}</span>{entry.line ?? entry}
-      </div>
+    {#each rendered as entry}
+      {#if entry.divider}
+        <div class="time-divider">── {entry.label} ──</div>
+      {:else}
+        <div class="log-line" class:rx={entry.dir === 'RX'} class:tx={entry.dir === 'TX'}>
+          <span class="dir-tag">{entry.dir ?? 'RX'}</span>{entry.line ?? entry}
+        </div>
+      {/if}
     {/each}
     {#if visible.length === 0}
       <div class="log-empty">Waiting for serial output...</div>
@@ -158,5 +179,13 @@
   .log-empty {
     color: var(--color-text-muted);
     font-style: italic;
+  }
+
+  .time-divider {
+    color: #ff9800;
+    font-size: 0.7rem;
+    font-weight: bold;
+    padding: 2px 0;
+    opacity: 0.9;
   }
 </style>
