@@ -636,7 +636,7 @@ bool MessageHandler::getBatteryLow() {
 
 void MessageHandler::recordTimeOfDayBeforeSleep() {
     struct tm timeinfo;
-    if (getLocalTime(&timeinfo)) {
+    if (getLocalTime(&timeinfo, 0)) {
         beforeSleepTimeinfo = timeinfo;
         beforeSleepSecondsOfDay = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
         beforeSleepMillis = millis();

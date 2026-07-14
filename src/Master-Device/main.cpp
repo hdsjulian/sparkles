@@ -266,7 +266,8 @@ static void handleSerialCommand(const char* line) {
     } else if (strcmp(cmd, "get_system_info") == 0) {
         struct tm ti;
         char buf[32] = "not set";
-        if (getLocalTime(&ti)) snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+        // timeout 0: the default blocks 5s while the clock is unset, tripping the loop() watchdog
+        if (getLocalTime(&ti, 0)) snprintf(buf, sizeof(buf), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
         uint8_t mac[6]; WiFi.macAddress(mac);
         char macStr[18];
         snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
