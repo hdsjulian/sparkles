@@ -461,7 +461,10 @@ class SerialBridge:
                     import time as _time
                     self._last_frame_time = _time.monotonic()
                     self._dispatch(frame)
-                except serial.SerialException as exc:
+                except Exception as exc:
+                    # pyserial can raise raw OSError/TypeError when the port is
+                    # closed under a blocked readline (flash, usb re-enumeration) —
+                    # treat everything as a disconnect or the thread spins forever
                     logger.error("Serial disconnected: %s — reconnecting in %.0fs", exc, RECONNECT_DELAY)
                     self._emit_serial_status(False)
                     try:
@@ -470,8 +473,6 @@ class SerialBridge:
                         pass
                     _time.sleep(RECONNECT_DELAY)
                     break
-                except Exception as exc:
-                    logger.exception("Unexpected reader error: %s", exc)
 
     def _dispatch(self, frame: dict):
         if self._loop is None:
