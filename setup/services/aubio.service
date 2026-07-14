@@ -1,7 +1,7 @@
 [Unit]
 Description=Sparkles Aubio Pitch Detector
-After=serial_mux.service sound.target
-Requires=serial_mux.service
+After=sparkles.service sound.target
+Requires=sparkles.service
 
 [Service]
 Type=simple

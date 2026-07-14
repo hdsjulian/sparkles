@@ -1,9 +1,12 @@
 """
-serial_bridge.py – connects to serial_mux.py via Unix socket.
+serial_bridge.py – direct serial connection to the master ESP32.
 
 Runs a background reader thread that parses newline-delimited JSON frames
-from the mux and fans them out to registered async queues.
+and fans them out to registered async queues.
 Pi → ESP32: call send(dict) to queue a command frame.
+
+The master port is SPARKLES_MASTER_PORT if set, otherwise the single device
+matching SPARKLES_PORT_GLOB (the Espressif by-id path).
 
 Optionally forwards selected events to a T-Beam running Meshtastic via
 its SerialModule (SPARKLES_TBEAM_PORT env var, e.g. /dev/ttyUSB0).
@@ -12,67 +15,31 @@ If the port is absent or fails to open, forwarding is silently skipped.
 
 import asyncio
 import collections
+import glob
 import json
 import logging
 import os
 import queue
 import socket
 import threading
+import time
 from collections import defaultdict
 
 import serial
 
 logger = logging.getLogger("serial_bridge")
 
-_SOCKET_PATH = os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock")
+_MASTER_PORT = os.environ.get("SPARKLES_MASTER_PORT")
+# single ESP32, so we just grab the one Espressif serial device by its stable by-id path
+_PORT_GLOB = os.environ.get("SPARKLES_PORT_GLOB",
+                            "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_*")
 _DEFAULT_PORT = "/dev/ttyACM0"
 _BAUD = 115200
-
-
-class _MuxSocket:
-    """Wraps a Unix socket connection to serial_mux with a serial-like interface."""
-
-    def __init__(self, path: str):
-        self._path = path
-        self._sock: socket.socket | None = None
-        self._buf = b""
-        self.is_open = False
-
-    def open(self):
-        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._sock.settimeout(1.0)
-        self._sock.connect(self._path)
-        self._buf = b""
-        self.is_open = True
-
-    def close(self):
-        self.is_open = False
-        if self._sock:
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
-
-    def write(self, data: bytes):
-        if self._sock:
-            self._sock.sendall(data)
-
-    def readline(self) -> bytes:
-        """Return one newline-terminated line, blocking up to timeout."""
-        while b"\n" not in self._buf:
-            try:
-                chunk = self._sock.recv(4096)
-            except socket.timeout:
-                return b""
-            if not chunk:
-                raise serial.SerialException("Mux socket closed")
-            self._buf += chunk
-        line, self._buf = self._buf.split(b"\n", 1)
-        return line + b"\n"
-
-    def reset_input_buffer(self):
-        self._buf = b""
+# music clients (aubioAlgo, keyboard_midi) inject their commands here; the bridge
+# owns the single master serial port, so it forwards them onto the write queue
+_MUSIC_SOCK = os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock")
+# a music gap longer than this means piano/mic activity is resuming after idle
+_IDLE_RESUME_SECONDS = int(os.environ.get("SPARKLES_IDLE_RESUME", "300"))
 _TBEAM_PORT = os.environ.get("SPARKLES_TBEAM_PORT", "")
 _TBEAM_BAUD = int(os.environ.get("SPARKLES_TBEAM_BAUD", "38400"))
 
@@ -158,7 +125,13 @@ class SerialBridge:
         self._port = port
         self._baud = baud
         self._serial: serial.Serial | None = None
-        self._log_file = None  # serial_mux owns the log file
+        # on-disk serial log (RX + management TX; music TX bypasses via send_line)
+        try:
+            os.makedirs(os.path.dirname(_SERIAL_LOG_PATH), exist_ok=True)
+            self._log_file = open(_SERIAL_LOG_PATH, "a", buffering=1)
+        except Exception as exc:
+            logger.warning("Could not open serial log %s: %s", _SERIAL_LOG_PATH, exc)
+            self._log_file = None
         self._thread: threading.Thread | None = None
         self._running = False
         # asyncio queues subscribed to all incoming events
@@ -176,10 +149,12 @@ class SerialBridge:
         # watchdog: timestamps for stale detection
         self._last_frame_time: float = 0.0
         self._connected_since: float = 0.0  # when port was last opened successfully
+        self._last_music_time: float = 0.0  # for the installation_active resume edge
         # set to True to keep reader thread from reconnecting (e.g. during firmware flash)
         self._pause_reconnect: bool = False
-        # outbound write queue — serial writes happen on the reader thread, never the event loop
-        self._send_queue: queue.Queue = queue.Queue(maxsize=64)
+        # outbound write queue — serial writes happen on the reader thread, never the event loop.
+        # sized for the 30 Hz music stream plus keyboard bursts now sharing this queue
+        self._send_queue: queue.Queue = queue.Queue(maxsize=256)
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -215,6 +190,8 @@ class SerialBridge:
         self._running = True
         self._thread = threading.Thread(target=self._reader, daemon=True, name="serial-reader")
         self._thread.start()
+        threading.Thread(target=self._writer, daemon=True, name="serial-writer").start()
+        threading.Thread(target=self._music_socket_server, daemon=True, name="music-socket").start()
         logger.info("Serial bridge started, will connect to %s @ %d", self._port, self._baud)
 
     def stop(self):
@@ -239,6 +216,43 @@ class SerialBridge:
 
     def _emit_serial_status(self, connected: bool):
         self._dispatch({"event": "serial_status", "connected": connected})
+
+    # ------------------------------------------------------------------
+    # Music socket — aubio/keyboard inject music commands here, we own the port
+    # ------------------------------------------------------------------
+
+    def _handle_music_client(self, conn: socket.socket):
+        buf = b""
+        try:
+            while self._running:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                buf += data
+                while b"\n" in buf:
+                    raw, buf = buf.split(b"\n", 1)
+                    line = raw.strip().decode("utf-8", errors="ignore")
+                    if line:
+                        self.send_line(line)
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+    def _music_socket_server(self):
+        if os.path.exists(_MUSIC_SOCK):
+            os.unlink(_MUSIC_SOCK)
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(_MUSIC_SOCK)
+        os.chmod(_MUSIC_SOCK, 0o660)
+        server.listen(8)
+        logger.info("Music socket listening on %s", _MUSIC_SOCK)
+        while self._running:
+            try:
+                conn, _ = server.accept()
+            except Exception:
+                break
+            threading.Thread(target=self._handle_music_client, args=(conn,), daemon=True).start()
 
     # ------------------------------------------------------------------
     # Sending
@@ -270,6 +284,24 @@ class SerialBridge:
             self._append_log(line.strip(), "TX")
         except queue.Full:
             logger.warning("Send queue full, dropping: %s", payload)
+
+    def send_line(self, line: str):
+        """Enqueue a pre-serialized JSON line from a music client. Hot path — skips
+        the disk/SSE log to avoid churn at 30 Hz plus keyboard bursts."""
+        if not line.endswith("\n"):
+            line += "\n"
+        try:
+            self._send_queue.put_nowait(line)
+        except queue.Full:
+            return  # music is a continuous stream; a dropped frame is harmless
+        # resume edge: first music after a long idle → installation_active event
+        # (the old serial_mux emitted this; the mesh relay in main.py listens for it)
+        now = time.monotonic()
+        last = self._last_music_time
+        self._last_music_time = now
+        if last == 0.0 or now - last > _IDLE_RESUME_SECONDS:
+            idle = int(now - last) if last else None
+            self._dispatch({"event": "installation_active", "idleSeconds": idle})
 
     # ------------------------------------------------------------------
     # Subscriptions (for SSE fan-out)
@@ -341,6 +373,31 @@ class SerialBridge:
     # Background reader
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _get_master_port() -> str | None:
+        if _MASTER_PORT:
+            return _MASTER_PORT
+        # single ESP32 now, so the Espressif by-id glob matches exactly one device
+        matches = sorted(glob.glob(_PORT_GLOB))
+        return matches[0] if matches else None
+
+    def _writer(self):
+        """Drain the send queue the moment something is enqueued. Runs on its own
+        thread so TX never waits for readline() to time out — critical for the
+        30 Hz music stream. One reader + one writer thread is pyserial-safe."""
+        while self._running:
+            try:
+                line_out = self._send_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            ser = self._serial
+            if ser is None or not ser.is_open:
+                continue  # not connected (or port released for flashing) — drop
+            try:
+                ser.write(line_out.encode())
+            except Exception:
+                pass  # reader thread owns reconnect handling
+
     def _reader(self):
         import time as _time
 
@@ -354,14 +411,19 @@ class SerialBridge:
             if not self._running:
                 break
 
-            # --- connect to mux socket ---
+            # --- open master serial port ---
+            port = self._get_master_port()
+            if not port:
+                logger.warning("Master port unknown, retrying in %.0fs", RECONNECT_DELAY)
+                self._emit_serial_status(False)
+                _time.sleep(RECONNECT_DELAY)
+                continue
             try:
-                mux = _MuxSocket(_SOCKET_PATH)
-                mux.open()
-                self._serial = mux
-                logger.info("Connected to serial mux at %s", _SOCKET_PATH)
+                ser = serial.Serial(port, self._baud, timeout=1, write_timeout=1)
+                self._serial = ser
+                logger.info("Connected to master device on %s", port)
             except Exception as exc:
-                logger.warning("Mux connect failed (%s), retrying in %.0fs", exc, RECONNECT_DELAY)
+                logger.warning("Serial open failed (%s), retrying in %.0fs", exc, RECONNECT_DELAY)
                 self._emit_serial_status(False)
                 _time.sleep(RECONNECT_DELAY)
                 continue
@@ -381,15 +443,8 @@ class SerialBridge:
             self._emit_serial_status(True)
             self._send_ota_url()
 
-            # --- read loop ---
+            # --- read loop (TX happens on the dedicated writer thread) ---
             while self._running:
-                # drain outbound queue before blocking on readline
-                while True:
-                    try:
-                        line_out = self._send_queue.get_nowait()
-                        self._serial.write(line_out.encode())
-                    except queue.Empty:
-                        break
                 try:
                     raw = self._serial.readline()
                     if not raw:

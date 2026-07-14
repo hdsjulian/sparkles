@@ -1,7 +1,7 @@
 [Unit]
 Description=Sparkles Keyboard MIDI Bridge
-After=serial_mux.service sparkles.service
-Requires=serial_mux.service sparkles.service
+After=sparkles.service
+Requires=sparkles.service
 
 [Service]
 Type=simple

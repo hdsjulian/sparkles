@@ -20,13 +20,15 @@ import threading
 # ---------------------------------------------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument('--noserial', action='store_true', help='Disable serial output')
-parser.add_argument('--sock', default='/tmp/sparkles.sock', help='Unix socket path to serial_mux')
+parser.add_argument('--sock', default='/tmp/music.sock', help="Unix socket path to serial_bridge's music socket")
+parser.add_argument('--api', default='http://localhost:8080', help='FastAPI base URL for midi_params and heartbeat')
 parser.add_argument('--log', action='store_true', help='Enable logging to aubioAlgo.txt')
 parser.add_argument('--random', action='store_true', help='Generate random pitch/RMS instead of USB mic')
+parser.add_argument('--debug', action='store_true', help='DEBUG log level (writes per-frame logs to disk — adds latency)')
 args = parser.parse_args()
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.DEBUG if args.debug else logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s',
     handlers=[
         logging.FileHandler('aubioAlgo.log'),
@@ -58,65 +60,24 @@ midi_params = {
 }
 
 # ---------------------------------------------------------------------------
-# Mux socket setup
+# Music bridge socket (write-only: send aubio_shimmer / aubio_midi commands)
 # ---------------------------------------------------------------------------
 _sock: socket.socket | None = None
 _sock_lock = threading.Lock()
-_sock_buf = b""
 
 def _open_sock():
-    global _sock, _sock_buf
+    global _sock
     while True:
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.settimeout(1.0)
             s.connect(args.sock)
             with _sock_lock:
                 _sock = s
-                _sock_buf = b""
-            log.info(f"Connected to serial mux at {args.sock}")
+            log.info(f"Connected to music bridge at {args.sock}")
             return
         except Exception as e:
-            log.error(f"Mux connect failed: {e} — retrying in {RETRY_DELAY}s")
+            log.error(f"Music bridge connect failed: {e} — retrying in {RETRY_DELAY}s")
             time.sleep(RETRY_DELAY)
-
-def _mux_reader():
-    global _sock_buf
-    while True:
-        try:
-            with _sock_lock:
-                s = _sock
-            if s is None:
-                time.sleep(1)
-                continue
-            try:
-                chunk = s.recv(4096)
-            except socket.timeout:
-                continue
-            if not chunk:
-                raise ConnectionError("Mux socket closed")
-            _sock_buf += chunk
-            while b"\n" in _sock_buf:
-                raw, _sock_buf = _sock_buf.split(b"\n", 1)
-                line = raw.strip().decode("utf-8", errors="ignore")
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                    if data.get("event") == "midi_params":
-                        midi_params.update({k: v for k, v in data.items() if k != "event"})
-                        log.info(f"[MIDI_PARAMS] updated: mode={midi_params.get('mode')} "
-                                 f"range={midi_params.get('rangeMin')}-{midi_params.get('rangeMax')} "
-                                 f"rms={midi_params.get('rmsMin'):.1f}..{midi_params.get('rmsMax'):.1f}")
-                except json.JSONDecodeError:
-                    pass
-        except Exception as e:
-            log.error(f"Mux read error: {e} — reconnecting")
-            _open_sock()
-
-if not args.noserial:
-    _open_sock()
-    threading.Thread(target=_mux_reader, daemon=True).start()
 
 def serial_send(cmd_dict):
     if args.noserial or _sock is None:
@@ -125,7 +86,42 @@ def serial_send(cmd_dict):
         with _sock_lock:
             _sock.sendall((json.dumps(cmd_dict) + "\n").encode("utf-8"))
     except Exception as e:
-        log.error(f"Mux send failed: {e}")
+        log.error(f"Music bridge send failed: {e}")
+
+# ---------------------------------------------------------------------------
+# midi_params: fetch from FastAPI on startup, poll every 30 s for live updates
+# ---------------------------------------------------------------------------
+
+def _fetch_midi_params():
+    import urllib.request
+    try:
+        resp = urllib.request.urlopen(f"{args.api}/getMidiParams", timeout=3)
+        data = json.loads(resp.read())
+        midi_params.update({k: v for k, v in data.items() if k in midi_params})
+        log.info(f"midi_params fetched: mode={midi_params.get('mode')} "
+                 f"range={midi_params.get('rangeMin')}-{midi_params.get('rangeMax')} "
+                 f"rms={midi_params.get('rmsMin'):.1f}..{midi_params.get('rmsMax'):.1f}")
+    except Exception as e:
+        log.warning(f"midi_params fetch failed: {e}")
+
+def _poll_midi_params():
+    # Wait for FastAPI to be ready, then keep params fresh
+    for _ in range(20):
+        try:
+            _fetch_midi_params()
+            break
+        except Exception:
+            time.sleep(5)
+    while True:
+        time.sleep(30)
+        _fetch_midi_params()
+
+# The master keeps its idle animation suppressed straight off the music stream
+# (each aubio_shimmer/aubio_midi refreshes its lastMidiTime), so no heartbeat needed.
+
+if not args.noserial:
+    _open_sock()
+    threading.Thread(target=_poll_midi_params, daemon=True).start()
 
 # ---------------------------------------------------------------------------
 # Audio setup

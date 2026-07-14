@@ -2,12 +2,12 @@
 keyboard_midi.py — USB MIDI keyboard bridge + MIDI file player.
 
 Responsibilities:
-  1. Forward live keyboard input to serial_mux (note on/off, sustain pedal)
+  1. Forward live keyboard input to the master (note on/off, sustain pedal)
   2. Play MIDI files back through the keyboard on command from FastAPI
   3. Report playback status (finished / stopped by user) back to FastAPI
 
 Communication:
-  - serial_mux socket (/tmp/sparkles.sock): send note/sustain events
+  - music socket (/tmp/music.sock, served by serial_bridge): send note/sustain events
   - command socket (/tmp/keyboard_cmd.sock): receive play/stop from FastAPI
   - HTTP POST to FastAPI (/internal/keyboard_event): report status back
 """
@@ -33,8 +33,8 @@ RETRY_DELAY = 3.0
 SUSTAIN_CC  = 64
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--sock",        default=os.environ.get("SPARKLES_SOCK", "/tmp/sparkles.sock"),
-                    help="Unix socket path to serial_mux")
+parser.add_argument("--sock",        default=os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock"),
+                    help="Unix socket path to serial_bridge's music socket")
 parser.add_argument("--cmd-sock",    default=os.environ.get("SPARKLES_KEYBOARD_SOCK", "/tmp/keyboard_cmd.sock"),
                     help="Unix socket path for FastAPI commands")
 parser.add_argument("--api",         default="http://localhost:8080",
@@ -59,7 +59,7 @@ if args.list_ports:
     sys.exit(0)
 
 # ---------------------------------------------------------------------------
-# Mux socket (serial_mux — forward live events)
+# Music bridge socket (forward live MIDI events to music device)
 # ---------------------------------------------------------------------------
 _mux_sock: socket.socket | None = None
 _mux_lock = threading.Lock()
@@ -73,10 +73,10 @@ def _open_mux():
             s.connect(args.sock)
             with _mux_lock:
                 _mux_sock = s
-            log.info("Connected to serial mux at %s", args.sock)
+            log.info("Connected to music bridge at %s", args.sock)
             return
         except Exception as e:
-            log.error("Mux connect failed: %s — retrying in %.0fs", e, RETRY_DELAY)
+            log.error("Music bridge connect failed: %s — retrying in %.0fs", e, RETRY_DELAY)
             time.sleep(RETRY_DELAY)
 
 
@@ -90,7 +90,7 @@ def _mux_send(cmd_dict: dict):
     try:
         s.sendall((json.dumps(cmd_dict) + "\n").encode())
     except Exception as e:
-        log.error("Mux send failed: %s", e)
+        log.error("Music bridge send failed: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -149,8 +149,6 @@ def _play_file(filepath: str, out_port: mido.ports.BaseOutput):
                 return
             if not msg.is_meta:
                 out_port.send(msg)
-                # also drive the cluster: forward notes to the mux, same path
-                # live key presses take to the music device and the LEDs
                 if msg.type == "note_on":
                     _mux_send({"cmd": "keyboard_midi", "note": msg.note, "velocity": msg.velocity})
                 elif msg.type == "note_off":

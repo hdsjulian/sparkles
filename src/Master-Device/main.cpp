@@ -32,9 +32,15 @@ unsigned long lastTick = 0;
 #define SLEEP_BROADCAST_DURATION_MS (5 * 60 * 1000)  // 5 minutes in ms
 
 static TaskHandle_t sleepBroadcastTaskHandle = NULL;
+static void serialSendDoc(JsonDocument& doc);
 
 static void sleepBroadcastTask(void* pvParameters) {
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
+
+    {
+        JsonDocument r; r["event"] = "sleep_phase"; r["status"] = "start";
+        serialSendDoc(r);
+    }
 
     // Resync all clients once before sending sleep so they wake up with aligned timers.
     msgHandler.startFastResyncTask();
@@ -50,13 +56,19 @@ static void sleepBroadcastTask(void* pvParameters) {
     msgHandler.setAddressListInactive();
     msgHandler.startBroadcastSettleTask();
     msgHandler.broadcastReannounce();
+    {
+        JsonDocument r; r["event"] = "sleep_phase"; r["status"] = "end";
+        serialSendDoc(r);
+    }
     sleepBroadcastTaskHandle = NULL;
     vTaskDelete(NULL);
 }
 
 // ── Serial bridge ─────────────────────────────────────────────────────────────
 
-static String serialLineBuffer;
+// fixed-size line buffer, no String churn on the hot path (same as Music-Device had)
+static char serialLineBuffer[256];
+static size_t serialLineLen = 0;
 
 static void serialSendDoc(JsonDocument& doc) {
     String out;
@@ -64,7 +76,7 @@ static void serialSendDoc(JsonDocument& doc) {
     Serial.println(out);
 }
 
-static void handleSerialCommand(const String& line) {
+static void handleSerialCommand(const char* line) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, line);
     if (err) return;
@@ -368,10 +380,31 @@ static void handleSerialCommand(const String& line) {
         anim.animationParams.candle.value      = doc["brightness"] | 180;
         msgHandler.sendAnimation(anim, -1);
 
-    } else if (strcmp(cmd, "music_active") == 0) {
-        // music output lives on the dedicated music device now, this 1 Hz ping
-        // just keeps the master from starting its idle animation loop while
-        // people are making music
+    } else if (strcmp(cmd, "aubio_shimmer") == 0) {
+        message_animation anim;
+        anim.animationType = BACKGROUND_SHIMMER;
+        anim.animationParams.backgroundShimmer.hue        = doc["hue"]        | 22;
+        anim.animationParams.backgroundShimmer.saturation = doc["saturation"] | 255;
+        anim.animationParams.backgroundShimmer.value      = doc["value"]      | 0;
+        msgHandler.sendAnimation(anim, -1);     // direct broadcast (latency-sensitive fast path)
+        msgHandler.setLastMidiTime(millis());   // keep the idle animation loop suppressed
+
+    } else if (strcmp(cmd, "aubio_midi") == 0) {
+        message_animation anim;
+        anim.animationType = MIDI;
+        anim.animationParams.midi.note       = doc["note"]     | 0;
+        anim.animationParams.midi.velocity   = doc["velocity"] | 0;
+        anim.animationParams.midi.instrument = 0; // mic
+        msgHandler.sendAnimation(anim, -1);
+        msgHandler.setLastMidiTime(millis());
+
+    } else if (strcmp(cmd, "keyboard_midi") == 0) {
+        message_animation anim;
+        anim.animationType = MIDI;
+        anim.animationParams.midi.note       = doc["note"]     | 0;
+        anim.animationParams.midi.velocity   = doc["velocity"] | 0;
+        anim.animationParams.midi.instrument = 1; // keyboard
+        msgHandler.sendAnimation(anim, -1);
         msgHandler.setLastMidiTime(millis());
 
     } else if (strcmp(cmd, "identify") == 0) {
@@ -522,7 +555,9 @@ static void handleSerialCommand(const String& line) {
 
 void setup()
 {
+    Serial.setRxBufferSize(2048); // default 256 holds ~5 music messages — a burst during a loop stall would overflow
     Serial.begin(115200);
+    Serial.setTxTimeoutMs(0); // non-blocking CDC writes — housekeeping drops bytes rather than stalling the music broadcast path
     delay(500);
 
     unsigned long long startTime = millis();
@@ -555,13 +590,16 @@ void loop()
     while (Serial.available()) {
         char c = (char)Serial.read();
         if (c == '\n') {
-            serialLineBuffer.trim();
-            if (serialLineBuffer.length() > 0) {
+            while (serialLineLen > 0 && serialLineBuffer[serialLineLen - 1] == '\r') serialLineLen--;
+            serialLineBuffer[serialLineLen] = '\0';
+            if (serialLineLen > 0) {
                 handleSerialCommand(serialLineBuffer);
             }
-            serialLineBuffer = "";
+            serialLineLen = 0;
+        } else if (serialLineLen < sizeof(serialLineBuffer) - 1) {
+            serialLineBuffer[serialLineLen++] = c;
         } else {
-            serialLineBuffer += c;
+            serialLineLen = 0; // overrun, drop the line
         }
     }
 
@@ -569,8 +607,13 @@ void loop()
         lastTick = millis();
         msgHandler.tickInactiveTimeout();
 
-        uint8_t address[6];
-        WiFi.macAddress(address);
+        // While music is streaming, skip the housekeeping dump: building and
+        // serializing all those JSON docs stalls loop() for several ms, which
+        // delays the 30 Hz music parsing. Status keeps accumulating and the
+        // dump resumes 30 s after the last note.
+        bool musicActive = msgHandler.getLastMidiTime() > 0 &&
+                           millis() - msgHandler.getLastMidiTime() < 30000;
+        if (!musicActive) {
 
         // Send animate status to Pi so it stays in sync
         {
@@ -619,11 +662,7 @@ void loop()
             serialSendDoc(r);
         }
 
-        if (!msgHandler.isInSleepPhase()) {
-            unsigned long sleepTime = msgHandler.getSleepTime();
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-            (void)sleepTime;
-        }
+        } // !musicActive
 
         if (millis() - msgHandler.getLastMidiTime() > 60000 && msgHandler.getLastMidiTime() > 0) {
             ESP_LOGI("MSG", "No MIDI message for 60 seconds, starting animation loop");

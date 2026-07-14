@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -29,6 +30,13 @@ logger = logging.getLogger("sparkles")
 SERIAL_PORT   = os.environ.get("SPARKLES_PORT", "/dev/ttyACM0")
 FIRMWARE_PATH = os.path.join(os.path.dirname(__file__), "firmware.bin")
 _SETTINGS_PATH = os.environ.get("SPARKLES_SETTINGS", "/home/julian/sparkles/settings.json")
+
+# Meshtastic log relay — the T-Beam (separate radio) rebroadcasts to the T-Deck
+MESH_BIN     = os.environ.get("SPARKLES_MESH_BIN", "meshtastic")
+MESH_PORT    = os.environ.get("SPARKLES_MESH_PORT", "")          # empty → CLI auto-detect
+MESH_CHANNEL = int(os.environ.get("SPARKLES_MESH_CHANNEL", "1")) # sparkles secondary channel
+MESH_BATTERY_LOW = float(os.environ.get("SPARKLES_MESH_BATTERY_LOW", "7"))  # relay a log below this %
+MESH_HEAP_LOW = int(os.environ.get("SPARKLES_MESH_HEAP_LOW", "20000"))  # relay a log below this many bytes free
 
 # ---------------------------------------------------------------------------
 # App settings — persisted to JSON file
@@ -81,6 +89,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Could not open serial port %s: %s – running in offline mode", SERIAL_PORT, exc)
     asyncio.create_task(_serial_status_broadcaster())
+    asyncio.create_task(_battery_low_watcher())
+    asyncio.create_task(_heap_low_watcher())
+    asyncio.create_task(_mesh_event_watcher())
     yield
     bridge.stop()
 
@@ -140,6 +151,7 @@ def _assert_connected():
 def _send(payload: dict):
     _assert_connected()
     bridge.send(payload)
+    _announce_animation(payload)
 
 
 def _ok(msg: str = "OK"):
@@ -251,6 +263,169 @@ async def serial_log(request: Request) -> StreamingResponse:
 
     return StreamingResponse(generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------------------------------------------------------------------------
+# Meshtastic log relay → T-Beam → T-Deck (sparkles channel)
+# ---------------------------------------------------------------------------
+
+_mesh_lock = asyncio.Lock()  # one meshtastic CLI talking to the radio at a time
+
+
+async def _mesh_send(text: str, channel_index: int) -> str:
+    """Send a text message out via the T-Beam radio using the meshtastic CLI."""
+    if shutil.which(MESH_BIN) is None and not os.path.isfile(MESH_BIN):
+        raise HTTPException(503, detail=f"meshtastic CLI not found ('{MESH_BIN}') — install it on the API host")
+
+    args = [MESH_BIN]
+    if MESH_PORT:
+        args += ["--port", MESH_PORT]
+    args += ["--sendtext", text, "--ch-index", str(channel_index)]
+
+    async with _mesh_lock:
+        proc = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise HTTPException(504, detail="meshtastic send timed out (radio busy or unplugged?)")
+
+    output = out.decode(errors="replace")
+    if proc.returncode != 0 or "Sending text" not in output:
+        raise HTTPException(502, detail=f"meshtastic send failed: {output.strip()[-300:]}")
+    return text
+
+
+class LogMessage(BaseModel):
+    message: str
+    level: str | None = None         # optional tag, e.g. "INFO" → prefixes the text
+    channelIndex: int | None = None  # override the default sparkles channel
+
+
+@app.post("/log")
+async def send_log(body: LogMessage):
+    """Relay an arbitrary log message over Meshtastic to the T-Deck."""
+    text = body.message if not body.level else f"[{body.level}] {body.message}"
+    text = text.encode()[:200].decode(errors="ignore")  # meshtastic text payload limit
+    if not text:
+        raise HTTPException(422, detail="message is empty")
+    ch = body.channelIndex if body.channelIndex is not None else MESH_CHANNEL
+    sent = await _mesh_send(text, ch)
+    logger.info("mesh log → ch%d: %s", ch, sent)
+    return _ok(sent)
+
+
+# animations worth announcing on the T-Deck — excludes background shimmer (per
+# request) and MIDI (streamed continuously, never sent as a discrete command)
+_ANIMATION_CMDS = {
+    "animate_toggle", "blink", "blink_all", "blink_battery_all",
+    "strobe_all", "bioluminescence", "breath", "candle_all",
+}
+
+
+def _announce_animation(payload: dict):
+    """Fire-and-forget a T-Deck log when an animation command is triggered."""
+    cmd = payload.get("cmd", "")
+    if cmd not in _ANIMATION_CMDS:
+        return
+
+    async def _task():
+        try:
+            await _mesh_send(f"🎬 animation: {cmd}", MESH_CHANNEL)
+        except Exception as exc:
+            logger.warning("animation relay failed for %s: %s", cmd, exc)
+
+    try:
+        asyncio.get_running_loop().create_task(_task())
+    except RuntimeError:
+        pass  # not called from the event loop — skip
+
+
+async def _battery_low_watcher():
+    """Relay a log to the T-Deck when a board's battery dips below MESH_BATTERY_LOW.
+
+    Edge-triggered: fires once when a board crosses the threshold, re-arms when
+    it recovers — so a steady stream of update_board frames won't spam the radio.
+    """
+    queue = bridge.subscribe()
+    low: set[int] = set()
+    try:
+        while True:
+            frame = await queue.get()
+            if frame.get("event") != "update_board":
+                continue
+            cid = frame.get("id")
+            bat = frame.get("batteryPercentage")
+            if cid is None or not isinstance(bat, (int, float)):
+                continue
+            if bat < MESH_BATTERY_LOW:
+                if cid not in low:
+                    low.add(cid)
+                    try:
+                        await _mesh_send(f"⚠️ board {cid} battery low ({bat:.0f}%)", MESH_CHANNEL)
+                    except HTTPException as exc:
+                        logger.warning("battery-low relay failed for board %s: %s", cid, exc.detail)
+            else:
+                low.discard(cid)  # recovered → re-arm for the next dip
+    finally:
+        bridge.unsubscribe(queue)
+
+
+async def _heap_low_watcher():
+    """Relay a T-Deck log when the master's free heap sinks below MESH_HEAP_LOW —
+    advance warning that a leak is heading for a hang, so it can be restarted
+    at a convenient moment instead of dying mid-evening.
+
+    Edge-triggered like the battery watcher: fires once on the crossing,
+    re-arms when the heap recovers.
+    """
+    queue = bridge.subscribe()
+    low = False
+    try:
+        while True:
+            frame = await queue.get()
+            if frame.get("event") != "heap":
+                continue
+            free = frame.get("free")
+            if not isinstance(free, int):
+                continue
+            if free < MESH_HEAP_LOW:
+                if not low:
+                    low = True
+                    try:
+                        await _mesh_send(f"⚠️ master heap low ({free // 1024} KB free)", MESH_CHANNEL)
+                    except Exception as exc:
+                        logger.warning("heap-low relay failed: %s", exc)
+            else:
+                low = False  # recovered → re-arm for the next dip
+    finally:
+        bridge.unsubscribe(queue)
+
+
+async def _mesh_event_watcher():
+    """Relay notable device events to the T-Deck.
+
+    installation_active comes from serial_bridge on the music resume edge (gap >
+    SPARKLES_IDLE_RESUME); sleep_phase start/end comes from the master firmware.
+    """
+    queue = bridge.subscribe()
+    try:
+        while True:
+            frame = await queue.get()
+            event = frame.get("event")
+            if event == "installation_active":
+                text = "🎶 people are using the installation"
+            elif event == "sleep_phase":
+                text = "😴 lamps going to sleep" if frame.get("status") == "start" else "🌅 lamps waking up"
+            else:
+                continue
+            try:
+                await _mesh_send(text, MESH_CHANNEL)
+            except Exception as exc:
+                logger.warning("mesh event relay failed (%s): %s", event, exc)
+    finally:
+        bridge.unsubscribe(queue)
 
 
 # ---------------------------------------------------------------------------
@@ -884,6 +1059,13 @@ async def keyboard_songs():
 async def keyboard_play(song: str = Query(...)):
     _keyboard_cmd({"cmd": "play", "file": song})
     _playback.update(song=song, playing=True)
+
+    async def _announce():
+        try:
+            await _mesh_send(f"🎤 karaoke: {song}", MESH_CHANNEL)
+        except Exception as exc:
+            logger.warning("karaoke relay failed: %s", exc)
+    asyncio.create_task(_announce())
     return _ok()
 
 

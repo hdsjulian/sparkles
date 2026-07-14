@@ -17,14 +17,14 @@ cd "$REPO/sparkles-ui"
 /usr/bin/npm run build
 
 echo "=== Restarting services ==="
-sudo systemctl restart serial_mux sparkles aubio keyboard_midi
+sudo systemctl restart sparkles aubio keyboard_midi
 
 echo "=== Restarting kiosk browser ==="
 # the autostart loop relaunches chromium with the fresh build
 pkill -f chromium 2>/dev/null || true
 
 echo "=== Done ==="
-for svc in serial_mux sparkles aubio keyboard_midi; do
+for svc in sparkles aubio keyboard_midi; do
     status=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
     echo "  $svc: $status"
 done
