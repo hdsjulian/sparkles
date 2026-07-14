@@ -121,11 +121,13 @@ _playback_lock  = threading.Lock()
 _playback_stop  = threading.Event()   # set to interrupt playback
 _playback_thread: threading.Thread | None = None
 _current_song: str | None = None
+_out_port: mido.ports.BaseOutput | None = None  # None while no keyboard is connected
 
 
-def _play_file(filepath: str, out_port: mido.ports.BaseOutput):
+def _play_file(filepath: str):
     global _current_song
-    log.info("Starting playback: %s", filepath)
+    out_port = _out_port  # snapshot; playback drives lamps only when None
+    log.info("Starting playback: %s (keyboard %s)", filepath, "yes" if out_port else "no")
     _current_song = os.path.basename(filepath)
     _playback_stop.clear()
 
@@ -141,14 +143,21 @@ def _play_file(filepath: str, out_port: mido.ports.BaseOutput):
         for msg in mid.play():
             if _playback_stop.is_set():
                 # send all-notes-off before stopping
-                for ch in range(16):
-                    out_port.send(mido.Message("control_change", channel=ch, control=123, value=0))
+                if out_port is not None:
+                    for ch in range(16):
+                        out_port.send(mido.Message("control_change", channel=ch, control=123, value=0))
                 log.info("Playback stopped by user: %s", filepath)
                 _notify_fastapi({"event": "keyboard_playback", "status": "stopped",
                                  "song": os.path.basename(filepath)})
                 return
             if not msg.is_meta:
-                out_port.send(msg)
+                if out_port is not None:
+                    try:
+                        out_port.send(msg)
+                    except Exception as e:
+                        # keyboard vanished mid-song — keep the lamp stream going
+                        log.warning("Keyboard output failed (%s) — continuing lamps only", e)
+                        out_port = None
                 if msg.type == "note_on":
                     _mux_send({"cmd": "keyboard_midi", "note": msg.note, "velocity": msg.velocity})
                 elif msg.type == "note_off":
@@ -164,11 +173,11 @@ def _play_file(filepath: str, out_port: mido.ports.BaseOutput):
                      "song": os.path.basename(filepath)})
 
 
-def start_playback(filepath: str, out_port: mido.ports.BaseOutput):
+def start_playback(filepath: str):
     global _playback_thread
     stop_playback()  # stop any current playback first
     _playback_thread = threading.Thread(
-        target=_play_file, args=(filepath, out_port), daemon=True
+        target=_play_file, args=(filepath,), daemon=True
     )
     _playback_thread.start()
 
@@ -205,7 +214,7 @@ def _handle_input(msg: mido.Message):
 # Command socket server (FastAPI sends play/stop here)
 # ---------------------------------------------------------------------------
 
-def _handle_cmd_client(conn: socket.socket, out_port: mido.ports.BaseOutput):
+def _handle_cmd_client(conn: socket.socket):
     buf = b""
     try:
         while True:
@@ -236,7 +245,7 @@ def _handle_cmd_client(conn: socket.socket, out_port: mido.ports.BaseOutput):
                                 "detail": f"File not found: {cmd.get('file')}"}
                         conn.sendall((json.dumps(resp) + "\n").encode())
                     else:
-                        start_playback(filepath, out_port)
+                        start_playback(filepath)
 
                 elif action == "stop":
                     stop_playback()
@@ -247,7 +256,7 @@ def _handle_cmd_client(conn: socket.socket, out_port: mido.ports.BaseOutput):
         conn.close()
 
 
-def _cmd_server(out_port: mido.ports.BaseOutput):
+def _cmd_server():
     path = args.cmd_sock
     if os.path.exists(path):
         os.unlink(path)
@@ -258,7 +267,7 @@ def _cmd_server(out_port: mido.ports.BaseOutput):
     log.info("Command socket listening on %s", path)
     while True:
         conn, _ = server.accept()
-        threading.Thread(target=_handle_cmd_client, args=(conn, out_port),
+        threading.Thread(target=_handle_cmd_client, args=(conn,),
                          daemon=True).start()
 
 
@@ -276,25 +285,23 @@ def _pick_port(in_names: list[str], out_names: list[str]) -> str | None:
             if args.midi_port.lower() in n.lower():
                 return n
         return None
-    # auto: skip the "Midi Through" loopback and take the first real device
+    # auto: never pick the "Midi Through" loopback — playback echoes back as
+    # input there and the key-press-stops-playback logic kills the song
     for n in both:
         if "midi through" not in n.lower():
             return n
-    return both[0] if both else None
+    return None
 
 
 def _open_midi_ports():
-    while True:
-        name = _pick_port(mido.get_input_names(), mido.get_output_names())
-        if not name:
-            log.warning("No usable MIDI port (need in+out, non-loopback) — retrying in %.0fs", RETRY_DELAY)
-            time.sleep(RETRY_DELAY)
-            continue
-        try:
-            return mido.open_input(name), mido.open_output(name)
-        except Exception as e:
-            log.error("Failed to open MIDI ports: %s — retrying", e)
-            time.sleep(RETRY_DELAY)
+    name = _pick_port(mido.get_input_names(), mido.get_output_names())
+    if not name:
+        return None, None
+    try:
+        return mido.open_input(name), mido.open_output(name)
+    except Exception as e:
+        log.error("Failed to open MIDI ports: %s", e)
+        return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -304,11 +311,21 @@ def _open_midi_ports():
 if not args.nosend:
     _open_mux()
 
+# started once — playback works with or without a keyboard (lamps only when without)
+threading.Thread(target=_cmd_server, daemon=True).start()
+
+_warned_no_device = False
 while True:
     in_port, out_port = _open_midi_ports()
+    if in_port is None:
+        if not _warned_no_device:
+            log.warning("No MIDI device — songs drive lamps only, retrying every %.0fs", RETRY_DELAY)
+            _warned_no_device = True
+        time.sleep(RETRY_DELAY)
+        continue
+    _warned_no_device = False
+    _out_port = out_port
     log.info("MIDI ports open: %s", in_port.name)
-
-    threading.Thread(target=_cmd_server, args=(out_port,), daemon=True).start()
 
     try:
         for msg in in_port:
@@ -316,6 +333,7 @@ while True:
     except Exception as e:
         log.error("MIDI input error: %s — reconnecting", e)
     finally:
+        _out_port = None
         try:
             in_port.close()
             out_port.close()
