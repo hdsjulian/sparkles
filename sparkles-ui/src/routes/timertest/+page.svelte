@@ -2,33 +2,52 @@
   import { onMount, onDestroy } from 'svelte';
   import { commandTimerTest } from '$lib/api.js';
 
-  let results = new Map(); // boardId -> { deltaUs, ts }
+  let results = new Map(); // boardId -> { deltaUs }
+  let known = new Set();   // active boards seen via update_board events
+  let missing = [];        // boards that didn't answer the last run
+  let lastRun = '';
   let running = false;
   let error = '';
   let es;
+  let timer;
 
   onMount(() => {
     es = new EventSource('/events');
     es.addEventListener('timer_test_result', (e) => {
       try {
         const d = JSON.parse(e.data);
-        results.set(d.boardId, { deltaUs: d.deltaUs, ts: Date.now() });
+        results.set(d.boardId, { deltaUs: d.deltaUs });
         results = new Map(results);
+        missing = missing.filter((id) => id !== d.boardId);
+      } catch {}
+    });
+    es.addEventListener('update_board', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.status === 'active') known.add(d.id);
       } catch {}
     });
   });
 
-  onDestroy(() => es?.close());
+  onDestroy(() => { es?.close(); clearTimeout(timer); });
 
   async function runTest() {
     running = true;
     error = '';
+    const expected = new Set([...known, ...results.keys()]);
+    results = new Map();
+    missing = [];
     try {
       await commandTimerTest();
     } catch (e) {
       error = e.message;
     }
-    setTimeout(() => { running = false; }, 1000);
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      missing = [...expected].filter((id) => !results.has(id)).sort((a, b) => a - b);
+      running = false;
+      lastRun = new Date().toLocaleTimeString();
+    }, 1500);
   }
 
   function rowClass(deltaUs) {
@@ -54,11 +73,15 @@
     {running ? 'Querying…' : 'Run Test'}
   </button>
 
+  {#if lastRun}
+    <p class="hint">Last run: {lastRun}</p>
+  {/if}
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
 
-  {#if rows.length > 0}
+  {#if rows.length > 0 || missing.length > 0}
     <table>
       <thead>
         <tr><th>Device</th><th>Error</th><th>Status</th></tr>
@@ -73,9 +96,16 @@
             </td>
           </tr>
         {/each}
+        {#each missing as boardId}
+          <tr class="bad">
+            <td>#{boardId}</td>
+            <td>no reply</td>
+            <td class="dot">✗</td>
+          </tr>
+        {/each}
       </tbody>
     </table>
-  {:else}
+  {:else if !running}
     <p class="hint">No results yet — press Run Test.</p>
   {/if}
 </main>
