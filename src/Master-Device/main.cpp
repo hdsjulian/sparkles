@@ -557,6 +557,7 @@ static void handleSerialCommand(const char* line) {
 void setup()
 {
     Serial.setRxBufferSize(2048); // default 256 holds ~5 music messages — a burst during a loop stall would overflow
+    Serial.setTxBufferSize(4096); // default 256 truncates the 1 Hz housekeeping burst mid-line with tx timeout 0
     Serial.begin(115200);
     Serial.setTxTimeoutMs(0); // non-blocking CDC writes — housekeeping drops bytes rather than stalling the music broadcast path
     delay(500);

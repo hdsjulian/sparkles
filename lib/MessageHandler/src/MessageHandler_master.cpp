@@ -147,6 +147,9 @@ void MessageHandler::handleReceive() {
                 addressList[timerIndex].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
                 addressList[timerIndex].lastUpdateTime = millis();
                 addressList[timerIndex].delay = incomingData.payload.gotTimer.delayAverage;
+                // saturate: int32 display field overflows when uptimes differ >~35min
+                long long gotOffset = incomingData.payload.gotTimer.offset;
+                addressList[timerIndex].timerOffset = (int32_t)constrain(gotOffset, (long long)INT32_MIN, (long long)INT32_MAX);
                 unsigned long long now = micros();
                 setCurrentTimerIndex(-1);
                 setSettingTimer(false);

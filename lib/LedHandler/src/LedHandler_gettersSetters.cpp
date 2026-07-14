@@ -135,12 +135,8 @@ message_animation LedHandler::getAnimation() {
 void LedHandler::setMicrosUntilStart(unsigned long long masterStartTime) {
     unsigned long long clientNow = esp_timer_get_time();
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        if (timerOffset < 0) {
-        microsUntilStart = masterStartTime - ((long long)clientNow - timerOffset);
-    }
-    else {
-      microsUntilStart = masterStartTime - ((long long)clientNow + timerOffset);
-    }
+        // offset = master - client, master time is always clientNow + offset
+        microsUntilStart = masterStartTime - ((long long)clientNow + timerOffset);
         xSemaphoreGive(configMutex);
     }
 }
@@ -148,12 +144,7 @@ void LedHandler::setMicrosUntilStart(unsigned long long masterStartTime) {
 unsigned long long LedHandler::calculateMicrosUntilStart(unsigned long long masterStartTime) {
     unsigned long long clientNow = esp_timer_get_time();
     long long microsUntilStartCalc;
-    if (timerOffset < 0) {
-        microsUntilStartCalc = masterStartTime - ((long long)clientNow - timerOffset);
-    }
-    else {
-        microsUntilStartCalc = masterStartTime - ((long long)clientNow + timerOffset);
-    }
+    microsUntilStartCalc = masterStartTime - ((long long)clientNow + timerOffset);
     // Clamp to zero if negative
     if (microsUntilStartCalc < 0) {
         microsUntilStartCalc = 0;
