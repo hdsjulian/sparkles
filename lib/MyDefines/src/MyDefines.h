@@ -221,6 +221,8 @@ struct midiNoteTable {
   unsigned long long effectiveElapsed;
   bool sustainPressed;
   int instrument;
+  uint8_t hue;        // carried per note from the animation message
+  uint8_t saturation;
 };
    
 struct client_address {
@@ -335,7 +337,9 @@ struct animation_midi {
   uint8_t octaveDistance;
   uint8_t offset; // Offset to adjust the MIDI note to the correct LED position
   uint8_t instrument; // Optional field for instrument type
-  animation_midi() : note(0), velocity(0), octaveDistance(0), offset(0), instrument(0) {}
+  uint8_t hue;        // FastLED 0-255, stamped by the raspi so clients never render a stale color
+  uint8_t saturation; // 0-255
+  animation_midi() : note(0), velocity(0), octaveDistance(0), offset(0), instrument(0), hue(18), saturation(102) {}
 };
 
 struct animation_background_shimmer {

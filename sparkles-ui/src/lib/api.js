@@ -118,6 +118,15 @@ export const setMidiParams = (params) => {
   return fetch(`${BASE}/setMidiParams?${qs}`).then(r => r.json());
 };
 
+// ---- Lamp colors (persisted on the raspi, stamped into music messages) ----
+export const getColors = () =>
+  fetch(`${BASE}/colors`).then(r => r.json());
+
+export const setColors = (params) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/setColors?${qs}`).then(r => r.json());
+};
+
 // ---- Darkroom ----
 export const getDarkroomParams = () =>
   fetch(`${BASE}/getDarkroomParams`).then(r => r.json());

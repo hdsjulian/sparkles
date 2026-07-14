@@ -1,4 +1,5 @@
 .pio
 .vscode
 sparkles-api/.secret_key
+sparkles-api/colors.json
 __pycache__/

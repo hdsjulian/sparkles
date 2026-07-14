@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getMidiParams, setMidiParams } from '$lib/api.js';
+  import { getMidiParams, setMidiParams, getColors, setColors } from '$lib/api.js';
   import NoUiSlider from '$lib/components/NoUiSlider.svelte';
 
   let error = '';
@@ -22,6 +22,8 @@
   let distance = 100;
   let distanceSwitch = false;
   let distanceMode = 'brightness'; // 'brightness' | 'delay'
+  let shimmerHue = 31;
+  let shimmerSat = 255;
 
   // Slider refs for programmatic update
   let pitchSlider;
@@ -31,6 +33,8 @@
   let satSingleSlider;
   let dbSlider;
   let distSlider;
+  let shimmerHueSlider;
+  let shimmerSatSlider;
 
   const instruments = [
     { label: 'Clarinet',   min: 180, max: 620 },
@@ -60,6 +64,12 @@
       distance = p.distance ?? 100;
       distanceSwitch = !!p.distanceSwitch;
       distanceMode = p.distanceMode ?? 'brightness';
+      // raspi color store is the source of truth for hues
+      const c = await getColors();
+      hue = c.midi?.hue ?? hue;
+      saturation = c.midi?.saturation ?? saturation;
+      shimmerHue = c.shimmer?.hue ?? shimmerHue;
+      shimmerSat = c.shimmer?.saturation ?? shimmerSat;
       loaded = true;
     } catch (e) {
       error = `Failed to load MIDI params: ${e.message}`;
@@ -92,6 +102,12 @@
         distanceSwitch: distanceSwitch ? 1 : 0,
         distanceMode,
         mode
+      });
+      await setColors({
+        midiHue: hue,
+        midiSaturation: saturation,
+        shimmerHue,
+        shimmerSaturation: shimmerSat
       });
       successMsg = 'MIDI params saved';
       setTimeout(() => { successMsg = ''; }, 2500);
@@ -209,7 +225,7 @@
 
   <!-- Hue (single) -->
   <div class="card" style="margin-bottom:1.25rem;">
-    <div class="card-title">Hue (0–360)</div>
+    <div class="card-title">MIDI Hue (0–360)</div>
     <div class="slider-row">
       <span class="slider-val">{hue}</span>
       <div class="slider-container">
@@ -229,7 +245,7 @@
 
   <!-- Saturation single -->
   <div class="card" style="margin-bottom:1.25rem;">
-    <div class="card-title">Saturation Single (0–255)</div>
+    <div class="card-title">MIDI Saturation (0–255)</div>
     <div class="slider-row">
       <span class="slider-val">{saturation}</span>
       <div class="slider-container">
@@ -242,6 +258,42 @@
           connect={true}
           tooltips={true}
           on:change={(e) => { saturation = e.detail; }}
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Shimmer (mic) color -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Shimmer / Mic Hue (0–360)</div>
+    <div class="slider-row" style="margin-bottom:0.75rem;">
+      <span class="slider-val">{shimmerHue}</span>
+      <div class="slider-container">
+        <NoUiSlider
+          bind:this={shimmerHueSlider}
+          min={0}
+          max={360}
+          start={shimmerHue}
+          step={1}
+          connect={true}
+          tooltips={true}
+          on:change={(e) => { shimmerHue = e.detail; }}
+        />
+      </div>
+    </div>
+    <div class="card-title">Shimmer / Mic Saturation (0–255)</div>
+    <div class="slider-row">
+      <span class="slider-val">{shimmerSat}</span>
+      <div class="slider-container">
+        <NoUiSlider
+          bind:this={shimmerSatSlider}
+          min={0}
+          max={255}
+          start={shimmerSat}
+          step={1}
+          connect={true}
+          tooltips={true}
+          on:change={(e) => { shimmerSat = e.detail; }}
         />
       </div>
     </div>

@@ -719,6 +719,9 @@ void LedHandler::runMidi()
         bool brightnessZeroMic = true;
         brightnessMidi = 0.0;
         brightnessMic = 0.0;
+        // per-note color from the message, stored params only as fallback
+        float hueBase = midiHue;
+        float satBase = midiSat;
         // Evaluate MIDI table
         for (int i = 0; i < OCTAVESONKEYBOARD; i++) {
             if (localMidiNoteTableArray[i].velocity == 0) {
@@ -744,6 +747,8 @@ void LedHandler::runMidi()
             }
             if (currentBrightness > brightnessMidi) {
                 brightnessMidi = currentBrightness;
+                hueBase = localMidiNoteTableArray[i].hue / 255.0f;
+                satBase = localMidiNoteTableArray[i].saturation / 255.0f;
             }
             brightnessZeroMidi = false;
         }
@@ -792,7 +797,7 @@ void LedHandler::runMidi()
                 finalHueMod = huemodMic;
                 finalSatMod = satmodMic;
             }
-            CRGB color = CHSV(max(midiHue + finalHueMod, 0.0f) * 255, (midiSat + finalSatMod) * 255, finalBrightness*2);
+            CRGB color = CHSV(max(hueBase + finalHueMod, 0.0f) * 255, (satBase + finalSatMod) * 255, finalBrightness*2);
             writeLeds(color);
         }
         vTaskDelay((1000/FPS)/portTICK_PERIOD_MS);

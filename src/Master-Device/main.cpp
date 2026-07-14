@@ -401,6 +401,8 @@ static void handleSerialCommand(const char* line) {
         anim.animationParams.midi.note       = doc["note"]     | 0;
         anim.animationParams.midi.velocity   = doc["velocity"] | 0;
         anim.animationParams.midi.instrument = 0; // mic
+        anim.animationParams.midi.hue        = doc["hue"]        | 18;
+        anim.animationParams.midi.saturation = doc["saturation"] | 102;
         msgHandler.sendAnimation(anim, -1);
         msgHandler.setLastMidiTime(millis());
 
@@ -410,6 +412,8 @@ static void handleSerialCommand(const char* line) {
         anim.animationParams.midi.note       = doc["note"]     | 0;
         anim.animationParams.midi.velocity   = doc["velocity"] | 0;
         anim.animationParams.midi.instrument = 1; // keyboard
+        anim.animationParams.midi.hue        = doc["hue"]        | 18;
+        anim.animationParams.midi.saturation = doc["saturation"] | 102;
         msgHandler.sendAnimation(anim, -1);
         msgHandler.setLastMidiTime(millis());
 

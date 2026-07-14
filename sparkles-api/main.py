@@ -672,6 +672,24 @@ async def get_system_info():
 # MIDI params
 # ---------------------------------------------------------------------------
 
+@app.get("/colors")
+async def get_colors():
+    return bridge.colors
+
+
+@app.get("/setColors")
+async def set_colors(
+    midiHue: int | None = Query(default=None, ge=0, le=360),
+    midiSaturation: int | None = Query(default=None, ge=0, le=255),
+    shimmerHue: int | None = Query(default=None, ge=0, le=360),
+    shimmerSaturation: int | None = Query(default=None, ge=0, le=255),
+):
+    midi = {k: v for k, v in (("hue", midiHue), ("saturation", midiSaturation)) if v is not None}
+    shimmer = {k: v for k, v in (("hue", shimmerHue), ("saturation", shimmerSaturation)) if v is not None}
+    bridge.set_colors(midi=midi or None, shimmer=shimmer or None)
+    return _ok()
+
+
 @app.get("/getMidiParams")
 @app.get("/commandGetMidiParams")
 async def get_midi_params():

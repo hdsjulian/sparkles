@@ -24,6 +24,8 @@ void LedHandler::addToMidiTable(midiNoteTable midiNoteTableArray[OCTAVESONKEYBOA
                 midiNoteTableArray[octave].note = note;
                 midiNoteTableArray[octave].startTime = micros();
                 midiNoteTableArray[octave].effectiveElapsed = 0;
+                midiNoteTableArray[octave].hue = animation.animationParams.midi.hue;
+                midiNoteTableArray[octave].saturation = animation.animationParams.midi.saturation;
             }
         } else {
             // With sustain active, leave the entry to continue decaying at half rate

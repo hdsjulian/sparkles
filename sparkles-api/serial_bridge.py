@@ -47,6 +47,9 @@ _BATTERY_CRITICAL = int(os.environ.get("SPARKLES_BATTERY_CRITICAL", "15"))
 _HEALTH_INTERVAL  = int(os.environ.get("SPARKLES_HEALTH_INTERVAL", "300"))  # seconds
 _LOG_BUFFER_SIZE  = 2000
 _SERIAL_LOG_PATH  = os.environ.get("SPARKLES_SERIAL_LOG", "/home/julian/sparkles/serial.log")
+# persisted lamp colors, stamped into every music message (hue 0-360, saturation 0-255)
+_COLORS_PATH      = os.environ.get("SPARKLES_COLORS", "/home/julian/sparkles/sparkles-api/colors.json")
+_DEFAULT_COLORS   = {"midi": {"hue": 25, "saturation": 200}, "shimmer": {"hue": 31, "saturation": 255}}
 
 
 class HealthMonitor:
@@ -155,6 +158,8 @@ class SerialBridge:
         # outbound write queue — serial writes happen on the reader thread, never the event loop.
         # sized for the 30 Hz music stream plus keyboard bursts now sharing this queue
         self._send_queue: queue.Queue = queue.Queue(maxsize=256)
+        # lamp colors, raspi is the source of truth (persisted across reboots)
+        self.colors = self._load_colors()
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -233,11 +238,52 @@ class SerialBridge:
                     raw, buf = buf.split(b"\n", 1)
                     line = raw.strip().decode("utf-8", errors="ignore")
                     if line:
-                        self.send_line(line)
+                        self.send_line(self._stamp_music_colors(line))
         except Exception:
             pass
         finally:
             conn.close()
+
+    # ------------------------------------------------------------------
+    # Lamp colors — persisted here so master reboots can't lose them
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_colors() -> dict:
+        try:
+            with open(_COLORS_PATH) as f:
+                stored = json.load(f)
+            return {k: {**_DEFAULT_COLORS[k], **stored.get(k, {})} for k in _DEFAULT_COLORS}
+        except Exception:
+            return json.loads(json.dumps(_DEFAULT_COLORS))
+
+    def set_colors(self, midi: dict | None = None, shimmer: dict | None = None):
+        if midi:
+            self.colors["midi"].update(midi)
+        if shimmer:
+            self.colors["shimmer"].update(shimmer)
+        try:
+            with open(_COLORS_PATH, "w") as f:
+                json.dump(self.colors, f, indent=2)
+        except Exception as exc:
+            logger.warning("Could not save colors to %s: %s", _COLORS_PATH, exc)
+
+    def _stamp_music_colors(self, line: str) -> str:
+        """Inject the configured hue/saturation so clients always render the current color."""
+        try:
+            msg = json.loads(line)
+            cmd = msg.get("cmd")
+            if cmd == "aubio_shimmer":
+                c = self.colors["shimmer"]
+            elif cmd in ("keyboard_midi", "aubio_midi"):
+                c = self.colors["midi"]
+            else:
+                return line
+            msg["hue"] = int(c["hue"]) * 255 // 360  # degrees -> FastLED 0-255
+            msg["saturation"] = int(c["saturation"])
+            return json.dumps(msg)
+        except Exception:
+            return line
 
     def _music_socket_server(self):
         if os.path.exists(_MUSIC_SOCK):
