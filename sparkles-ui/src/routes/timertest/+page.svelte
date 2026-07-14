@@ -2,7 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { commandTimerTest } from '$lib/api.js';
 
-  let results = new Map(); // boardId -> { deltaUs }
+  let samples = new Map(); // boardId -> [{deltaUs, rttUs}]
+  let results = new Map(); // boardId -> { bestUs, medianUs, n }
   let known = new Set();   // active boards seen via update_board events
   let missing = [];        // boards that didn't answer the last run
   let lastRun = '';
@@ -11,13 +12,28 @@
   let es;
   let timer;
 
+  function recompute() {
+    const out = new Map();
+    for (const [id, list] of samples) {
+      // min-rtt sample has the least queueing noise, so its delta is the most honest
+      const withRtt = list.filter((s) => s.rttUs != null);
+      const best = withRtt.length
+        ? withRtt.reduce((a, b) => (b.rttUs < a.rttUs ? b : a))
+        : list.reduce((a, b) => (b.deltaUs < a.deltaUs ? b : a));
+      const sorted = [...list].map((s) => s.deltaUs).sort((a, b) => a - b);
+      out.set(id, { bestUs: best.deltaUs, medianUs: sorted[Math.floor(sorted.length / 2)], n: list.length });
+    }
+    results = out;
+  }
+
   onMount(() => {
     es = new EventSource('/events');
     es.addEventListener('timer_test_result', (e) => {
       try {
         const d = JSON.parse(e.data);
-        results.set(d.boardId, { deltaUs: d.deltaUs });
-        results = new Map(results);
+        if (!samples.has(d.boardId)) samples.set(d.boardId, []);
+        samples.get(d.boardId).push({ deltaUs: d.deltaUs, rttUs: d.rttUs ?? null });
+        recompute();
         missing = missing.filter((id) => id !== d.boardId);
       } catch {}
     });
@@ -35,6 +51,7 @@
     running = true;
     error = '';
     const expected = new Set([...known, ...results.keys()]);
+    samples = new Map();
     results = new Map();
     missing = [];
     try {
@@ -47,7 +64,7 @@
       missing = [...expected].filter((id) => !results.has(id)).sort((a, b) => a - b);
       running = false;
       lastRun = new Date().toLocaleTimeString();
-    }, 1500);
+    }, 3000);
   }
 
   function rowClass(deltaUs) {
@@ -67,7 +84,7 @@
 
 <main>
   <h1>Timer Test</h1>
-  <p class="hint">Queries each client for its estimated master time and shows the error.</p>
+  <p class="hint">Bursts queries at each client and keeps the lowest-noise sample per board.</p>
 
   <button class="btn" on:click={runTest} disabled={running}>
     {running ? 'Querying…' : 'Run Test'}
@@ -84,15 +101,17 @@
   {#if rows.length > 0 || missing.length > 0}
     <table>
       <thead>
-        <tr><th>Device</th><th>Error</th><th>Status</th></tr>
+        <tr><th>Device</th><th>Error</th><th>Median</th><th>Samples</th><th>Status</th></tr>
       </thead>
       <tbody>
         {#each rows as [boardId, r]}
-          <tr class={rowClass(r.deltaUs)}>
+          <tr class={rowClass(r.bestUs)}>
             <td>#{boardId}</td>
-            <td>{formatDelta(r.deltaUs)}</td>
+            <td>{formatDelta(r.bestUs)}</td>
+            <td class="muted">{formatDelta(r.medianUs)}</td>
+            <td class="muted">{r.n}</td>
             <td class="dot">
-              {#if rowClass(r.deltaUs) === 'ok'}✓{:else if rowClass(r.deltaUs) === 'warn'}~{:else}✗{/if}
+              {#if rowClass(r.bestUs) === 'ok'}✓{:else if rowClass(r.bestUs) === 'warn'}~{:else}✗{/if}
             </td>
           </tr>
         {/each}
@@ -100,6 +119,8 @@
           <tr class="bad">
             <td>#{boardId}</td>
             <td>no reply</td>
+            <td class="muted">—</td>
+            <td class="muted">0</td>
             <td class="dot">✗</td>
           </tr>
         {/each}
@@ -135,6 +156,8 @@
   tr.ok   td { color: #4caf50; }
   tr.warn td { color: #ffc107; }
   tr.bad  td { color: #f44336; }
+
+  td.muted { color: var(--color-text-muted, #888); font-size: 0.85rem; }
 
   .dot { font-size: 1.1rem; }
   .error { color: #f44336; font-size: 0.9rem; }

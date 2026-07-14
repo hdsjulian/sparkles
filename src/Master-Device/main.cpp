@@ -155,22 +155,27 @@ static void handleSerialCommand(const char* line) {
         msgHandler.startFastResyncTask();
 
     } else if (strcmp(cmd, "timer_test") == 0) {
+        // one query is a single NTP sample, +-rtt/2 asymmetry noise. burst per
+        // board, the UI keeps the min-rtt sample as the trustworthy one.
         xTaskCreatePinnedToCore([](void* pv) {
             MessageHandler& mh = *((MessageHandler*)pv);
             for (int i = 0; i < NUM_DEVICES; i++) {
                 client_address a = mh.getItemFromAddressList(i);
                 if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
                 if (a.active != ACTIVE) continue;
-                message_data q{};
-                q.messageType = MSG_TIMER_QUERY;
-                memcpy(q.targetAddress, a.address, 6);
-                WiFi.macAddress(q.senderAddress);
                 mh.addPeer(a.address);
-                a.timerQuerySendTime = esp_timer_get_time();
-                mh.setItemFromAddressList(i, a);
-                esp_now_send(a.address, (uint8_t*)&q, ESPNOW_CLIENT_COMPAT_SIZE);
+                for (int s = 0; s < 8; s++) {
+                    message_data q{};
+                    q.messageType = MSG_TIMER_QUERY;
+                    memcpy(q.targetAddress, a.address, 6);
+                    WiFi.macAddress(q.senderAddress);
+                    a = mh.getItemFromAddressList(i);
+                    a.timerQuerySendTime = esp_timer_get_time();
+                    mh.setItemFromAddressList(i, a);
+                    esp_now_send(a.address, (uint8_t*)&q, ESPNOW_CLIENT_COMPAT_SIZE);
+                    vTaskDelay(pdMS_TO_TICKS(40));
+                }
                 mh.removePeer(a.address);
-                vTaskDelay(pdMS_TO_TICKS(50));
             }
             vTaskDelete(NULL);
         }, "timerTest", 4096, &msgHandler, 2, NULL, 1);
