@@ -465,6 +465,10 @@ static void handleSerialCommand(const char* line) {
             { JsonDocument r; r["elapsed_ms"] = (long)(millis() - t0);
               emit("sleep_test_resync_done", r); }
 
+            // Everyone starts the phase INACTIVE — the 25 min staleness timeout never
+            // fires within a test, so ACTIVE mid-phase = the client actually sent something
+            msgHandler.setAddressListInactive();
+
             // 3. Broadcast sleep for phaseDurationS
             // Enforce minimum so clients cycle through at least 2 sleep periods
             if (phaseDurationS < sleepDurationS * 2 + 5)
@@ -474,6 +478,7 @@ static void handleSerialCommand(const char* line) {
             unsigned long phaseStart = millis();
             int broadcasts = 0;
             int nextCycleLog = sleepDurationS; // log a heartbeat every sleepDurationS seconds
+            bool wokeReported[NUM_DEVICES] = {}; // one report per board, not one per second
             { JsonDocument r;
               r["phase_duration_s"] = phaseDurationS;
               r["cycles_expected"] = phaseDurationS / sleepDurationS;
@@ -491,7 +496,8 @@ static void handleSerialCommand(const char* line) {
                 for (int i = 0; i < NUM_DEVICES; i++) {
                     if (memcmp(msgHandler.getItemFromAddressList(i).address,
                                MessageHandler::emptyAddress, 6) == 0) break;
-                    if (msgHandler.getActiveStatus(i) == ACTIVE) {
+                    if (msgHandler.getActiveStatus(i) == ACTIVE && !wokeReported[i]) {
+                        wokeReported[i] = true;
                         JsonDocument r;
                         r["id"] = i;
                         r["elapsed_ms"] = (long)(millis() - phaseStart);

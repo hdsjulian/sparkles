@@ -513,6 +513,17 @@ async def command_timer_test():
     return _ok()
 
 
+@app.get("/sleepTest")
+async def sleep_test(
+    sleepSeconds: int = Query(default=15, ge=5, le=3600),
+    phaseSeconds: int = Query(default=60, ge=10, le=7200),
+):
+    _send({"cmd": "test_sleep_cycle",
+           "sleep_duration_s": sleepSeconds,
+           "phase_duration_s": phaseSeconds})
+    return _ok()
+
+
 # ---------------------------------------------------------------------------
 # Sync
 # ---------------------------------------------------------------------------
