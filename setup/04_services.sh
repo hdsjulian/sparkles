@@ -41,10 +41,9 @@ nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-# Allow the sparkles user to stop/start sparkles without a password.
-# serial_bridge releases the port itself before a flash now, so this is just a
-# convenience fallback for manual restarts.
-SUDOERS_LINE="julian ALL=(ALL) NOPASSWD: /bin/systemctl start sparkles, /bin/systemctl stop sparkles"
+# Passwordless sudo for julian (single-purpose appliance, same as the stock
+# raspi 'pi' user), so update.sh and friends run unattended.
+SUDOERS_LINE="julian ALL=(ALL) NOPASSWD: ALL"
 SUDOERS_FILE=/etc/sudoers.d/sparkles-flash
 echo "$SUDOERS_LINE" | sudo tee "$SUDOERS_FILE" > /dev/null
 sudo chmod 440 "$SUDOERS_FILE"
