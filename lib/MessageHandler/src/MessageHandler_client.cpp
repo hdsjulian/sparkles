@@ -296,24 +296,57 @@ void MessageHandler::goToSleep() {
 
 
 void MessageHandler::handleSleepWakeup(message_data incomingData) {
-    message_sleep_wakeup sleepWakeupMessage = incomingData.payload.sleepWakeup;
-    ESP_LOGI("MSG", "Going to sleep for %llu microseconds", sleepWakeupMessage.duration);
+    unsigned long long duration = incomingData.payload.sleepWakeup.duration;
+    if (duration == 0) return; // morning sentinel, only meaningful inside the sleep loop below
+    ESP_LOGI("MSG", "Going to sleep for %llu microseconds", duration);
     vTaskDelay(1000/portTICK_PERIOD_MS);
     ledInstance->blink(esp_timer_get_time(), 100, 4, 160, 255, 127);
     vTaskDelay(1000/portTICK_PERIOD_MS);
     message_animation animationMessage = ledInstance->createAnimation(OFF);
     ledInstance->pushToAnimationQueue(animationMessage);
-    turnWifiOff();
-    Serial.end();
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-    esp_sleep_enable_timer_wakeup(sleepWakeupMessage.duration);
-    esp_light_sleep_start();
-    Serial.begin(115200);
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    turnWifiOn();
+
+    // Sleep in chunks, fully passive in between: the master rebroadcasts sleep at
+    // 1 Hz all night and a zero-duration wake sentinel for minutes each morning.
+    // Hearing sleep -> sleep again. Hearing the sentinel (or any master traffic)
+    // -> morning. Total silence -> master is gone, keep sleeping instead of
+    // burning the battery all night. We never transmit to find out what time it is.
+    bool morning = false;
+    while (!morning) {
+        turnWifiOff();
+        Serial.end();
+        esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+        esp_sleep_enable_timer_wakeup(duration);
+        esp_light_sleep_start();
+        Serial.begin(115200);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
+        turnWifiOn();
+
+        lastSleepMsgMillis = 0;
+        lastMasterMsgMillis = 0;
+        unsigned long listenStart = millis();
+        while (millis() - listenStart < 6000) {
+            if (lastSleepMsgMillis != 0) {
+                unsigned long long d = lastSleepMsgDuration;
+                if (d > 0) duration = d; else morning = true;
+                break;
+            }
+            if (lastMasterMsgMillis != 0) { morning = true; break; }
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        xQueueReset(receiveQueue); // drop whatever queued up during the listen window
+    }
+
     ledInstance->resetLedTask();
     ledInstance->blink(esp_timer_get_time(), 150, 2, 160, 255, 127);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // stagger the announce by MAC so a large fleet doesn't stampede the master
+    uint8_t macAddr[6];
+    WiFi.macAddress(macAddr);
+    vTaskDelay(pdMS_TO_TICKS((macAddr[5] % 30) * 1000));
+    setAddressAnnounced(false);
+    if (announceTaskHandle == NULL) {
+        xTaskCreatePinnedToCore(announceAddressWrapper, "runAnnounceAddress", 10000, this, 2, &announceTaskHandle, 1);
+    }
 }
 
 void MessageHandler::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -357,6 +390,14 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
             instance.addPeer(instance.hostAddress);
         }
         localData.payload.timer.receiveTime = timerRxTimestamp(mac, receiveTime);
+    }
+    // stamps for the sleep listen window (handleSleepWakeup blocks the receive task,
+    // so it reads these instead of the queue)
+    if (localData.messageType == MSG_SLEEP_WAKEUP) {
+        instance.lastSleepMsgDuration = localData.payload.sleepWakeup.duration;
+        instance.lastSleepMsgMillis = millis();
+    } else if (instance.hostAddressLearned && memcmp(mac->src_addr, instance.hostAddress, 6) == 0) {
+        instance.lastMasterMsgMillis = millis();
     }
     if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
         if (localData.payload.animation.animationType == MIDI || localData.payload.animation.animationType == BACKGROUND_SHIMMER) {

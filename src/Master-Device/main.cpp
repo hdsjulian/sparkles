@@ -60,6 +60,13 @@ static void sleepBroadcastTask(void* pvParameters) {
         JsonDocument r; r["event"] = "sleep_phase"; r["status"] = "end";
         serialSendDoc(r);
     }
+    // Clients fail closed and keep sleeping through silence, so shout "morning"
+    // (zero duration = wake sentinel) for a full sleep chunk plus margin.
+    unsigned long sentinelStart = millis();
+    while (millis() - sentinelStart < SLEEP_BROADCAST_DURATION_MS + 60000UL) {
+        msgHandler.sendSleepWakeupMessage(0);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
     sleepBroadcastTaskHandle = NULL;
     vTaskDelete(NULL);
 }
@@ -533,7 +540,10 @@ static void handleSerialCommand(const char* line) {
             unsigned long wakeStart = millis();
             unsigned long waitMaxMs = ((unsigned long)sleepDurationS + 30) * 1000;
             int returned = 0;
+            int tick = 0;
             while (millis() - wakeStart < waitMaxMs) {
+                // wake sentinel every 2 s — fail-closed clients re-sleep through silence
+                if (tick++ % 4 == 0) msgHandler.sendSleepWakeupMessage(0);
                 // Count active clients
                 int active = 0;
                 for (int i = 0; i < NUM_DEVICES; i++) {

@@ -204,6 +204,10 @@ private:
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t hostAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     bool hostAddressLearned = false;
+    // sleep listen-window stamps, written by onDataRecv (wifi task), read by handleSleepWakeup
+    volatile unsigned long lastSleepMsgMillis = 0;
+    volatile unsigned long long lastSleepMsgDuration = 0;
+    volatile unsigned long lastMasterMsgMillis = 0;
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};
