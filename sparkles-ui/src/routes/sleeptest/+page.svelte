@@ -96,14 +96,16 @@
 
   function boardLabel(b) {
     if (b.missing) return '✗ missing';
-    if (phase === 'sleeping') return b.wokeEarly ? '⚠ woke early' : (b.status === 'inactive' ? '💤 sleeping' : b.status);
+    // during the phase we hold the sent-sleep assumption; only a message from the
+    // board (flagged by the master) contradicts it
+    if (phase === 'sleeping') return b.wokeEarly ? '⚠ woke early' : '💤 sleeping';
     if (phase === 'waking' || phase === 'done') return b.status === 'active' ? '✓ awake' : '… waiting';
     return b.status;
   }
 
   function boardClass(b) {
     if (b.missing || (phase === 'sleeping' && b.wokeEarly)) return 'bad';
-    if (phase === 'sleeping' && b.status === 'inactive') return 'ok';
+    if (phase === 'sleeping') return 'ok';
     if ((phase === 'waking' || phase === 'done') && b.status === 'active') return 'ok';
     return '';
   }
@@ -123,7 +125,8 @@
   <h1 class="page-title">Sleep Test</h1>
   <p class="hint">
     Resyncs all clients, puts them to sleep in cycles for the test phase, then verifies every
-    client wakes up and reports back. Boards that show activity mid-sleep are flagged.
+    client wakes up and reports back. Boards are assumed sleeping once the command is sent —
+    any message from a board mid-phase flags it as awake.
   </p>
 
   {#if error}

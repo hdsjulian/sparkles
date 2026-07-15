@@ -465,10 +465,6 @@ static void handleSerialCommand(const char* line) {
             { JsonDocument r; r["elapsed_ms"] = (long)(millis() - t0);
               emit("sleep_test_resync_done", r); }
 
-            // Everyone starts the phase INACTIVE — the 25 min staleness timeout never
-            // fires within a test, so ACTIVE mid-phase = the client actually sent something
-            msgHandler.setAddressListInactive();
-
             // 3. Broadcast sleep for phaseDurationS
             // Enforce minimum so clients cycle through at least 2 sleep periods
             if (phaseDurationS < sleepDurationS * 2 + 5)
@@ -479,6 +475,15 @@ static void handleSerialCommand(const char* line) {
             int broadcasts = 0;
             int nextCycleLog = sleepDurationS; // log a heartbeat every sleepDurationS seconds
             bool wokeReported[NUM_DEVICES] = {}; // one report per board, not one per second
+            // We know sleep was sent — just hold that assumption and watch the existing
+            // keepalive bookkeeping: every message from a board (10 min status broadcast,
+            // announce, sync) bumps lastUpdateTime, so a bump mid-phase means not sleeping.
+            unsigned long lastSeen[NUM_DEVICES] = {};
+            for (int i = 0; i < NUM_DEVICES; i++) {
+                client_address a = msgHandler.getItemFromAddressList(i);
+                if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+                lastSeen[i] = a.lastUpdateTime;
+            }
             { JsonDocument r;
               r["phase_duration_s"] = phaseDurationS;
               r["cycles_expected"] = phaseDurationS / sleepDurationS;
@@ -494,9 +499,9 @@ static void handleSerialCommand(const char* line) {
                 // Check for unexpected wakeups — any ACTIVE client mid-phase means
                 // they woke up and didn't receive the sleep rebroadcast in time.
                 for (int i = 0; i < NUM_DEVICES; i++) {
-                    if (memcmp(msgHandler.getItemFromAddressList(i).address,
-                               MessageHandler::emptyAddress, 6) == 0) break;
-                    if (msgHandler.getActiveStatus(i) == ACTIVE && !wokeReported[i]) {
+                    client_address a = msgHandler.getItemFromAddressList(i);
+                    if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+                    if (a.lastUpdateTime != lastSeen[i] && !wokeReported[i]) {
                         wokeReported[i] = true;
                         JsonDocument r;
                         r["id"] = i;
