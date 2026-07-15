@@ -531,6 +531,13 @@ async def sleep_test_cancel():
     return _ok()
 
 
+@app.get("/sleepTestReport")
+async def sleep_test_report():
+    # events for the current/most recent run, in order — survives page reloads,
+    # closed browsers, and a sparkles service restart (persisted to disk)
+    return {"events": bridge.sleep_test_events}
+
+
 # ---------------------------------------------------------------------------
 # Sync
 # ---------------------------------------------------------------------------

@@ -53,6 +53,11 @@ _COLORS_PATH      = os.environ.get("SPARKLES_COLORS", "/home/julian/sparkles/spa
 _DEFAULT_COLORS   = {"midi": {"hue": 25, "saturation": 200}, "shimmer": {"hue": 31, "saturation": 255}}
 # persisted sleep/wakeup schedule, re-pushed on every serial connect (master RAM loses it on reboot)
 _SCHEDULE_PATH    = os.environ.get("SPARKLES_SCHEDULE", "/home/julian/sparkles/sparkles-api/schedule.json")
+# persisted sleep-test event log — a long test (hours) must survive a page reload,
+# a closed browser, or even a sparkles service restart; the UI replays this list
+# through the same reducers it uses for live SSE, so history and live view agree
+_SLEEP_TEST_EVENTS_PATH = os.environ.get("SPARKLES_SLEEP_TEST_EVENTS",
+                                          "/home/julian/sparkles/sparkles-api/sleep_test_events.json")
 # marker that a human set the clock via browser during this pi boot — only then is
 # the pi's clock worth pushing (no internet, no rtc: a fresh boot has a stale clock)
 _CLOCK_TRUST_PATH = os.environ.get("SPARKLES_CLOCK_TRUST", "/home/julian/sparkles/sparkles-api/clock_trust.json")
@@ -169,6 +174,7 @@ class SerialBridge:
         self.schedule = self._load_schedule()
         self.clock_trusted = self._load_clock_trust()
         self._clock_negotiated = True  # armed (set False) on each serial connect
+        self.sleep_test_events = self._load_sleep_test_events()
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -295,6 +301,28 @@ class SerialBridge:
                 json.dump(self.schedule, f, indent=2)
         except Exception as exc:
             logger.warning("Could not save schedule to %s: %s", _SCHEDULE_PATH, exc)
+
+    @staticmethod
+    def _load_sleep_test_events() -> list:
+        try:
+            with open(_SLEEP_TEST_EVENTS_PATH) as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _save_sleep_test_events(self):
+        try:
+            with open(_SLEEP_TEST_EVENTS_PATH, "w") as f:
+                json.dump(self.sleep_test_events, f)
+        except Exception as exc:
+            logger.warning("Could not save sleep test events to %s: %s", _SLEEP_TEST_EVENTS_PATH, exc)
+
+    def _record_sleep_test_event(self, event_name: str, frame: dict):
+        # a fresh run supersedes whatever the last one left behind
+        if event_name == "sleep_test_start":
+            self.sleep_test_events = []
+        self.sleep_test_events.append({"event": event_name, "data": frame, "ts": time.time()})
+        self._save_sleep_test_events()
 
     @staticmethod
     def _boot_id() -> str:
@@ -629,6 +657,9 @@ class SerialBridge:
         if event_name == "system_info" and not self._clock_negotiated:
             self._clock_negotiated = True
             self._negotiate_clock(frame)
+
+        if event_name.startswith("sleep_test_"):
+            self._record_sleep_test_event(event_name, frame)
 
         # resolve request/response futures
         listeners = self._event_listeners.get(event_name, [])

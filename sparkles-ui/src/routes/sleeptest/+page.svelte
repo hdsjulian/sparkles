@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { runSleepTest, cancelSleepTest } from '$lib/api.js';
+  import { runSleepTest, cancelSleepTest, getSleepTestReport } from '$lib/api.js';
 
   let sleepSeconds = 15;
   let phaseSeconds = 60;
@@ -17,8 +17,13 @@
   let error = '';
   let es;
 
+  // set while replaying persisted history so log lines show when the event
+  // actually happened, not the moment the page reloaded and replayed it
+  let replayTs = null;
+
   function addLog(text) {
-    log = [...log, `${new Date().toLocaleTimeString()}  ${text}`].slice(-300);
+    const ts = replayTs ?? Date.now();
+    log = [...log, `${new Date(ts).toLocaleTimeString()}  ${text}`].slice(-300);
   }
 
   function board(id) {
@@ -96,10 +101,28 @@
     },
   };
 
-  onMount(() => {
+  // shared by live SSE (ts = null -> "now") and history replay (ts = when it
+  // actually happened on the pi), so both paths produce identical UI state
+  function runHandler(name, data, ts) {
+    const fn = handlers[name];
+    if (!fn) return;
+    replayTs = ts;
+    try { fn(data); } finally { replayTs = null; }
+  }
+
+  onMount(async () => {
+    // catch up on a run that may have started before this page was open —
+    // finished hours ago, still in progress, doesn't matter which
+    try {
+      const snap = await getSleepTestReport();
+      for (const ev of snap.events ?? []) runHandler(ev.event, ev.data, ev.ts * 1000);
+    } catch (e) {
+      console.warn('Could not load sleep test history:', e);
+    }
+
     es = new EventSource('/events');
     for (const name of Object.keys(handlers)) {
-      es.addEventListener(name, (e) => { try { handlers[name](JSON.parse(e.data)); } catch {} });
+      es.addEventListener(name, (e) => { try { runHandler(name, JSON.parse(e.data), null); } catch {} });
     }
     es.addEventListener('update_board', (e) => {
       try {

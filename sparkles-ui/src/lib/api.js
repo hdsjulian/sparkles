@@ -133,6 +133,9 @@ export const runSleepTest = (params) => {
 export const cancelSleepTest = () =>
   fetch(`${BASE}/sleepTestCancel`).then(r => r.json());
 
+export const getSleepTestReport = () =>
+  fetch(`${BASE}/sleepTestReport`).then(r => r.json());
+
 // ---- Lamp colors (persisted on the raspi, stamped into music messages) ----
 export const getColors = () =>
   fetch(`${BASE}/colors`).then(r => r.json());
