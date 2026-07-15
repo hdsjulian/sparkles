@@ -293,9 +293,12 @@ static void handleSerialCommand(const char* line) {
         char macStr[18];
         snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        time_t nowEpoch;
+        time(&nowEpoch);
         JsonDocument r;
         r["event"]        = "system_info";
         r["systemTime"]   = buf;
+        r["epoch"]        = (long long)nowEpoch; // clock negotiation: pi adopts or donates
         r["macAddress"]   = macStr;
         r["sleepSet"]     = msgHandler.isSleepSet();
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);

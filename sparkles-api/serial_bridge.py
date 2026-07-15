@@ -21,6 +21,7 @@ import logging
 import os
 import queue
 import socket
+import subprocess
 import threading
 import time
 from collections import defaultdict
@@ -167,6 +168,7 @@ class SerialBridge:
         self.colors = self._load_colors()
         self.schedule = self._load_schedule()
         self.clock_trusted = self._load_clock_trust()
+        self._clock_negotiated = True  # armed (set False) on each serial connect
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -313,27 +315,50 @@ class SerialBridge:
 
     def mark_clock_trusted(self):
         self.clock_trusted = True
+        self._clock_negotiated = True  # human sync outranks any pending negotiation
         try:
             with open(_CLOCK_TRUST_PATH, "w") as f:
                 json.dump({"boot_id": self._boot_id(), "synced_at": time.time()}, f)
         except Exception as exc:
             logger.warning("Could not save clock trust marker: %s", exc)
 
+    def _push_pi_clock(self):
+        now = time.localtime()
+        self.send({"cmd": "set_time", "year": now.tm_year, "month": now.tm_mon, "day": now.tm_mday,
+                   "hours": now.tm_hour, "minutes": now.tm_min, "seconds": now.tm_sec})
+
     def _send_clock_and_schedule(self):
         """The master keeps clock and sleep schedule in RAM + NVS — re-push on every
-        connect so a mid-night reboot rejoins the sleep phase. The clock only goes
-        out if a human set it this boot; a stale pi clock must never clobber the
-        master's own checkpoint."""
+        connect so a mid-night reboot rejoins the sleep phase. Clock rules:
+        human-synced pi clock wins; otherwise negotiate — whoever has a clock
+        donates it to the side that lost theirs (see _negotiate_clock)."""
         if self.clock_trusted:
-            now = time.localtime()
-            self.send({"cmd": "set_time", "year": now.tm_year, "month": now.tm_mon, "day": now.tm_mday,
-                       "hours": now.tm_hour, "minutes": now.tm_min, "seconds": now.tm_sec})
+            self._push_pi_clock()
         else:
-            logger.info("Pi clock not human-synced this boot — not pushing time to master")
+            # ask what time the master thinks it is, negotiation continues in _dispatch
+            self._clock_negotiated = False
+            self.send({"cmd": "get_system_info"})
         if self.schedule.get("sleep"):
             self.send({"cmd": "set_sleep_time", **self.schedule["sleep"]})
         if self.schedule.get("wakeup"):
             self.send({"cmd": "set_wakeup_time", **self.schedule["wakeup"]})
+
+    def _negotiate_clock(self, frame: dict):
+        """Neither clock is human-synced: master survived a pi reboot -> adopt its
+        clock; master lost its clock entirely -> our stale clock still beats 1970."""
+        epoch = int(frame.get("epoch") or 0)
+        if epoch > 1_700_000_000:
+            # master epoch is wall time pretending to be utc, keep that convention
+            wall = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(epoch))
+            try:
+                subprocess.run(["sudo", "date", "-s", wall], check=True, timeout=5, capture_output=True)
+                subprocess.run(["sudo", "fake-hwclock", "save"], timeout=5, capture_output=True)
+                logger.info("Adopted master clock: %s", wall)
+            except Exception as exc:
+                logger.warning("Could not adopt master clock: %s", exc)
+        else:
+            logger.info("Master clock unset — pushing pi clock (not human-synced, better than nothing)")
+            self._push_pi_clock()
 
     def _stamp_music_colors(self, line: str) -> str:
         """Inject the configured hue/saturation so clients always render the current color."""
@@ -592,6 +617,11 @@ class SerialBridge:
         if self._loop is None:
             return
         event_name = frame.get("event", "")
+
+        # one-shot clock negotiation per connect (see _send_clock_and_schedule)
+        if event_name == "system_info" and not self._clock_negotiated:
+            self._clock_negotiated = True
+            self._negotiate_clock(frame)
 
         # resolve request/response futures
         listeners = self._event_listeners.get(event_name, [])
