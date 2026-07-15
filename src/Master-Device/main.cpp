@@ -87,6 +87,37 @@ static void serialSendDoc(JsonDocument& doc) {
     Serial.println(out);
 }
 
+// Full address-list dump, shared by get_address_list and anything that mutates
+// the list (remove_device/remove_all_devices) — the UI clears its local device
+// map and rebuilds strictly from this, so removed/shifted boards never linger.
+static void emitAddressList() {
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        client_address a = msgHandler.getItemFromAddressList(i);
+        if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+        JsonDocument r;
+        r["event"] = "update_board";
+        r["id"]    = i;
+        char mac[18];
+        snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+            a.address[0], a.address[1], a.address[2],
+            a.address[3], a.address[4], a.address[5]);
+        r["address"]           = mac;
+        r["status"]            = (a.active == ACTIVE) ? "active" : "inactive";
+        r["batteryPercentage"] = a.batteryPercentage;
+        r["distance"]          = a.distanceFromCenter;
+        r["xpos"]              = a.xPos;
+        r["ypos"]              = a.yPos;
+        r["lastUpdateTime"]    = (unsigned long)a.lastUpdateTime;
+        r["timerOffset"]       = (long)a.timerOffset;
+        r["delay"]             = a.delay;
+        serialSendDoc(r);
+    }
+    JsonDocument summary;
+    summary["event"]      = "address_list";
+    summary["numDevices"] = msgHandler.getNumDevices();
+    serialSendDoc(summary);
+}
+
 static void handleSerialCommand(const char* line) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, line);
@@ -221,31 +252,34 @@ static void handleSerialCommand(const char* line) {
         prefs.putInt("wakeS", doc["seconds"].as<int>());
 
     } else if (strcmp(cmd, "get_address_list") == 0) {
-        for (int i = 0; i < NUM_DEVICES; i++) {
-            client_address a = msgHandler.getItemFromAddressList(i);
-            if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
-            JsonDocument r;
-            r["event"] = "update_board";
-            r["id"]    = i;
-            char mac[18];
-            snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-                a.address[0], a.address[1], a.address[2],
-                a.address[3], a.address[4], a.address[5]);
-            r["address"]           = mac;
-            r["status"]            = (a.active == ACTIVE) ? "active" : "inactive";
-            r["batteryPercentage"] = a.batteryPercentage;
-            r["distance"]          = a.distanceFromCenter;
-            r["xpos"]              = a.xPos;
-            r["ypos"]              = a.yPos;
-            r["lastUpdateTime"]    = (unsigned long)a.lastUpdateTime;
-            r["timerOffset"]       = (long)a.timerOffset;
-            r["delay"]             = a.delay;
+        emitAddressList();
+
+    } else if (strcmp(cmd, "remove_device") == 0) {
+        int index = doc["index"] | -1;
+        if (msgHandler.getSettingTimer() || msgHandler.isFastResyncRunning() || msgHandler.isAllTimerSyncRunning()) {
+            JsonDocument r; r["event"] = "remove_device_error";
+            r["detail"] = "a sync is in progress, try again shortly";
+            serialSendDoc(r);
+        } else if (msgHandler.removeDeviceAt(index)) {
+            JsonDocument r; r["event"] = "device_removed"; r["index"] = index;
+            serialSendDoc(r);
+            emitAddressList(); // indices shift, full dump is the only correct refresh
+        } else {
+            JsonDocument r; r["event"] = "remove_device_error"; r["detail"] = "invalid index";
             serialSendDoc(r);
         }
-        JsonDocument summary;
-        summary["event"]      = "address_list";
-        summary["numDevices"] = msgHandler.getNumDevices();
-        serialSendDoc(summary);
+
+    } else if (strcmp(cmd, "remove_all_devices") == 0) {
+        if (msgHandler.getSettingTimer() || msgHandler.isFastResyncRunning() || msgHandler.isAllTimerSyncRunning()) {
+            JsonDocument r; r["event"] = "remove_device_error";
+            r["detail"] = "a sync is in progress, try again shortly";
+            serialSendDoc(r);
+        } else {
+            msgHandler.removeAllDevices();
+            JsonDocument r; r["event"] = "all_devices_removed";
+            serialSendDoc(r);
+            emitAddressList(); // empty list + numDevices 0
+        }
 
     } else if (strcmp(cmd, "get_midi_params") == 0) {
         message_midi_params p = msgHandler.getMidiParams();

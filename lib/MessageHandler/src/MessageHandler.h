@@ -76,6 +76,8 @@ public:
     message_data retrieveCommand(uint8_t * address);
     void setCommand(message_data command, uint8_t * address);
     void setAddressListInactive();
+    bool removeDeviceAt(int index);
+    void removeAllDevices();
     message_midi_params getMidiParams();
     void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode);
     message_darkroom_params getDarkroomParams();
@@ -130,6 +132,7 @@ public:
     void startAllTimerSyncTask();
     void startFastResyncTask();
     bool isFastResyncRunning() { return fastResyncHandle != nullptr; }
+    bool isAllTimerSyncRunning() { return allTimerSyncHandle != nullptr; }
     void startBroadcastSettleTask();
     void runBroadcastSettle();
     void startClapTask();

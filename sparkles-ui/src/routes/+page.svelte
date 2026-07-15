@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { devices, animating, numDevices, syncStatus, animateStatus } from '$lib/stores.js';
+  import { devices, animating, numDevices, syncStatus, animateStatus, deviceListError } from '$lib/stores.js';
   import {
     getAddressList,
     getSystemInfo,
@@ -8,7 +8,8 @@
     commandSyncAll,
     commandBlinkAll,
     commandAnimate,
-    commandAnimationOff
+    commandAnimationOff,
+    removeAllDevices
   } from '$lib/api.js';
   import DeviceCard from '$lib/components/DeviceCard.svelte';
 
@@ -87,6 +88,18 @@
     }
   }
 
+  async function handleRemoveAll() {
+    error = '';
+    if (!confirm(`Remove all ${deviceList.length} devices? Each one re-adds itself the next time it announces (e.g. after a reboot or re-sync).`)) return;
+    try {
+      await removeAllDevices();
+      actionMsg = 'Clearing device list…';
+      setTimeout(() => { actionMsg = ''; }, 2000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   $: deviceList = Array.from($devices.values());
 </script>
 
@@ -133,9 +146,18 @@
   </div>
 
   <!-- Device grid -->
-  <h2 style="font-size:1rem; color:var(--color-text-muted); margin-bottom:0.75rem; text-transform:uppercase; letter-spacing:0.05em;">
-    Devices ({deviceList.length})
-  </h2>
+  <div class="devices-header">
+    <h2 style="font-size:1rem; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:0.05em;">
+      Devices ({deviceList.length})
+    </h2>
+    {#if deviceList.length > 0}
+      <button class="btn btn-ghost btn-sm btn-danger" on:click={handleRemoveAll}>Remove All Devices</button>
+    {/if}
+  </div>
+
+  {#if $deviceListError}
+    <div class="status-msg error" style="margin-bottom:1rem;">{$deviceListError}</div>
+  {/if}
 
   {#if deviceList.length === 0}
     <div class="card" style="text-align:center; color:var(--color-text-muted); padding:2rem;">
@@ -161,5 +183,17 @@
   .stat-card {
     flex: 1;
     min-width: 140px;
+  }
+
+  .devices-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+  }
+
+  .btn-danger {
+    color: var(--color-low, #f44336);
+    border-color: var(--color-low, #f44336);
   }
 </style>

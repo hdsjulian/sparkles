@@ -8,6 +8,12 @@ const BASE = '';
 export const getAddressList = () =>
   fetch(`${BASE}/getAddressList`).then(r => r.json());
 
+export const removeDevice = (index) =>
+  fetch(`${BASE}/removeDevice?index=${index}`).then(r => r.json());
+
+export const removeAllDevices = () =>
+  fetch(`${BASE}/removeAllDevices`).then(r => r.json());
+
 // ---- Global commands ----
 export const commandSyncAll = () =>
   fetch(`${BASE}/commandSyncAll`).then(r => r.json());

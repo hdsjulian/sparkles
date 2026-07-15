@@ -6,7 +6,8 @@ import {
   animateStatus,
   calibrationStatus,
   distanceStatus,
-  clientClap
+  clientClap,
+  deviceListError
 } from './stores.js';
 
 /**
@@ -39,6 +40,30 @@ export function setupSSE() {
   es.addEventListener('update_board', (e) => {
     try { upsertBoard(JSON.parse(e.data)); }
     catch (err) { console.warn('SSE update_board parse error:', err); }
+  });
+
+  // Removal shifts every index after the removed one, so a partial map update
+  // would leave stale entries — clear and let the update_board dump that
+  // immediately follows (see emitAddressList on the master) repopulate it.
+  es.addEventListener('device_removed', () => {
+    deviceListError.set('');
+    devices.set(new Map());
+  });
+  es.addEventListener('all_devices_removed', () => {
+    deviceListError.set('');
+    devices.set(new Map());
+    numDevices.set(0);
+  });
+  es.addEventListener('remove_device_error', (e) => {
+    try { deviceListError.set(JSON.parse(e.data).detail || 'Remove failed'); }
+    catch { deviceListError.set('Remove failed'); }
+  });
+
+  es.addEventListener('address_list', (e) => {
+    try {
+      const n = JSON.parse(e.data).numDevices;
+      if (typeof n === 'number') numDevices.set(n);
+    } catch {}
   });
 
   const onAnimateStatus = (e) => {

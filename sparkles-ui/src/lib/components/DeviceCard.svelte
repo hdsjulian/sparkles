@@ -1,5 +1,5 @@
 <script>
-  import { commandBlink, commandSync, submitPositions } from '$lib/api.js';
+  import { commandBlink, commandSync, submitPositions, removeDevice } from '$lib/api.js';
 
   export let device;
 
@@ -57,6 +57,18 @@
     }
   }
 
+  async function handleRemove() {
+    error = '';
+    if (!confirm(`Remove board #${device.boardId}? Boards after it will shift down one index. It re-adds itself the next time it announces.`)) return;
+    try {
+      await removeDevice(device.boardId);
+      // the board vanishing from the grid is the confirmation; failures
+      // (e.g. sync in progress) surface via the dashboard's error banner
+    } catch (e) {
+      error = `Remove failed: ${e.message}`;
+    }
+  }
+
   $: bclass = batteryClass(device.batteryPercentage ?? 0);
 </script>
 
@@ -111,6 +123,7 @@
     <button class="btn btn-ghost btn-sm" on:click={handleBlink}>Blink</button>
     <button class="btn btn-ghost btn-sm" on:click={handleSync}>Sync</button>
     <button class="btn btn-primary btn-sm" on:click={handleSubmitPosition}>Save Pos</button>
+    <button class="btn btn-ghost btn-sm btn-danger" on:click={handleRemove}>Remove</button>
   </div>
 </div>
 
@@ -179,5 +192,10 @@
 
   .pos-input input {
     width: 100%;
+  }
+
+  .btn-danger {
+    color: var(--color-low, #f44336);
+    border-color: var(--color-low, #f44336);
   }
 </style>

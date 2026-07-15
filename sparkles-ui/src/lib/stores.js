@@ -23,3 +23,6 @@ export const distanceStatus = writable(null);
 
 // Last clientClap event
 export const clientClap = writable(null);
+
+// Error from a remove_device/remove_all_devices rejection (e.g. sync in progress)
+export const deviceListError = writable('');

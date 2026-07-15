@@ -392,8 +392,44 @@ void MessageHandler::setAddressListInactive() {
             addressList[i].batteryPercentage = 0;
             addressList[i].lastUpdateTime = 0;
         }
-    } 
+    }
 }
 
+static void clearAddressEntry(client_address &a) {
+    memset(a.address, 0, 6);
+    a.id = 0;
+    a.xPos = 0; a.yPos = 0; a.zPos = 0;
+    a.timerOffset = 0;
+    a.delay = 0;
+    a.active = INACTIVE;
+    a.batteryPercentage = 0;
+    a.tries = 0;
+    a.distanceFromCenter = 0;
+    a.lastUpdateTime = 0;
+    a.timerQuerySendTime = 0;
+}
+
+// Removes one board and compacts the array — every consumer (sync, timer test,
+// get_address_list) scans from 0 and stops at the first empty slot, so a hole
+// in the middle would hide every board after it.
+bool MessageHandler::removeDeviceAt(int index) {
+    if (index < 0 || index >= NUM_DEVICES) return false;
+    int count = 0;
+    while (count < NUM_DEVICES && memcmp(addressList[count].address, emptyAddress, 6) != 0) count++;
+    if (index >= count) return false;
+    for (int i = index; i < count - 1; i++) {
+        addressList[i] = addressList[i + 1];
+    }
+    clearAddressEntry(addressList[count - 1]);
+    writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
+    return true;
+}
+
+void MessageHandler::removeAllDevices() {
+    for (int i = 0; i < NUM_CLIENTS; i++) {
+        clearAddressEntry(addressList[i]);
+    }
+    if (LittleFS.exists("/clientAddress")) LittleFS.remove("/clientAddress");
+}
 
 #endif

@@ -643,6 +643,20 @@ async def get_address_list(id: int | None = Query(default=None)):
     return await _request(cmd, "address_list")
 
 
+@app.get("/removeDevice")
+async def remove_device(index: int = Query(...)):
+    # fire-and-forget: removal shifts indices, so the result comes back as a
+    # fresh update_board/address_list dump over SSE, not a single response
+    _send({"cmd": "remove_device", "index": index})
+    return _ok()
+
+
+@app.get("/removeAllDevices")
+async def remove_all_devices():
+    _send({"cmd": "remove_all_devices"})
+    return _ok()
+
+
 # ---------------------------------------------------------------------------
 # Time
 # ---------------------------------------------------------------------------
