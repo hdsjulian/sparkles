@@ -10,9 +10,11 @@
 #include <ArduinoJson.h>
 #include "esp_sleep.h"
 #include "soc/rtc.h"
+#include <Preferences.h>
 
 LedHandler& ledInstance = LedHandler::getInstance();
 MessageHandler& msgHandler = MessageHandler::getInstance();
+static Preferences prefs; // clock checkpoint + sleep schedule, survives reboots without the pi
 uint8_t myAddress[6];
 bool g_loggingEnabled = false;
 
@@ -202,12 +204,19 @@ static void handleSerialCommand(const char* line) {
         settimeofday(&tv, NULL);
         setenv("TZ", "UTC", 1);
         tzset();
+        prefs.putLong64("clock", (int64_t)tv.tv_sec);
 
     } else if (strcmp(cmd, "set_sleep_time") == 0) {
         msgHandler.setSleepTime(doc["hours"].as<int>(), doc["minutes"].as<int>(), doc["seconds"].as<int>());
+        prefs.putInt("sleepH", doc["hours"].as<int>());
+        prefs.putInt("sleepM", doc["minutes"].as<int>());
+        prefs.putInt("sleepS", doc["seconds"].as<int>());
 
     } else if (strcmp(cmd, "set_wakeup_time") == 0) {
         msgHandler.setWakeupTime(doc["hours"].as<int>(), doc["minutes"].as<int>(), doc["seconds"].as<int>());
+        prefs.putInt("wakeH", doc["hours"].as<int>());
+        prefs.putInt("wakeM", doc["minutes"].as<int>());
+        prefs.putInt("wakeS", doc["seconds"].as<int>());
 
     } else if (strcmp(cmd, "get_address_list") == 0) {
         for (int i = 0; i < NUM_DEVICES; i++) {
@@ -612,6 +621,23 @@ void setup()
     delay(1000);
     ledInstance.setup();
     msgHandler.setup(ledInstance);
+
+    // Restore clock + sleep schedule from NVS — the pi may be offline for hours.
+    // The clock checkpoint is at most ~5 min stale after a crash, but off by the
+    // full outage after a power cut; the pi corrects it whenever it reconnects.
+    prefs.begin("sparkles");
+    time_t savedClock = (time_t)prefs.getLong64("clock", 0);
+    if (savedClock > 1700000000) {
+        struct timeval tv{ savedClock, 0 };
+        settimeofday(&tv, NULL);
+        setenv("TZ", "UTC", 1);
+        tzset();
+    }
+    if (prefs.isKey("sleepH")) {
+        msgHandler.setSleepTime(prefs.getInt("sleepH"), prefs.getInt("sleepM"), prefs.getInt("sleepS"));
+        msgHandler.setWakeupTime(prefs.getInt("wakeH"), prefs.getInt("wakeM"), prefs.getInt("wakeS"));
+    }
+
     // no webserver, the serial bridge handles all communication
     enableLoopWDT(); // if loop() stalls past the watchdog timeout, panic with a backtrace
 }
@@ -646,6 +672,15 @@ void loop()
         bool musicActive = msgHandler.getLastMidiTime() > 0 &&
                            millis() - msgHandler.getLastMidiTime() < 30000;
         if (!musicActive) {
+
+        // clock checkpoint so a reboot restores approximate wall time without the pi
+        static unsigned long lastClockSave = 0;
+        if (millis() - lastClockSave > 300000UL) {
+            lastClockSave = millis();
+            time_t nowSecs;
+            time(&nowSecs);
+            if (nowSecs > 1700000000) prefs.putLong64("clock", (int64_t)nowSecs);
+        }
 
         // Send animate status to Pi so it stays in sync
         {
