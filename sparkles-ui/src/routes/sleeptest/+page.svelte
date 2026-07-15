@@ -7,6 +7,7 @@
   let running = false;
   let phase = 'idle'; // idle | resync | sleeping | waking | done
   let result = null;  // final sleep_test_done payload
+  let report = null;  // assembled run summary, rendered once the test ends
   let expected = 0;
   let returned = 0;
   let cyclesExpected = 0;
@@ -30,36 +31,51 @@
       running = false;
       addLog('⚠ a sleep test is already running — cancel it first');
     },
-    sleep_test_cancelled: (d) => {
-      addLog(`test cancelled at ${(d.elapsed_ms / 1000).toFixed(0)}s — waking clients…`);
-    },
     sleep_test_start: (d) => {
       running = true; phase = 'resync'; result = null;
       returned = 0; cycle = 0; cyclesExpected = 0;
       expected = d.clients;
+      report = { clients: d.clients, sleepS: d.sleep_duration_s, phaseS: d.phase_duration_s,
+                 resyncS: null, cyclesExpected: 0, cycles: 0, broadcasts: 0, phaseActualS: null,
+                 cancelledAtS: null, earlyWakers: [], wakeTookS: null,
+                 returned: 0, expected: d.clients, missing: [], success: false };
       for (const b of boards.values()) { b.wokeEarly = false; b.missing = false; }
       boards = new Map(boards);
       addLog(`test started: ${d.clients} clients, sleep ${d.sleep_duration_s}s, phase ${d.phase_duration_s}s`);
     },
     sleep_test_resync_start: () => { phase = 'resync'; addLog('resyncing clients before sleep…'); },
-    sleep_test_resync_done: (d) => addLog(`resync done in ${(d.elapsed_ms / 1000).toFixed(1)}s`),
+    sleep_test_resync_done: (d) => {
+      if (report) report.resyncS = d.elapsed_ms / 1000;
+      addLog(`resync done in ${(d.elapsed_ms / 1000).toFixed(1)}s`);
+    },
     sleep_test_broadcast_start: (d) => {
       phase = 'sleeping'; cyclesExpected = d.cycles_expected;
+      if (report) { report.cyclesExpected = d.cycles_expected; report.phaseS = d.phase_duration_s; }
       addLog(`sleep broadcast running — ${d.cycles_expected} sleep cycles expected`);
     },
     sleep_test_cycle_heartbeat: (d) => {
       cycle = d.cycle;
+      if (report) { report.cycles = d.cycle; report.broadcasts = d.broadcasts; }
       addLog(`cycle ${d.cycle}/${cyclesExpected} — ${d.elapsed_s}s elapsed, ${d.broadcasts} broadcasts sent`);
     },
     sleep_test_unexpected_wakeup: (d) => {
       board(d.id).wokeEarly = true;
       boards = new Map(boards);
+      if (report) report.earlyWakers.push({ id: d.id, atS: d.elapsed_ms / 1000 });
       addLog(`⚠ board ${d.id} was awake mid-sleep at ${(d.elapsed_ms / 1000).toFixed(0)}s`);
     },
-    sleep_test_broadcast_end: (d) => addLog(`sleep phase over after ${(d.elapsed_ms / 1000).toFixed(0)}s`),
+    sleep_test_cancelled: (d) => {
+      if (report) report.cancelledAtS = d.elapsed_ms / 1000;
+      addLog(`test cancelled at ${(d.elapsed_ms / 1000).toFixed(0)}s — waking clients…`);
+    },
+    sleep_test_broadcast_end: (d) => {
+      if (report) { report.broadcasts = d.broadcasts; report.phaseActualS = d.elapsed_ms / 1000; }
+      addLog(`sleep phase over after ${(d.elapsed_ms / 1000).toFixed(0)}s`);
+    },
     sleep_test_waiting_for_wakeup: () => { phase = 'waking'; addLog('waiting for clients to wake up…'); },
     sleep_test_client_back: (d) => {
       returned = d.returned; expected = d.expected;
+      if (report) report.wakeTookS = d.elapsed_ms / 1000;
       addLog(`${d.returned}/${d.expected} clients back after ${(d.elapsed_ms / 1000).toFixed(1)}s`);
     },
     sleep_test_done: (d) => {
@@ -67,6 +83,13 @@
       returned = d.returned; expected = d.expected;
       for (const id of d.missing_ids ?? []) board(id).missing = true;
       boards = new Map(boards);
+      if (report) {
+        report.returned = d.returned;
+        report.expected = d.expected;
+        report.missing = d.missing_ids ?? [];
+        report.success = !!d.success;
+        report = { ...report };
+      }
       addLog(d.success
         ? `✓ success — all ${d.returned} clients woke up correctly`
         : `✗ ${d.returned}/${d.expected} returned — missing: ${(d.missing_ids ?? []).join(', ')}`);
@@ -194,6 +217,35 @@
     {/if}
   </div>
 
+  {#if phase === 'done' && report}
+    <div class="card" style="margin-bottom:1.25rem;">
+      <div class="card-title">Report</div>
+      <ul class="report">
+        <li>{report.expected} clients, {report.sleepS}s naps, {Math.round(report.phaseActualS ?? report.phaseS)}s sleep phase
+            {report.cyclesExpected ? `(${report.cyclesExpected} cycles planned)` : ''}</li>
+        {#if report.resyncS != null}
+          <li>resync before sleep took {report.resyncS.toFixed(1)}s</li>
+        {/if}
+        {#if report.cancelledAtS != null}
+          <li class="warn">⚠ cancelled after {Math.round(report.cancelledAtS)}s ({report.broadcasts} sleep broadcasts sent)</li>
+        {:else}
+          <li>full phase completed — {report.broadcasts} sleep broadcasts, {report.cycles}/{report.cyclesExpected} cycles</li>
+        {/if}
+        <li class={report.earlyWakers.length ? 'warn' : ''}>
+          {report.earlyWakers.length === 0
+            ? 'no board was awake mid-sleep'
+            : `awake mid-sleep: ${report.earlyWakers.map((w) => `#${w.id} at ${Math.round(w.atS)}s`).join(', ')}`}
+        </li>
+        <li>wake-up: {report.returned}/{report.expected} boards back{report.wakeTookS != null ? `, slowest after ${report.wakeTookS.toFixed(1)}s` : ''}</li>
+        <li class={report.success ? 'good' : 'bad'}>
+          {report.success
+            ? '✓ every board slept and woke up correctly'
+            : `✗ did not return: ${report.missing.map((i) => '#' + i).join(', ') || 'unknown'}`}
+        </li>
+      </ul>
+    </div>
+  {/if}
+
   <div class="card">
     <div class="card-title">Timeline</div>
     {#if log.length === 0}
@@ -251,6 +303,18 @@
 
   tr.ok  td { color: #4caf50; }
   tr.bad td { color: #f44336; }
+
+  .report {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.9;
+  }
+
+  .report .good { color: #4caf50; }
+  .report .warn { color: #ffc107; }
+  .report .bad  { color: #f44336; }
 
   .timeline {
     font-family: monospace;
