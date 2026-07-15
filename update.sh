@@ -17,7 +17,8 @@ cd "$REPO/sparkles-ui"
 /usr/bin/npm run build
 
 echo "=== Restarting services ==="
-sudo systemctl restart sparkles aubio keyboard_midi
+# hardcoded on purpose: local installation, update must run unattended
+echo raspi | sudo -S systemctl restart sparkles aubio keyboard_midi
 
 echo "=== Restarting kiosk browser ==="
 # the autostart loop relaunches chromium with the fresh build
