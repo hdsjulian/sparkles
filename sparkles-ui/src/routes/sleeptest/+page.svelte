@@ -145,7 +145,7 @@
       </label>
       <label>
         Test phase (s)
-        <input type="number" min="10" max="7200" bind:value={phaseSeconds} disabled={running} />
+        <input type="number" min="10" max="86400" bind:value={phaseSeconds} disabled={running} />
       </label>
       <button class="btn btn-primary" on:click={start} disabled={running}>
         {running ? 'Test running…' : 'Start Sleep Test'}

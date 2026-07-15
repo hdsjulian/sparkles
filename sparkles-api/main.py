@@ -517,7 +517,7 @@ async def command_timer_test():
 @app.get("/sleepTest")
 async def sleep_test(
     sleepSeconds: int = Query(default=15, ge=5, le=3600),
-    phaseSeconds: int = Query(default=60, ge=10, le=7200),
+    phaseSeconds: int = Query(default=60, ge=10, le=86400),
 ):
     _send({"cmd": "test_sleep_cycle",
            "sleep_duration_s": sleepSeconds,
