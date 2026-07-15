@@ -221,7 +221,7 @@ def output_frequency(pitch_val, db):
             _last_sent_shimmer = 0
             _last_shimmer_ms = time.time() * 1000
             log.debug("Shimmer off")
-            serial_send({"cmd": "aubio_shimmer", "hue": hue_start, "saturation": 255, "value": 0})
+            serial_send({"cmd": "aubio_shimmer", "hue": hue_start, "saturation": 255, "value": 0, "scale": 0.0})
         return
 
     # Only recalculate hue if pitch changed by more than a quarter-note interval
@@ -268,7 +268,8 @@ def output_frequency(pitch_val, db):
 
     if send_shimmer or refresh_due or volume_change_due:
         log.debug(f"Shimmer hue={hue} sat={saturation} val={value}")
-        serial_send({"cmd": "aubio_shimmer", "hue": hue, "saturation": saturation, "value": value})
+        # scale = 0..1 pitch position — the bridge maps it onto the configured color
+        serial_send({"cmd": "aubio_shimmer", "hue": hue, "saturation": saturation, "value": value, "scale": round(scale, 3)})
         _last_sent_shimmer = value
         _last_shimmer_ms = now_ms
 

@@ -366,13 +366,20 @@ class SerialBridge:
             msg = json.loads(line)
             cmd = msg.get("cmd")
             if cmd == "aubio_shimmer":
+                # config is the base color, aubio's pitch position (scale 0..1) rides
+                # on top: higher pitch pulls slightly redder and towards white — same
+                # dynamics as the original hardcoded 22->8 / 255->0 mapping
                 c = self.colors["shimmer"]
+                scale = float(msg.pop("scale", 0.0) or 0.0)
+                base = int(c["hue"]) * 255 // 360
+                msg["hue"] = max(0, base - int(14 * scale))
+                msg["saturation"] = int(int(c["saturation"]) * (1.0 - scale) + 0.5)
             elif cmd in ("keyboard_midi", "aubio_midi"):
                 c = self.colors["midi"]
+                msg["hue"] = int(c["hue"]) * 255 // 360  # degrees -> FastLED 0-255
+                msg["saturation"] = int(c["saturation"])
             else:
                 return line
-            msg["hue"] = int(c["hue"]) * 255 // 360  # degrees -> FastLED 0-255
-            msg["saturation"] = int(c["saturation"])
             return json.dumps(msg)
         except Exception:
             return line
