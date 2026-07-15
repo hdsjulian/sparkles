@@ -34,6 +34,7 @@ unsigned long lastTick = 0;
 #define SLEEP_BROADCAST_DURATION_MS (5 * 60 * 1000)  // 5 minutes in ms
 
 static TaskHandle_t sleepBroadcastTaskHandle = NULL;
+static TaskHandle_t sleepTestTaskHandle = NULL;
 static void serialSendDoc(JsonDocument& doc);
 
 static void sleepBroadcastTask(void* pvParameters) {
@@ -447,6 +448,11 @@ static void handleSerialCommand(const char* line) {
         // extend animation decay when pedal is held — placeholder for future effect
 
     } else if (strcmp(cmd, "test_sleep_cycle") == 0) {
+        if (sleepTestTaskHandle != NULL) {
+            JsonDocument r; r["event"] = "sleep_test_busy";
+            serialSendDoc(r);
+            return;
+        }
         struct SleepTestParams { int sleepDurationS; int phaseDurationS; };
         auto* p = new SleepTestParams{
             doc["sleep_duration_s"] | 15,
@@ -554,7 +560,8 @@ static void handleSerialCommand(const char* line) {
             { JsonDocument r; emit("sleep_test_waiting_for_wakeup", r); }
 
             unsigned long wakeStart = millis();
-            unsigned long waitMaxMs = ((unsigned long)sleepDurationS + 30) * 1000;
+            // chunk + mac announce stagger (<=29s) + sync time, so stragglers aren't false "missing"
+            unsigned long waitMaxMs = ((unsigned long)sleepDurationS + 90) * 1000;
             int returned = 0;
             int tick = 0;
             while (millis() - wakeStart < waitMaxMs) {
@@ -593,8 +600,9 @@ static void handleSerialCommand(const char* line) {
               r["success"] = (returned == total);
               emit("sleep_test_done", r); }
 
+            sleepTestTaskHandle = NULL;
             vTaskDelete(NULL);
-        }, "sleepTest", 8192, p, 1, NULL, 1);
+        }, "sleepTest", 8192, p, 1, &sleepTestTaskHandle, 1);
     }
 }
 

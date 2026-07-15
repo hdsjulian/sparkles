@@ -26,6 +26,10 @@
   }
 
   const handlers = {
+    sleep_test_busy: () => {
+      running = false;
+      addLog('⚠ a sleep test is already running — wait for it to finish');
+    },
     sleep_test_start: (d) => {
       running = true; phase = 'resync'; result = null;
       returned = 0; cycle = 0; cyclesExpected = 0;
