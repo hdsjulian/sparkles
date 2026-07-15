@@ -138,26 +138,25 @@ async def compile_client():
 
 
 def _dtr_reset(port: str = "/dev/sparkles"):
-    """Hard-reset the ESP32-S3 after flashing.
+    """Hard-reset the ESP32-S3 out of the ROM bootloader into the app.
 
-    Plain DTR toggle is a no-op on the S3's USB-Serial-JTAG — this is esptool's
-    USBJTAGSerialReset sequence, which resets out of the ROM bootloader into the app.
+    esptool HardReset: RTS pulse with DTR released. (The USBJTAGSerialReset
+    sequence used here before is esptool's ENTER-bootloader dance — it held IO0
+    and parked the chip in download mode after every flash.)
     """
     try:
         import serial as _serial, time as _time
-        s = _serial.Serial(port, 115200, timeout=1)
+        s = _serial.Serial()
+        s.port = port
+        s.baudrate = 115200
+        s.dtr = False  # IO0 released, applied at open
         s.rts = False
-        s.dtr = False  # idle
+        s.open()
         _time.sleep(0.1)
-        s.dtr = True   # set IO0
-        s.rts = False
+        s.rts = True   # EN low
+        _time.sleep(0.2)
+        s.rts = False  # chip boots the app
         _time.sleep(0.1)
-        s.rts = True   # reset, dtr/rts inverted to pass through (1,1) not (0,0)
-        s.dtr = False
-        s.rts = True
-        _time.sleep(0.1)
-        s.dtr = False
-        s.rts = False  # chip out of reset
         s.close()
     except Exception as exc:
         raise RuntimeError(f"DTR reset failed: {exc}")
