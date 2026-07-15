@@ -2,4 +2,5 @@
 .vscode
 sparkles-api/.secret_key
 sparkles-api/colors.json
+sparkles-api/schedule.json
 __pycache__/

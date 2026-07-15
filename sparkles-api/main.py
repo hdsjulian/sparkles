@@ -660,6 +660,7 @@ async def set_sleep_time(
     minutes: int = Query(...),
     seconds: int = Query(...),
 ):
+    bridge.set_schedule(sleep={"hours": hours, "minutes": minutes, "seconds": seconds})
     _send({"cmd": "set_sleep_time", "hours": hours, "minutes": minutes, "seconds": seconds})
     return _ok()
 
@@ -670,6 +671,7 @@ async def set_wakeup_time(
     minutes: int = Query(...),
     seconds: int = Query(...),
 ):
+    bridge.set_schedule(wakeup={"hours": hours, "minutes": minutes, "seconds": seconds})
     _send({"cmd": "set_wakeup_time", "hours": hours, "minutes": minutes, "seconds": seconds})
     return _ok()
 

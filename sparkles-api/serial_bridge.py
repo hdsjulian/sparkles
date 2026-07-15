@@ -50,6 +50,8 @@ _SERIAL_LOG_PATH  = os.environ.get("SPARKLES_SERIAL_LOG", "/home/julian/sparkles
 # persisted lamp colors, stamped into every music message (hue 0-360, saturation 0-255)
 _COLORS_PATH      = os.environ.get("SPARKLES_COLORS", "/home/julian/sparkles/sparkles-api/colors.json")
 _DEFAULT_COLORS   = {"midi": {"hue": 25, "saturation": 200}, "shimmer": {"hue": 31, "saturation": 255}}
+# persisted sleep/wakeup schedule, re-pushed on every serial connect (master RAM loses it on reboot)
+_SCHEDULE_PATH    = os.environ.get("SPARKLES_SCHEDULE", "/home/julian/sparkles/sparkles-api/schedule.json")
 
 
 class HealthMonitor:
@@ -158,8 +160,9 @@ class SerialBridge:
         # outbound write queue — serial writes happen on the reader thread, never the event loop.
         # sized for the 30 Hz music stream plus keyboard bursts now sharing this queue
         self._send_queue: queue.Queue = queue.Queue(maxsize=256)
-        # lamp colors, raspi is the source of truth (persisted across reboots)
+        # lamp colors and sleep schedule, raspi is the source of truth (persisted across reboots)
         self.colors = self._load_colors()
+        self.schedule = self._load_schedule()
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -267,6 +270,36 @@ class SerialBridge:
                 json.dump(self.colors, f, indent=2)
         except Exception as exc:
             logger.warning("Could not save colors to %s: %s", _COLORS_PATH, exc)
+
+    @staticmethod
+    def _load_schedule() -> dict:
+        try:
+            with open(_SCHEDULE_PATH) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def set_schedule(self, sleep: dict | None = None, wakeup: dict | None = None):
+        if sleep is not None:
+            self.schedule["sleep"] = sleep
+        if wakeup is not None:
+            self.schedule["wakeup"] = wakeup
+        try:
+            with open(_SCHEDULE_PATH, "w") as f:
+                json.dump(self.schedule, f, indent=2)
+        except Exception as exc:
+            logger.warning("Could not save schedule to %s: %s", _SCHEDULE_PATH, exc)
+
+    def _send_clock_and_schedule(self):
+        """The master keeps clock and sleep schedule in RAM only — re-push on every connect
+        so a mid-night reboot rejoins the sleep phase instead of forgetting it."""
+        now = time.localtime()
+        self.send({"cmd": "set_time", "year": now.tm_year, "month": now.tm_mon, "day": now.tm_mday,
+                   "hours": now.tm_hour, "minutes": now.tm_min, "seconds": now.tm_sec})
+        if self.schedule.get("sleep"):
+            self.send({"cmd": "set_sleep_time", **self.schedule["sleep"]})
+        if self.schedule.get("wakeup"):
+            self.send({"cmd": "set_wakeup_time", **self.schedule["wakeup"]})
 
     def _stamp_music_colors(self, line: str) -> str:
         """Inject the configured hue/saturation so clients always render the current color."""
@@ -488,6 +521,7 @@ class SerialBridge:
             self._last_frame_time = 0.0  # reset so stale clock starts from connect
             self._emit_serial_status(True)
             self._send_ota_url()
+            self._send_clock_and_schedule()
 
             # --- read loop (TX happens on the dedicated writer thread) ---
             while self._running:
