@@ -520,6 +520,10 @@ static void handleSerialCommand(const char* line) {
                 for (int i = 0; i < NUM_DEVICES; i++) {
                     client_address a = msgHandler.getItemFromAddressList(i);
                     if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+                    // settle window: gotTimer confirmations from the resync trail in for
+                    // a second or two, and clients blink ~3 s before actually sleeping —
+                    // keep refreshing the baseline instead of flagging those
+                    if (elapsedS <= 5) { lastSeen[i] = a.lastUpdateTime; continue; }
                     if (a.lastUpdateTime != lastSeen[i] && !wokeReported[i]) {
                         wokeReported[i] = true;
                         JsonDocument r;
