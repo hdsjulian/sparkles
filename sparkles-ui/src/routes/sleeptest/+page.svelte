@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { runSleepTest } from '$lib/api.js';
+  import { runSleepTest, cancelSleepTest } from '$lib/api.js';
 
   let sleepSeconds = 15;
   let phaseSeconds = 60;
@@ -28,7 +28,10 @@
   const handlers = {
     sleep_test_busy: () => {
       running = false;
-      addLog('⚠ a sleep test is already running — wait for it to finish');
+      addLog('⚠ a sleep test is already running — cancel it first');
+    },
+    sleep_test_cancelled: (d) => {
+      addLog(`test cancelled at ${(d.elapsed_ms / 1000).toFixed(0)}s — waking clients…`);
     },
     sleep_test_start: (d) => {
       running = true; phase = 'resync'; result = null;
@@ -98,6 +101,15 @@
     }
   }
 
+  async function cancel() {
+    try {
+      await cancelSleepTest();
+      addLog('cancel requested — ending phase, wake-up sequence follows');
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   function boardLabel(b) {
     if (b.missing) return '✗ missing';
     // during the phase we hold the sent-sleep assumption; only a message from the
@@ -149,6 +161,9 @@
       </label>
       <button class="btn btn-primary" on:click={start} disabled={running}>
         {running ? 'Test running…' : 'Start Sleep Test'}
+      </button>
+      <button class="btn btn-ghost" on:click={cancel}>
+        Cancel
       </button>
     </div>
     {#if phaseSeconds < minPhase}

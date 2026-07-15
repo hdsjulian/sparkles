@@ -525,6 +525,12 @@ async def sleep_test(
     return _ok()
 
 
+@app.get("/sleepTestCancel")
+async def sleep_test_cancel():
+    _send({"cmd": "test_sleep_cancel"})
+    return _ok()
+
+
 # ---------------------------------------------------------------------------
 # Sync
 # ---------------------------------------------------------------------------

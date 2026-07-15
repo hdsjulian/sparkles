@@ -35,6 +35,7 @@ unsigned long lastTick = 0;
 
 static TaskHandle_t sleepBroadcastTaskHandle = NULL;
 static TaskHandle_t sleepTestTaskHandle = NULL;
+static volatile bool sleepTestCancel = false;
 static void serialSendDoc(JsonDocument& doc);
 
 static void sleepBroadcastTask(void* pvParameters) {
@@ -447,6 +448,9 @@ static void handleSerialCommand(const char* line) {
         // sustain pedal: value >= 64 = down, < 64 = up
         // extend animation decay when pedal is held — placeholder for future effect
 
+    } else if (strcmp(cmd, "test_sleep_cancel") == 0) {
+        if (sleepTestTaskHandle != NULL) sleepTestCancel = true;
+
     } else if (strcmp(cmd, "test_sleep_cycle") == 0) {
         if (sleepTestTaskHandle != NULL) {
             JsonDocument r; r["event"] = "sleep_test_busy";
@@ -458,6 +462,7 @@ static void handleSerialCommand(const char* line) {
             doc["sleep_duration_s"] | 15,
             doc["phase_duration_s"] | 60
         };
+        sleepTestCancel = false;
         xTaskCreatePinnedToCore([](void* pv) {
             auto* params = (SleepTestParams*)pv;
             int sleepDurationS = params->sleepDurationS;
@@ -514,7 +519,7 @@ static void handleSerialCommand(const char* line) {
               r["cycles_expected"] = phaseDurationS / sleepDurationS;
               emit("sleep_test_broadcast_start", r); }
 
-            while (millis() - phaseStart < (unsigned long)phaseDurationS * 1000) {
+            while (!sleepTestCancel && millis() - phaseStart < (unsigned long)phaseDurationS * 1000) {
                 msgHandler.sendSleepWakeupMessage(durationMicros);
                 broadcasts++;
                 vTaskDelay(pdMS_TO_TICKS(1000));
@@ -549,6 +554,14 @@ static void handleSerialCommand(const char* line) {
                     nextCycleLog += sleepDurationS;
                 }
             }
+            if (sleepTestCancel) {
+                // cancel = end the phase early but still run the wake-up sequence,
+                // otherwise sleeping boards fail closed and nap indefinitely
+                sleepTestCancel = false;
+                JsonDocument r;
+                r["elapsed_ms"] = (long)(millis() - phaseStart);
+                emit("sleep_test_cancelled", r);
+            }
             { JsonDocument r;
               r["broadcasts"] = broadcasts;
               r["elapsed_ms"] = (long)(millis() - phaseStart);
@@ -565,6 +578,7 @@ static void handleSerialCommand(const char* line) {
             int returned = 0;
             int tick = 0;
             while (millis() - wakeStart < waitMaxMs) {
+                if (sleepTestCancel) break; // second cancel aborts even the wake wait
                 // wake sentinel every 2 s — fail-closed clients re-sleep through silence
                 if (tick++ % 4 == 0) msgHandler.sendSleepWakeupMessage(0);
                 // Count active clients
