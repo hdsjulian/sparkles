@@ -3,4 +3,5 @@
 sparkles-api/.secret_key
 sparkles-api/colors.json
 sparkles-api/schedule.json
+sparkles-api/clock_trust.json
 __pycache__/

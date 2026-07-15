@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -649,6 +650,15 @@ async def set_time(
     minutes: int = Query(...),
     seconds: int = Query(...),
 ):
+    # the browser is the only real time source here (no internet, no rtc):
+    # set the pi's own clock too and mark it trusted for the rest of this boot
+    stamp = f"{year:04d}-{month:02d}-{day:02d} {hours:02d}:{minutes:02d}:{seconds:02d}"
+    try:
+        subprocess.run(["sudo", "date", "-s", stamp], check=True, timeout=5, capture_output=True)
+        subprocess.run(["sudo", "fake-hwclock", "save"], timeout=5, capture_output=True)
+    except Exception as exc:
+        logger.warning("Could not set pi clock: %s", exc)
+    bridge.mark_clock_trusted()
     _send({"cmd": "set_time", "year": year, "month": month, "day": day,
            "hours": hours, "minutes": minutes, "seconds": seconds})
     return _ok()

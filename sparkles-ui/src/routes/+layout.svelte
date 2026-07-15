@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import Nav from '$lib/components/Nav.svelte';
   import { setupSSE } from '$lib/sse.js';
+  import { setTime } from '$lib/api.js';
   import '../app.css';
 
   let cleanupSSE;
@@ -35,6 +36,7 @@
         authUser = await res.json();
         cleanupSSE = setupSSE();
         initSerialStatus();
+        syncClock();
       } else {
         window.location.href = '/login';
       }
@@ -43,6 +45,17 @@
     }
     authChecked = true;
   });
+
+  function syncClock() {
+    // the browser is the system's only real time source (no internet, no rtc) —
+    // push it once per session, but never from the kiosk: its clock IS the pi's
+    if (['localhost', '127.0.0.1'].includes(location.hostname)) return;
+    if (sessionStorage.getItem('clockSynced')) return;
+    const n = new Date();
+    setTime(n.getFullYear(), n.getMonth() + 1, n.getDate(), n.getHours(), n.getMinutes(), n.getSeconds())
+      .then(() => sessionStorage.setItem('clockSynced', '1'))
+      .catch(() => {});
+  }
 
   function pollSerialStatus() {
     fetch('/serial-status').then(r => r.json()).then(d => {

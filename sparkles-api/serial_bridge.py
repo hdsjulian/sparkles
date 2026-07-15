@@ -52,6 +52,9 @@ _COLORS_PATH      = os.environ.get("SPARKLES_COLORS", "/home/julian/sparkles/spa
 _DEFAULT_COLORS   = {"midi": {"hue": 25, "saturation": 200}, "shimmer": {"hue": 31, "saturation": 255}}
 # persisted sleep/wakeup schedule, re-pushed on every serial connect (master RAM loses it on reboot)
 _SCHEDULE_PATH    = os.environ.get("SPARKLES_SCHEDULE", "/home/julian/sparkles/sparkles-api/schedule.json")
+# marker that a human set the clock via browser during this pi boot — only then is
+# the pi's clock worth pushing (no internet, no rtc: a fresh boot has a stale clock)
+_CLOCK_TRUST_PATH = os.environ.get("SPARKLES_CLOCK_TRUST", "/home/julian/sparkles/sparkles-api/clock_trust.json")
 
 
 class HealthMonitor:
@@ -163,6 +166,7 @@ class SerialBridge:
         # lamp colors and sleep schedule, raspi is the source of truth (persisted across reboots)
         self.colors = self._load_colors()
         self.schedule = self._load_schedule()
+        self.clock_trusted = self._load_clock_trust()
 
     # ------------------------------------------------------------------
     # T-Beam forwarder
@@ -290,12 +294,42 @@ class SerialBridge:
         except Exception as exc:
             logger.warning("Could not save schedule to %s: %s", _SCHEDULE_PATH, exc)
 
+    @staticmethod
+    def _boot_id() -> str:
+        try:
+            with open("/proc/sys/kernel/random/boot_id") as f:
+                return f.read().strip()
+        except Exception:
+            return ""
+
+    def _load_clock_trust(self) -> bool:
+        try:
+            with open(_CLOCK_TRUST_PATH) as f:
+                saved = json.load(f)
+            boot = self._boot_id()
+            return bool(boot) and saved.get("boot_id") == boot
+        except Exception:
+            return False
+
+    def mark_clock_trusted(self):
+        self.clock_trusted = True
+        try:
+            with open(_CLOCK_TRUST_PATH, "w") as f:
+                json.dump({"boot_id": self._boot_id(), "synced_at": time.time()}, f)
+        except Exception as exc:
+            logger.warning("Could not save clock trust marker: %s", exc)
+
     def _send_clock_and_schedule(self):
-        """The master keeps clock and sleep schedule in RAM only — re-push on every connect
-        so a mid-night reboot rejoins the sleep phase instead of forgetting it."""
-        now = time.localtime()
-        self.send({"cmd": "set_time", "year": now.tm_year, "month": now.tm_mon, "day": now.tm_mday,
-                   "hours": now.tm_hour, "minutes": now.tm_min, "seconds": now.tm_sec})
+        """The master keeps clock and sleep schedule in RAM + NVS — re-push on every
+        connect so a mid-night reboot rejoins the sleep phase. The clock only goes
+        out if a human set it this boot; a stale pi clock must never clobber the
+        master's own checkpoint."""
+        if self.clock_trusted:
+            now = time.localtime()
+            self.send({"cmd": "set_time", "year": now.tm_year, "month": now.tm_mon, "day": now.tm_mday,
+                       "hours": now.tm_hour, "minutes": now.tm_min, "seconds": now.tm_sec})
+        else:
+            logger.info("Pi clock not human-synced this boot — not pushing time to master")
         if self.schedule.get("sleep"):
             self.send({"cmd": "set_sleep_time", **self.schedule["sleep"]})
         if self.schedule.get("wakeup"):
