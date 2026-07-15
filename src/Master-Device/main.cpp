@@ -264,6 +264,10 @@ static void handleSerialCommand(const char* line) {
             JsonDocument r; r["event"] = "device_removed"; r["index"] = index;
             serialSendDoc(r);
             emitAddressList(); // indices shift, full dump is the only correct refresh
+            // every board from the removed index onward now answers to a different
+            // addressId — resync so each one's own position (MIDI octave, etc.)
+            // matches its new slot instead of the one it was told before the shift
+            msgHandler.startFastResyncTask();
         } else {
             JsonDocument r; r["event"] = "remove_device_error"; r["detail"] = "invalid index";
             serialSendDoc(r);
