@@ -601,13 +601,31 @@ class SerialBridge:
                 _time.sleep(RECONNECT_DELAY)
                 continue
 
-            # Drain boot noise for 2s
+            # Drain boot noise for up to 2s. A genuine master reboot spews
+            # ROM bootloader garbage here — but when only the pi's process
+            # restarted (the master kept running the whole time), this window
+            # sees real, valid JSON from the very first line. Discarding it
+            # unconditionally silently ate the master's live traffic on every
+            # reconnect, including one-shot lifecycle events (e.g. a sleep
+            # test's own start/resync lines) that never come again. Dispatch
+            # anything that actually parses; only true garbage gets dropped.
             deadline = _time.monotonic() + 2.0
             while self._running and _time.monotonic() < deadline:
                 try:
-                    self._serial.readline()
+                    raw = self._serial.readline()
                 except Exception:
                     break
+                if not raw:
+                    continue
+                line = raw.decode(errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    frame = json.loads(line)
+                except json.JSONDecodeError:
+                    continue  # actual boot noise
+                self._append_log(line)
+                self._dispatch(frame)
             if not self._running:
                 break
             self._serial.reset_input_buffer()
