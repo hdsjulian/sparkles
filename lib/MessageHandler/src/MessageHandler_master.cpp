@@ -396,6 +396,7 @@ void MessageHandler::sendSystemStatus() {
 }
 
 void MessageHandler::sendAnimation(message_animation animationMessage, int addressId) {
+    lastAnimationType = animationMessage.animationType;
     message_data message;
     message.messageType = MSG_ANIMATION;
     memcpy(&message.payload.animation, &animationMessage, sizeof(animationMessage));

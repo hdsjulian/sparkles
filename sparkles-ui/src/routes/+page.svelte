@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { devices, animating, numDevices, syncStatus, animateStatus, deviceListError } from '$lib/stores.js';
+  import { devices, animating, numDevices, syncStatus, animateStatus, currentAnimationName, deviceListError } from '$lib/stores.js';
   import {
     getAddressList,
     getSystemInfo,
@@ -131,7 +131,7 @@
     <div class="card stat-card">
       <div class="card-title">Animation</div>
       <div class="reading" style="font-size:1.1rem; color: {$animating ? 'var(--color-ok)' : 'var(--color-text-muted)'}">
-        {$animating ? 'Running' : 'Off'}
+        {$animating ? ($currentAnimationName || 'Running') : 'Off'}
       </div>
     </div>
     <div class="card stat-card">

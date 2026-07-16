@@ -15,6 +15,9 @@ export const syncStatus = writable('');
 // Animate status string from SSE
 export const animateStatus = writable('');
 
+// Human-readable name of the animation last broadcast (e.g. "sync_async_blink")
+export const currentAnimationName = writable('');
+
 // Calibration status object from SSE { status, boardId, x, y }
 export const calibrationStatus = writable(null);
 

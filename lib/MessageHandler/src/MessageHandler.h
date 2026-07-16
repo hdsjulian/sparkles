@@ -143,6 +143,7 @@ public:
     void startClapSyncTask();
     void startAnimationLoopTask();
     bool isAnimationLoopRunning() { return animationLoopHandle != nullptr; }
+    animationEnum getLastAnimationType() { return lastAnimationType; }
     void startDarkroomTask();
     void handleSleepWakeup(message_data incomingData);
     void handleReceive();
@@ -224,6 +225,7 @@ private:
     int beforeSleepSecondsOfDay = 0;
     int currentTimerIndex = 0;
     int numDevices = 0;
+    animationEnum lastAnimationType = OFF; // last type broadcast via sendAnimation, for status reporting
     unsigned long long lastSendTime = 0;
     int lastDelay = 0;
     unsigned long long msgReceiveTime;

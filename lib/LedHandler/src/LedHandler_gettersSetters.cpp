@@ -137,6 +137,12 @@ void LedHandler::setMicrosUntilStart(unsigned long long masterStartTime) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         // offset = master - client, master time is always clientNow + offset
         microsUntilStart = masterStartTime - ((long long)clientNow + timerOffset);
+        // see calculateMicrosUntilStart: a stale/bad offset must not turn into
+        // an hours-long vTaskDelayUntil in runBlink()/runStrobe()
+        if (microsUntilStart > 5000000LL) {
+            ESP_LOGW("LED", "Absurd microsUntilStart %lld (offset %lld) — sync must be stale, starting now instead", microsUntilStart, timerOffset);
+            microsUntilStart = 0;
+        }
         xSemaphoreGive(configMutex);
     }
 }
@@ -147,6 +153,17 @@ unsigned long long LedHandler::calculateMicrosUntilStart(unsigned long long mast
     microsUntilStartCalc = masterStartTime - ((long long)clientNow + timerOffset);
     // Clamp to zero if negative
     if (microsUntilStartCalc < 0) {
+        microsUntilStartCalc = 0;
+    }
+    // Every scheduled animation starts well under 2s in the future (see
+    // sendAnimation/runAnimationLoop) — this is called from ledTask()'s own
+    // loop via a blocking vTaskDelayUntil, so a stale/bad timerOffset (e.g.
+    // right after a resync) could otherwise freeze ALL animation dispatch
+    // for as long as the bogus wait, making the client look completely dead
+    // to every subsequent broadcast. Treat an absurd wait as a sync error.
+    const long long MAX_SANE_WAIT_US = 5000000; // 5s
+    if (microsUntilStartCalc > MAX_SANE_WAIT_US) {
+        ESP_LOGW("LED", "Absurd microsUntilStart %lld (offset %lld) — sync must be stale, starting now instead", microsUntilStartCalc, timerOffset);
         microsUntilStartCalc = 0;
     }
     return (unsigned long long)microsUntilStartCalc;

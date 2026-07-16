@@ -4,6 +4,7 @@ import {
   numDevices,
   syncStatus,
   animateStatus,
+  currentAnimationName,
   calibrationStatus,
   distanceStatus,
   clientClap,
@@ -72,6 +73,7 @@ export function setupSSE() {
       const running = data.status === true || data.status === 'true';
       animateStatus.set(running ? 'true' : 'false');
       animating.set(running);
+      if (data.animation) currentAnimationName.set(data.animation);
     } catch {
       animateStatus.set(e.data);
       animating.set(e.data !== '' && e.data !== 'off' && e.data !== 'done');

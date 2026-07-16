@@ -18,6 +18,28 @@ static Preferences prefs; // clock checkpoint + sleep schedule, survives reboots
 uint8_t myAddress[6];
 bool g_loggingEnabled = false;
 
+static const char* animationTypeName(animationEnum type) {
+    switch (type) {
+        case OFF:                return "off";
+        case FLASH:              return "flash";
+        case BLINK:              return "blink";
+        case BATTERY_BLINK:      return "battery_blink";
+        case CANDLE:             return "candle";
+        case SYNC_ASYNC_BLINK:   return "sync_async_blink";
+        case SYNC_BLINK:         return "sync_blink";
+        case SLOW_STARTUP:       return "slow_startup";
+        case SYNC_END:           return "sync_end";
+        case LED_ON:             return "led_on";
+        case CONCENTRIC:         return "concentric";
+        case MIDI:               return "midi";
+        case BACKGROUND_SHIMMER: return "background_shimmer";
+        case STROBE:             return "strobe";
+        case BREATH:             return "breath";
+        case BIOLUMINESCENCE:    return "bioluminescence";
+        default:                 return "unknown";
+    }
+}
+
 MessageHandler& getMessageHandlerInstance() { return msgHandler; }
 
 bool lfs_started = true;
@@ -205,6 +227,7 @@ static void handleSerialCommand(const char* line) {
         JsonDocument r;
         r["event"] = "animate_status";
         r["status"] = !running;
+        r["animation"] = animationTypeName(msgHandler.getLastAnimationType());
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "animation_off") == 0) {
@@ -214,6 +237,7 @@ static void handleSerialCommand(const char* line) {
         JsonDocument r;
         r["event"]  = "animate_status";
         r["status"] = msgHandler.isAnimationLoopRunning();
+        r["animation"] = animationTypeName(msgHandler.getLastAnimationType());
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "blink") == 0) {
@@ -850,6 +874,7 @@ void loop()
             JsonDocument r;
             r["event"]  = "animate_status";
             r["status"] = msgHandler.isAnimationLoopRunning();
+            r["animation"] = animationTypeName(msgHandler.getLastAnimationType());
             serialSendDoc(r);
         }
 
