@@ -124,9 +124,11 @@ static void sleepUntilTask(void* pvParameters) {
         JsonDocument r; r["event"] = "sleep_until_done"; r["cancelled"] = wasCancelled;
         serialSendDoc(r);
     }
-    // fail-closed clients need to hear "morning" for a full nap chunk plus margin
+    // fail-closed clients need to hear "morning": broadcast the wake sentinel
+    // for two full nap cycles plus margin, so even a board that misses its
+    // entire first listen window gets a second full chance
     unsigned long sentinelStart = millis();
-    while (millis() - sentinelStart < SLEEP_BROADCAST_DURATION_MS + 60000UL) {
+    while (millis() - sentinelStart < 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL) {
         msgHandler.sendSleepWakeupMessage(0);
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
@@ -162,9 +164,10 @@ static void sleepBroadcastTask(void* pvParameters) {
         serialSendDoc(r);
     }
     // Clients fail closed and keep sleeping through silence, so shout "morning"
-    // (zero duration = wake sentinel) for a full sleep chunk plus margin.
+    // (zero duration = wake sentinel) for two full sleep chunks plus margin —
+    // a board that misses its entire first listen window gets a second full chance.
     unsigned long sentinelStart = millis();
-    while (millis() - sentinelStart < SLEEP_BROADCAST_DURATION_MS + 60000UL) {
+    while (millis() - sentinelStart < 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL) {
         msgHandler.sendSleepWakeupMessage(0);
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
