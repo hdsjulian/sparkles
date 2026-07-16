@@ -140,8 +140,15 @@ void MessageHandler::handleReceive() {
                     continue;
                 }
                 int timerIndex = getCurrentTimerIndex();
+                if (timerIndex < 0 || timerIndex >= NUM_DEVICES) {
+                    // late/stale MSG_GOT_TIMER — the sync it belongs to already finished
+                    // (currentTimerIndex reset to -1) or never validly started. addressList
+                    // has no slot -1; indexing it was corrupting adjacent members.
+                    ESP_LOGW("MSG", "MSG_GOT_TIMER with no active sync target (index %d), dropping", timerIndex);
+                    continue;
+                }
                 //vTaskDelete(timerSyncHandle);
-                removePeer(addressList[getCurrentTimerIndex()].address);
+                removePeer(addressList[timerIndex].address);
                 //timerSyncHandle = NULL;
                 addressList[timerIndex].active = ACTIVE;
                 addressList[timerIndex].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
