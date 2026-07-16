@@ -104,7 +104,7 @@ static void sleepUntilTask(void* pvParameters) {
     while (msgHandler.isFastResyncRunning()) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
-    vTaskDelay(pdMS_TO_TICKS(1000)); // let clients settle before the first sleep broadcast
+    vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
 
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
     unsigned long phaseStart = millis();
@@ -149,7 +149,7 @@ static void sleepBroadcastTask(void* pvParameters) {
     while (msgHandler.isFastResyncRunning()) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
-    vTaskDelay(pdMS_TO_TICKS(1000)); // let clients settle before the first sleep broadcast
+    vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
 
     while (msgHandler.isInSleepPhase()) {
         msgHandler.sendSleepWakeupMessage(durationMicros);
@@ -654,7 +654,7 @@ static void handleSerialCommand(const char* line) {
                 vTaskDelay(pdMS_TO_TICKS(100));
             { JsonDocument r; r["elapsed_ms"] = (long)(millis() - t0);
               emit("sleep_test_resync_done", r); }
-            vTaskDelay(pdMS_TO_TICKS(1000)); // let clients settle before the first sleep broadcast
+            vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
 
             // 3. Broadcast sleep for phaseDurationS
             // Enforce minimum so clients cycle through at least 2 sleep periods
