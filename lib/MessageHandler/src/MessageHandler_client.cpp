@@ -307,9 +307,18 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
 
     // Sleep in chunks, fully passive in between: the master rebroadcasts sleep at
     // 1 Hz all night and a zero-duration wake sentinel for minutes each morning.
-    // Hearing sleep -> sleep again. Hearing the sentinel (or any master traffic)
-    // -> morning. Total silence -> master is gone, keep sleeping instead of
-    // burning the battery all night. We never transmit to find out what time it is.
+    // Hearing sleep -> sleep again. Hearing the sentinel -> morning. Total
+    // silence -> master is gone, keep sleeping instead of burning the battery
+    // all night. We never transmit to find out what time it is.
+    //
+    // Only MSG_SLEEP_WAKEUP decides this. An earlier version also treated any
+    // other master broadcast as "morning" (reasoning: if the master isn't
+    // telling me to sleep, it must be daytime) — but the master broadcasts
+    // plenty of things unrelated to the schedule even mid-sleep-phase (e.g.
+    // sendSystemStatus() fires as a broadcast whenever ANY board's sync
+    // completes), so that fallback woke boards early on unrelated traffic.
+    // The master always explicitly broadcasts one or the other continuously,
+    // so no fallback is needed for correctness.
     bool morning = false;
     while (!morning) {
         turnWifiOff();
@@ -322,7 +331,6 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
         turnWifiOn();
 
         lastSleepMsgMillis = 0;
-        lastMasterMsgMillis = 0;
         unsigned long listenStart = millis();
         while (millis() - listenStart < 6000) {
             if (lastSleepMsgMillis != 0) {
@@ -330,7 +338,6 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
                 if (d > 0) duration = d; else morning = true;
                 break;
             }
-            if (lastMasterMsgMillis != 0) { morning = true; break; }
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         xQueueReset(receiveQueue); // drop whatever queued up during the listen window
@@ -391,13 +398,11 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         }
         localData.payload.timer.receiveTime = timerRxTimestamp(mac, receiveTime);
     }
-    // stamps for the sleep listen window (handleSleepWakeup blocks the receive task,
-    // so it reads these instead of the queue)
+    // stamp for the sleep listen window (handleSleepWakeup blocks the receive task,
+    // so it reads this instead of the queue)
     if (localData.messageType == MSG_SLEEP_WAKEUP) {
         instance.lastSleepMsgDuration = localData.payload.sleepWakeup.duration;
         instance.lastSleepMsgMillis = millis();
-    } else if (instance.hostAddressLearned && memcmp(mac->src_addr, instance.hostAddress, 6) == 0) {
-        instance.lastMasterMsgMillis = millis();
     }
     if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
         if (localData.payload.animation.animationType == MIDI || localData.payload.animation.animationType == BACKGROUND_SHIMMER) {
