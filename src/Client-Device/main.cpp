@@ -29,17 +29,41 @@ ESP_LOGI("Received", "Data at %d", micros());
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {}
 unsigned long lastTick = 0;
 int tickCount = 0;
+
+extern uint32_t g_lightSleepMarker; // crash breadcrumb, see MessageHandler_client.cpp
+
+static const char* resetReasonName(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:   return "POWERON";
+    case ESP_RST_EXT:       return "EXT";
+    case ESP_RST_SW:        return "SW";
+    case ESP_RST_PANIC:     return "PANIC";
+    case ESP_RST_INT_WDT:   return "INT_WDT";
+    case ESP_RST_TASK_WDT:  return "TASK_WDT";
+    case ESP_RST_WDT:       return "WDT";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:  return "BROWNOUT";
+    default:                return "UNKNOWN";
+  }
+}
+
 void setup()
 {
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0); // non-blocking CDC writes — drop bytes rather than hang
   esp_log_level_set("*", ESP_LOG_INFO);
   esp_log_level_set("LED", ESP_LOG_NONE);
-  // crash-class at a glance: POWERON=1 SW=3 PANIC=4 INT_WDT=5 TASK_WDT=6 WDT=7
-  // DEEPSLEEP=8 BROWNOUT=9 — a reboot mid-sleep-cycle shows up here
   delay(100);
-  ESP_LOGW("BOOT", "reset reason: %d", (int)esp_reset_reason());
-  if (!LittleFS.begin())
+  ESP_LOGW("BOOT", "reset reason: %s (%d)", resetReasonName(esp_reset_reason()), (int)esp_reset_reason());
+  // the wake path can't report its own death (USB still re-enumerating), so the
+  // sleep loop leaves a breadcrumb in RTC memory and we read it here instead
+  if (g_lightSleepMarker == 0xA55A0001u) {
+    ESP_LOGE("BOOT", "previous boot DIED DURING LIGHT SLEEP (or instantly at wake)");
+  } else if (g_lightSleepMarker == 0xA55A0002u) {
+    ESP_LOGE("BOOT", "previous boot DIED IN THE WAKE PATH (Serial/WiFi re-init)");
+  }
+  g_lightSleepMarker = 0;
+  if (!LittleFS.begin(true)) // format on fail — the crash-reboots corrupted at least one board's fs
   {
     Serial.println("LittleFS mount failed");
     lfs_started = false;

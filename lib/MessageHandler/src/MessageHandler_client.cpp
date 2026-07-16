@@ -6,6 +6,15 @@
 #include "WiFi.h"
 #include "Ota.h"
 
+// Crash breadcrumb: survives any reset except power loss. The wake-path's own
+// error output is unrecoverable (USB is still re-enumerating when it would
+// print), so we record WHERE in the sleep cycle we were and read it after the
+// reboot in setup(). Magic values make power-on garbage indistinguishable
+// from "not sleeping" ~impossible to misread.
+#define SLEEP_MARKER_SLEEPING 0xA55A0001u
+#define SLEEP_MARKER_WAKING   0xA55A0002u
+RTC_NOINIT_ATTR uint32_t g_lightSleepMarker;
+
 void MessageHandler::handleReceive() {
     message_data incomingData;
     while (true) {
@@ -334,10 +343,13 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
         Serial.end();
         esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
         esp_sleep_enable_timer_wakeup(duration);
+        g_lightSleepMarker = SLEEP_MARKER_SLEEPING;
         esp_light_sleep_start();
+        g_lightSleepMarker = SLEEP_MARKER_WAKING;
         Serial.begin(115200);
         vTaskDelay(200 / portTICK_PERIOD_MS);
         turnWifiOn();
+        g_lightSleepMarker = 0;
 
         lastSleepMsgMillis = 0;
         lastMasterMsgMillis = 0;
