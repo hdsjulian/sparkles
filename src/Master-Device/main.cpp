@@ -772,6 +772,13 @@ static void handleSerialCommand(const char* line) {
               r["success"] = (returned == total);
               emit("sleep_test_done", r); }
 
+            // Unlike production sleep/sleep_until, this test never calls
+            // startBroadcastSettleTask() (heavier than a test needs), so
+            // without this a straggler that missed every sentinel packet
+            // would sit in silence until the idle-animation timeout (minutes)
+            // gives it something else to catch. Resume broadcasting now.
+            msgHandler.startAnimationLoopTask();
+
             sleepTestTaskHandle = NULL;
             vTaskDelete(NULL);
         }, "sleepTest", 8192, p, 1, &sleepTestTaskHandle, 1);
