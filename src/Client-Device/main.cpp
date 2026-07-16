@@ -69,7 +69,12 @@ void setup()
     lfs_started = false;
   }
 
-  rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256);
+  // NO rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256) here: the RTC slow clock times
+  // light sleep, and the 8MD256 source hangs the sleep entry/exit sync (interrupts
+  // off -> INT_WDT reset ~300ms later, confirmed via the RTC crash breadcrumb).
+  // Default RC_SLOW costs a few % nap-duration accuracy, which the sleep design
+  // absorbs (continuous rebroadcast, listen windows, 2-cycle wake sentinel). If
+  // accuracy ever matters, the fix is an external 32k xtal like the clap device.
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false); // modem sleep adds RX latency and skews hardware RX timestamps
   ESP_LOGI("", "Setup1");
