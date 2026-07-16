@@ -35,6 +35,10 @@ void setup()
   Serial.setTxTimeoutMs(0); // non-blocking CDC writes — drop bytes rather than hang
   esp_log_level_set("*", ESP_LOG_INFO);
   esp_log_level_set("LED", ESP_LOG_NONE);
+  // crash-class at a glance: POWERON=1 SW=3 PANIC=4 INT_WDT=5 TASK_WDT=6 WDT=7
+  // DEEPSLEEP=8 BROWNOUT=9 — a reboot mid-sleep-cycle shows up here
+  delay(100);
+  ESP_LOGW("BOOT", "reset reason: %d", (int)esp_reset_reason());
   if (!LittleFS.begin())
   {
     Serial.println("LittleFS mount failed");
