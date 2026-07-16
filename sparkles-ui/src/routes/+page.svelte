@@ -6,6 +6,7 @@
     getSystemInfo,
     getAnimateStatus,
     commandSyncAll,
+    commandSyncFast,
     commandBlinkAll,
     commandAnimate,
     commandAnimationOff,
@@ -46,8 +47,19 @@
     error = '';
     try {
       await commandSyncAll();
-      actionMsg = 'Sync All sent';
-      setTimeout(() => { actionMsg = ''; }, 2000);
+      actionMsg = 'Sync All sent — sequential, ~2s per board, can take a while for a full fleet';
+      setTimeout(() => { actionMsg = ''; }, 4000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleSyncFast() {
+    error = '';
+    try {
+      await commandSyncFast();
+      actionMsg = 'Sync Fast sent — parallel batches of 5, much quicker';
+      setTimeout(() => { actionMsg = ''; }, 3000);
     } catch (e) {
       error = e.message;
     }
@@ -138,7 +150,8 @@
       <div class="status-msg success">{actionMsg}</div>
     {/if}
     <div class="btn-row">
-      <button class="btn btn-secondary" on:click={handleSyncAll}>⟳ Sync All</button>
+      <button class="btn btn-primary" on:click={handleSyncFast}>⚡⟳ Sync Fast</button>
+      <button class="btn btn-secondary" on:click={handleSyncAll}>⟳ Sync All (slow)</button>
       <button class="btn btn-ghost" on:click={handleBlinkAll}>⚡ Blink All</button>
       <button class="btn btn-primary" on:click={handleAnimate} disabled={$animating}>▶ Animate</button>
       <button class="btn btn-ghost" on:click={handleAnimationOff} disabled={!$animating}>■ Stop Animation</button>

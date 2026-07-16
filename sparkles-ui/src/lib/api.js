@@ -18,6 +18,12 @@ export const removeAllDevices = () =>
 export const commandSyncAll = () =>
   fetch(`${BASE}/commandSyncAll`).then(r => r.json());
 
+// Parallel resync (batches of 5), much faster than Sync All for anything
+// beyond a couple of boards — Sync All runs strictly one board at a time,
+// 3 full passes, ~2s per board even when it's already responding.
+export const commandSyncFast = () =>
+  fetch(`${BASE}/commandSyncFast`).then(r => r.json());
+
 export const commandBlinkAll = () =>
   fetch(`${BASE}/commandBlinkAll`).then(r => r.json());
 
