@@ -307,18 +307,23 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
 
     // Sleep in chunks, fully passive in between: the master rebroadcasts sleep at
     // 1 Hz all night and a zero-duration wake sentinel for minutes each morning.
-    // Hearing sleep -> sleep again. Hearing the sentinel -> morning. Total
-    // silence -> master is gone, keep sleeping instead of burning the battery
-    // all night. We never transmit to find out what time it is.
+    // Hearing sleep -> sleep again. Hearing the sentinel -> morning immediately.
+    // Total silence -> master is gone, keep sleeping instead of burning the
+    // battery all night. We never transmit to find out what time it is.
     //
-    // Only MSG_SLEEP_WAKEUP decides this. An earlier version also treated any
-    // other master broadcast as "morning" (reasoning: if the master isn't
-    // telling me to sleep, it must be daytime) — but the master broadcasts
-    // plenty of things unrelated to the schedule even mid-sleep-phase (e.g.
-    // sendSystemStatus() fires as a broadcast whenever ANY board's sync
-    // completes), so that fallback woke boards early on unrelated traffic.
-    // The master always explicitly broadcasts one or the other continuously,
-    // so no fallback is needed for correctness.
+    // Any OTHER master broadcast (animation, status, etc.) is also treated as
+    // "morning" — but only as a fallback if we finish the whole listen window
+    // having heard nothing else. This is the safety net for the master
+    // rebooting mid-wake-window (its sleep-schedule state resets, but if it's
+    // back to normal operation it'll be broadcasting animations again) and for
+    // a client that's asleep longer than the wake sentinel stays up. Treating
+    // "other traffic" as an immediate, first-packet trigger (as an earlier
+    // version did) raced against the authoritative 1 Hz sleep-continue ping:
+    // sendSystemStatus() broadcasts to ALL clients whenever ANY board's sync
+    // completes, and if that packet happened to land before that second's
+    // sleep-continue ping, the client woke early on a completely unrelated
+    // event. Waiting out the full window lets the authoritative signal win
+    // whenever the phase is genuinely still active.
     bool morning = false;
     while (!morning) {
         turnWifiOff();
@@ -331,15 +336,21 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
         turnWifiOn();
 
         lastSleepMsgMillis = 0;
+        lastMasterMsgMillis = 0;
+        bool sleepMsgHeard = false;
         unsigned long listenStart = millis();
         while (millis() - listenStart < 6000) {
             if (lastSleepMsgMillis != 0) {
                 unsigned long long d = lastSleepMsgDuration;
                 if (d > 0) duration = d; else morning = true;
+                sleepMsgHeard = true;
                 break;
             }
             vTaskDelay(pdMS_TO_TICKS(50));
         }
+        // fallback: heard the master do something all window, but never the
+        // authoritative sleep-continue -> the phase must genuinely be over
+        if (!sleepMsgHeard && lastMasterMsgMillis != 0) morning = true;
         xQueueReset(receiveQueue); // drop whatever queued up during the listen window
     }
 
@@ -398,11 +409,13 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         }
         localData.payload.timer.receiveTime = timerRxTimestamp(mac, receiveTime);
     }
-    // stamp for the sleep listen window (handleSleepWakeup blocks the receive task,
-    // so it reads this instead of the queue)
+    // stamps for the sleep listen window (handleSleepWakeup blocks the receive task,
+    // so it reads these instead of the queue)
     if (localData.messageType == MSG_SLEEP_WAKEUP) {
         instance.lastSleepMsgDuration = localData.payload.sleepWakeup.duration;
         instance.lastSleepMsgMillis = millis();
+    } else if (instance.hostAddressLearned && memcmp(mac->src_addr, instance.hostAddress, 6) == 0) {
+        instance.lastMasterMsgMillis = millis();
     }
     if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
         if (localData.payload.animation.animationType == MIDI || localData.payload.animation.animationType == BACKGROUND_SHIMMER) {
