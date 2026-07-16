@@ -176,8 +176,12 @@ void MessageHandler::handleReceive() {
                 message_update_version updateVersionMessage = incomingData.payload.updateVersion;
                 if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
                     ledInstance->blink(esp_timer_get_time(), 100, 5, 200, 255, 127);
-                    vTaskDelete(announceTaskHandle);
-                    announceTaskHandle = NULL;
+                    // guard: vTaskDelete(NULL) would delete THIS task (the receive
+                    // handler), leaving the client deaf instead of updating
+                    if (announceTaskHandle != NULL) {
+                        vTaskDelete(announceTaskHandle);
+                        announceTaskHandle = NULL;
+                    }
                     OTAHandler& ota = OTAHandler::getInstance();
                     // use URL from message if provided, else fall back to compile-time define
                     if (updateVersionMessage.otaUrl[0] != '\0') {
@@ -447,6 +451,11 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
 void MessageHandler::announceAddressWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
     messageHandlerInstance->runAnnounceAddress();
+    // usually handleTimer vTaskDeletes this task before the loop notices the
+    // announced flag — but if the loop wins that race and returns, a FreeRTOS
+    // task function returning makes ESP-IDF abort() the whole chip
+    messageHandlerInstance->announceTaskHandle = NULL;
+    vTaskDelete(NULL);
 }
 
 void MessageHandler::runAnnounceAddress() {
@@ -559,8 +568,17 @@ void MessageHandler::runBatterySync() {
 }
 
 void MessageHandler::turnWifiOn() {
+    // Mirror the boot path exactly — this runs after every nap, and it used to
+    // do WiFi.begin(): any board with an SSID stored in NVS (every board that
+    // ever ran an OTA update — Arduino persists credentials by default) then
+    // scanned/associated with the venue AP on every wake. Channel-hopping
+    // during the scan makes the board miss the master's 1 Hz sleep pings
+    // (false "morning" wakes via the fallback), and a successful association
+    // parks the radio on the AP's channel — permanently deaf, so the
+    // fail-closed loop naps forever. ESP-NOW needs no association at all.
     WiFi.mode(WIFI_STA);
-    WiFi.begin(); // Replace with your SSID and password
+    WiFi.disconnect();     // and stop any auto-reconnect from stored credentials
+    WiFi.setSleep(false);  // modem sleep adds RX latency and skews hardware RX timestamps
     if (esp_now_init() != ESP_OK)
     {
       Serial.println("Error initializing ESP-NOW");
