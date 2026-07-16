@@ -17,8 +17,11 @@
   }
 
   function formatMac(addr) {
-    if (!Array.isArray(addr)) return '—';
-    return addr.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
+    // the master sends this pre-formatted ("aa:bb:cc:dd:ee:ff"); the array
+    // branch is only for any future/other source that sends raw bytes
+    if (typeof addr === 'string') return addr.toUpperCase();
+    if (Array.isArray(addr)) return addr.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
+    return '—';
   }
 
   function batteryClass(pct) {
