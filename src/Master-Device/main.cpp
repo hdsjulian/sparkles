@@ -66,7 +66,10 @@ static void serialSendDoc(JsonDocument& doc);
 // One-shot "sleep right now until HH:MM" — for the pack-up/power-cycle workflow:
 // set the fleet up, then either work on it live or force it dark until showtime,
 // independent of (and without touching) the recurring daily sleep/wakeup schedule.
-static long secondsUntilTimeOfDay(int targetH, int targetM, int targetS) {
+// wrapped (if given) reports whether the target had already passed today —
+// correct to roll to tomorrow for a fresh command, wrong when resuming one
+// that was interrupted by a power cycle (see the suActive resume in setup())
+static long secondsUntilTimeOfDay(int targetH, int targetM, int targetS, bool* wrapped = nullptr) {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     time_t now = tv.tv_sec;
@@ -74,7 +77,9 @@ static long secondsUntilTimeOfDay(int targetH, int targetM, int targetS) {
     long nowSeconds = ct->tm_hour * 3600L + ct->tm_min * 60L + ct->tm_sec;
     long targetSeconds = (long)targetH * 3600L + (long)targetM * 60L + (long)targetS;
     long diff = targetSeconds - nowSeconds;
-    if (diff <= 0) diff += 24L * 3600L; // already passed today -> tomorrow
+    bool didWrap = diff <= 0;
+    if (didWrap) diff += 24L * 3600L; // already passed today -> tomorrow
+    if (wrapped) *wrapped = didWrap;
     return diff;
 }
 
@@ -820,9 +825,25 @@ void setup()
     // exact pack-up/power-cycle case this feature is for) resumes here —
     // recomputed against the restored clock, so it just continues counting
     // down to the same target rather than being silently dropped.
+    //
+    // But if the target has ALREADY passed (a dismantle-and-return gap longer
+    // than planned — packed up "sleep until 10" and didn't power back on
+    // until well past 10), rolling to tomorrow would be wrong: the one-shot
+    // command's intent was "this near-term time", not "every night going
+    // forward" (that's what the recurring schedule above is for). Drop it
+    // instead — normal boot resumes, the idle animation loop starts, and any
+    // client still asleep from before wakes on its own next listen window via
+    // the "master's alive but not saying sleep" fallback.
     if (prefs.getBool("suActive", false)) {
-        int* target = new int[3]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0) };
-        xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+        bool alreadyPassed = false;
+        secondsUntilTimeOfDay(prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0), &alreadyPassed);
+        if (alreadyPassed) {
+            ESP_LOGI("MSG", "Sleep-until target already passed by the time we rebooted, dropping it");
+            prefs.putBool("suActive", false);
+        } else {
+            int* target = new int[3]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0) };
+            xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+        }
     }
 
     // no webserver, the serial bridge handles all communication
