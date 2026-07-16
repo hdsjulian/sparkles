@@ -91,6 +91,12 @@ export const setSleepTime = (hours, minutes, seconds) =>
 export const setWakeupTime = (hours, minutes, seconds) =>
   fetch(`${BASE}/setWakeupTime?hours=${hours}&minutes=${minutes}&seconds=${seconds}`).then(r => r.json());
 
+export const sleepUntil = (hours, minutes, seconds = 0) =>
+  fetch(`${BASE}/sleepUntil?hours=${hours}&minutes=${minutes}&seconds=${seconds}`).then(r => r.json());
+
+export const sleepUntilCancel = () =>
+  fetch(`${BASE}/sleepUntilCancel`).then(r => r.json());
+
 export const toggleLogging = () =>
   fetch(`${BASE}/toggleLogging`).then(r => r.json());
 

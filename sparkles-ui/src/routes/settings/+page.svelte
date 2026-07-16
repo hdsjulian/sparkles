@@ -6,6 +6,8 @@
     setTime,
     setSleepTime,
     setWakeupTime,
+    sleepUntil,
+    sleepUntilCancel,
     toggleLogging,
     toggleTestMode,
     commandOTAUpdate,
@@ -44,6 +46,10 @@
   let wakeHours = '07';
   let wakeMinutes = '00';
   let wakeSeconds = '00';
+
+  // One-shot "sleep now until HH:MM" — for the pack-up/power-cycle workflow
+  let sleepUntilHours = '22';
+  let sleepUntilMinutes = '00';
 
   async function loadSystemInfo() {
     try {
@@ -137,6 +143,31 @@
       await setWakeupTime(wakeHours, wakeMinutes, wakeSeconds);
       successMsg = 'Wakeup time set';
       setTimeout(() => { successMsg = ''; }, 2000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleSleepUntil() {
+    error = '';
+    successMsg = '';
+    if (!confirm(`Sleep now until ${sleepUntilHours}:${sleepUntilMinutes}? This starts immediately and doesn't change the recurring Sleep/Wakeup Time above.`)) return;
+    try {
+      await sleepUntil(sleepUntilHours, sleepUntilMinutes);
+      successMsg = 'Sleeping now — will wake automatically';
+      setTimeout(() => { successMsg = ''; }, 2500);
+      loadSystemInfo();
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleSleepUntilCancel() {
+    error = '';
+    try {
+      await sleepUntilCancel();
+      successMsg = 'Cancelling — clients wake up within one nap cycle';
+      setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
     }
@@ -462,6 +493,34 @@
       </div>
     </div>
     <button class="btn btn-primary" on:click={handleSetWakeup}>Set Wakeup Time</button>
+  </div>
+
+  <!-- Sleep Until (one-shot) -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Sleep Until</div>
+    <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+      For setting up and packing away: resyncs the fleet and puts it to sleep right now,
+      until this time today (or tomorrow if it's already passed). Doesn't touch the
+      recurring Sleep/Wakeup Time above, and resumes automatically if the master loses power.
+    </p>
+    {#if systemInfo?.sleepUntilActive}
+      <div class="status-msg" style="margin-bottom:0.75rem;">
+        😴 Sleeping now until {String(systemInfo.sleepUntilHours).padStart(2, '0')}:{String(systemInfo.sleepUntilMinutes).padStart(2, '0')}
+      </div>
+      <button class="btn btn-ghost" on:click={handleSleepUntilCancel}>Cancel — Wake Up Now</button>
+    {:else}
+      <div class="form-row" style="margin-bottom:0.75rem;">
+        <div class="form-group">
+          <label>Hours</label>
+          <input type="number" bind:value={sleepUntilHours} min="0" max="23" />
+        </div>
+        <div class="form-group">
+          <label>Minutes</label>
+          <input type="number" bind:value={sleepUntilMinutes} min="0" max="59" />
+        </div>
+      </div>
+      <button class="btn btn-primary" on:click={handleSleepUntil}>Sleep Now Until This Time</button>
+    {/if}
   </div>
 
   <!-- Resync Mode -->

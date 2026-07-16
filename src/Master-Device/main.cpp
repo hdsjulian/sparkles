@@ -36,7 +36,74 @@ unsigned long lastTick = 0;
 static TaskHandle_t sleepBroadcastTaskHandle = NULL;
 static TaskHandle_t sleepTestTaskHandle = NULL;
 static volatile bool sleepTestCancel = false;
+static TaskHandle_t sleepUntilTaskHandle = NULL;
+static volatile bool sleepUntilCancel = false;
 static void serialSendDoc(JsonDocument& doc);
+
+// One-shot "sleep right now until HH:MM" — for the pack-up/power-cycle workflow:
+// set the fleet up, then either work on it live or force it dark until showtime,
+// independent of (and without touching) the recurring daily sleep/wakeup schedule.
+static long secondsUntilTimeOfDay(int targetH, int targetM, int targetS) {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    time_t now = tv.tv_sec;
+    struct tm *ct = localtime(&now);
+    long nowSeconds = ct->tm_hour * 3600L + ct->tm_min * 60L + ct->tm_sec;
+    long targetSeconds = (long)targetH * 3600L + (long)targetM * 60L + (long)targetS;
+    long diff = targetSeconds - nowSeconds;
+    if (diff <= 0) diff += 24L * 3600L; // already passed today -> tomorrow
+    return diff;
+}
+
+static void sleepUntilTask(void* pvParameters) {
+    int* target = (int*)pvParameters;
+    int targetH = target[0], targetM = target[1], targetS = target[2];
+    delete[] target;
+
+    long totalSeconds = secondsUntilTimeOfDay(targetH, targetM, targetS);
+    prefs.putInt("suH", targetH);
+    prefs.putInt("suM", targetM);
+    prefs.putInt("suS", targetS);
+    prefs.putBool("suActive", true);
+    {
+        JsonDocument r; r["event"] = "sleep_until_start";
+        r["targetHours"] = targetH; r["targetMinutes"] = targetM; r["targetSeconds"] = targetS;
+        r["duration_s"] = totalSeconds;
+        serialSendDoc(r);
+    }
+
+    msgHandler.startFastResyncTask();
+    while (msgHandler.isFastResyncRunning()) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
+    unsigned long phaseStart = millis();
+    unsigned long phaseDurationMs = (unsigned long)totalSeconds * 1000UL;
+    while (!sleepUntilCancel && millis() - phaseStart < phaseDurationMs) {
+        msgHandler.sendSleepWakeupMessage(durationMicros);
+        vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
+    }
+    bool wasCancelled = sleepUntilCancel;
+    sleepUntilCancel = false;
+    prefs.putBool("suActive", false);
+
+    msgHandler.setAddressListInactive();
+    msgHandler.startBroadcastSettleTask();
+    msgHandler.broadcastReannounce();
+    {
+        JsonDocument r; r["event"] = "sleep_until_done"; r["cancelled"] = wasCancelled;
+        serialSendDoc(r);
+    }
+    // fail-closed clients need to hear "morning" for a full nap chunk plus margin
+    unsigned long sentinelStart = millis();
+    while (millis() - sentinelStart < SLEEP_BROADCAST_DURATION_MS + 60000UL) {
+        msgHandler.sendSleepWakeupMessage(0);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+    sleepUntilTaskHandle = NULL;
+    vTaskDelete(NULL);
+}
 
 static void sleepBroadcastTask(void* pvParameters) {
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
@@ -251,6 +318,21 @@ static void handleSerialCommand(const char* line) {
         prefs.putInt("wakeM", doc["minutes"].as<int>());
         prefs.putInt("wakeS", doc["seconds"].as<int>());
 
+    } else if (strcmp(cmd, "sleep_until") == 0) {
+        if (sleepUntilTaskHandle != NULL) {
+            JsonDocument r; r["event"] = "sleep_until_error"; r["detail"] = "already running — cancel it first";
+            serialSendDoc(r);
+        } else if (sleepBroadcastTaskHandle != NULL) {
+            JsonDocument r; r["event"] = "sleep_until_error"; r["detail"] = "the scheduled sleep phase is already running";
+            serialSendDoc(r);
+        } else {
+            int* target = new int[3]{ doc["hours"] | 0, doc["minutes"] | 0, doc["seconds"] | 0 };
+            xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+        }
+
+    } else if (strcmp(cmd, "sleep_until_cancel") == 0) {
+        if (sleepUntilTaskHandle != NULL) sleepUntilCancel = true;
+
     } else if (strcmp(cmd, "get_address_list") == 0) {
         emitAddressList();
 
@@ -344,6 +426,11 @@ static void handleSerialCommand(const char* line) {
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);
         r["sleepDuration"]= (long)(msgHandler.getSleepDuration() / 1000);
         r["testMode"]     = msgHandler.getTestMode();
+        r["sleepUntilActive"] = (sleepUntilTaskHandle != NULL);
+        if (sleepUntilTaskHandle != NULL) {
+            r["sleepUntilHours"]   = prefs.getInt("suH", 0);
+            r["sleepUntilMinutes"] = prefs.getInt("suM", 0);
+        }
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "calibration_start") == 0)    { msgHandler.startCalibrationMaster(); }
@@ -704,6 +791,14 @@ void setup()
         msgHandler.setSleepTime(prefs.getInt("sleepH"), prefs.getInt("sleepM"), prefs.getInt("sleepS"));
         msgHandler.setWakeupTime(prefs.getInt("wakeH"), prefs.getInt("wakeM"), prefs.getInt("wakeS"));
     }
+    // A "sleep until HH:MM" that was active when the master lost power (the
+    // exact pack-up/power-cycle case this feature is for) resumes here —
+    // recomputed against the restored clock, so it just continues counting
+    // down to the same target rather than being silently dropped.
+    if (prefs.getBool("suActive", false)) {
+        int* target = new int[3]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0) };
+        xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+    }
 
     // no webserver, the serial bridge handles all communication
     enableLoopWDT(); // if loop() stalls past the watchdog timeout, panic with a backtrace
@@ -805,7 +900,7 @@ void loop()
         }
     }
 
-    if (msgHandler.isInSleepPhase() && sleepBroadcastTaskHandle == NULL) {
+    if (msgHandler.isInSleepPhase() && sleepBroadcastTaskHandle == NULL && sleepUntilTaskHandle == NULL) {
         xTaskCreatePinnedToCore(sleepBroadcastTask, "sleepBroadcast", 4096, NULL, 1, &sleepBroadcastTaskHandle, 1);
     }
 }

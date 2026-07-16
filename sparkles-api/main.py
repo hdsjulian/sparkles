@@ -713,6 +713,24 @@ async def set_wakeup_time(
     return _ok()
 
 
+@app.get("/sleepUntil")
+async def sleep_until(
+    hours: int = Query(..., ge=0, le=23),
+    minutes: int = Query(..., ge=0, le=59),
+    seconds: int = Query(default=0, ge=0, le=59),
+):
+    # one-shot: sleep starting now until this wall-clock time, independent of
+    # (and without altering) the recurring daily sleep/wakeup schedule above
+    _send({"cmd": "sleep_until", "hours": hours, "minutes": minutes, "seconds": seconds})
+    return _ok()
+
+
+@app.get("/sleepUntilCancel")
+async def sleep_until_cancel():
+    _send({"cmd": "sleep_until_cancel"})
+    return _ok()
+
+
 @app.get("/getSystemInfo")
 async def get_system_info():
     return await _request({"cmd": "get_system_info"}, "system_info")
