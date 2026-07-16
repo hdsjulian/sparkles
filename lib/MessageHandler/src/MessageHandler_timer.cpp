@@ -371,15 +371,21 @@ void MessageHandler::runTimerSync() {
             addressList[timerIndex].lastUpdateTime = millis();
         }
         startAnimationLoopTask();
+        // runTimerSync() runs two ways: as its own task (single-board "sync",
+        // tracked by timerSyncHandle -> self-delete is correct) or as a plain
+        // synchronous call from runAllTimerSyncWrapper's per-device loop ("sync
+        // all" -> we're running as allTimerSyncHandle's task here, and have no
+        // business touching timerSyncHandle at all). The old else-if deleted
+        // whatever timerSyncHandle happened to hold — including a stale handle
+        // from an earlier sync, or a genuinely still-running unrelated task —
+        // on every single device "sync all" processed, which is why a stuck
+        // handle could make every future "sync all" click silently misbehave.
         if (xTaskGetCurrentTaskHandle() == timerSyncHandle) {
             timerSyncHandle = NULL;
             vTaskDelete(NULL);
-        } else if (timerSyncHandle != NULL) {
-            vTaskDelete(timerSyncHandle);
-            timerSyncHandle = NULL;
         }
     }
-    
+
 }
 
 void MessageHandler::setAddressListInactive() {

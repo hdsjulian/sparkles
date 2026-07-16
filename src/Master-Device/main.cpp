@@ -32,6 +32,7 @@ unsigned long lastTick = 0;
 
 #define SLEEP_BROADCAST_INTERVAL_MS 1000
 #define SLEEP_BROADCAST_DURATION_MS (5 * 60 * 1000)  // 5 minutes in ms
+#define MIDI_IDLE_ANIMATION_MS (4 * 60 * 1000)  // 4 minutes of no MIDI before the idle animation resumes
 
 static TaskHandle_t sleepBroadcastTaskHandle = NULL;
 static TaskHandle_t sleepTestTaskHandle = NULL;
@@ -893,8 +894,8 @@ void loop()
 
         } // !musicActive
 
-        if (millis() - msgHandler.getLastMidiTime() > 60000 && msgHandler.getLastMidiTime() > 0) {
-            ESP_LOGI("MSG", "No MIDI message for 60 seconds, starting animation loop");
+        if (millis() - msgHandler.getLastMidiTime() > MIDI_IDLE_ANIMATION_MS && msgHandler.getLastMidiTime() > 0) {
+            ESP_LOGI("MSG", "No MIDI message for %d minutes, starting animation loop", MIDI_IDLE_ANIMATION_MS / 60000);
             msgHandler.startAnimationLoopTask();
             msgHandler.setLastMidiTime(0);
         }
