@@ -69,18 +69,13 @@ void setup()
     lfs_started = false;
   }
 
-  // Light-sleep timing clock, in preference order (same probe as the clap device):
-  // 1. the populated 32k xtal — dead on about half the boards, so only trust it
-  //    after calibration proves it actually oscillates (bounded probe, ~100ms)
-  // 2. default RC_SLOW otherwise (a few % nap drift, absorbed by the sleep design).
-  // Never 8MD256: that source hangs the light-sleep entry/exit sync with
-  // interrupts off -> INT_WDT reset (found via the RTC crash breadcrumb).
-  rtc_clk_32k_enable(true);
-  rtc_clk_32k_bootstrap(10);
-  uint32_t xtalCal = 0;
-  for (int i = 0; i < 10 && xtalCal == 0; i++) { delay(10); xtalCal = rtc_clk_cal(RTC_CAL_32K_XTAL, 1000); }
-  if (xtalCal != 0) { rtc_clk_slow_src_set(RTC_SLOW_FREQ_32K_XTAL); ESP_LOGI("XTAL", "32kHz xtal OK (cal=%u)", xtalCal); }
-  else { rtc_clk_32k_enable(false); ESP_LOGW("XTAL", "32kHz xtal dead, using internal RC slow clock"); }
+  // Light-sleep timing runs on the default RC_SLOW clock, deliberately:
+  // - 8MD256 hangs the sleep entry/exit sync (INT_WDT reset, found via the
+  //   RTC crash breadcrumb)
+  // - the populated 32k xtal is dead on half the boards, and a marginal one
+  //   stalling mid-nap would strand a board asleep forever
+  // - accuracy stopped mattering with chunked sleep: ±3% on a 5 min nap is
+  //   seconds, and every rebroadcast carries a fresh duration anyway
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false); // modem sleep adds RX latency and skews hardware RX timestamps
   ESP_LOGI("", "Setup1");
