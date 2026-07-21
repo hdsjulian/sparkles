@@ -4,20 +4,42 @@
 # USB serial and the lamps are their own ESP-NOW mesh, so the Pi's WiFi has zero
 # effect on the installation — this only gets the Pi online.
 #
+# SAFE OVER THE HOTSPOT: if you're SSH'd in via the 'Sparkles' AP, switching
+# networks drops your shell (one radio, can't be AP + client at once). So the
+# actual switch runs DETACHED via systemd-run — losing SSH can't interrupt it —
+# and if the join fails it brings the hotspot back so you're never locked out.
+#
 # Does NOT disturb the field WiFi/AP fallback (setup/06_wifi.sh): the profile is
-# created with autoconnect OFF, so a reboot in the field behaves exactly as before.
+# created with autoconnect OFF, so a reboot in the field behaves as before.
 #
 # usage: bash wifi_connect.sh "<SSID>" "<password>"
 #        bash wifi_connect.sh "<SSID>"            # prompts for the password
 
 set -e
-
-SSID="${1:?usage: bash wifi_connect.sh \"<SSID>\" [password]}"
-PSK="${2:-}"
 IFACE=wlan0
 
-# prime sudo unattended (local appliance, sudo password is 'raspi'); nmcli
-# state changes need root over SSH where there's no active polkit session
+# ── detached worker (re-entry): does the actual switch, no controlling TTY ──
+if [ "$1" = "--run" ]; then
+    SSID="$2"; PSK="$3"
+    nmcli connection down sparkles-ap 2>/dev/null || true
+    sleep 2
+    nmcli device wifi rescan 2>/dev/null || true
+    sleep 5
+    if nmcli device wifi connect "$SSID" password "$PSK" ifname "$IFACE"; then
+        nmcli connection modify "$SSID" connection.autoconnect no 2>/dev/null || true
+        echo "Connected to $SSID; Pi IP $(hostname -I | awk '{print $1}')"
+    else
+        echo "Failed to join $SSID — restoring the Sparkles hotspot"
+        nmcli connection up sparkles-ap 2>/dev/null || true
+    fi
+    exit 0
+fi
+
+# ── user-facing invocation ──
+SSID="${1:?usage: bash wifi_connect.sh \"<SSID>\" [password]}"
+PSK="${2:-}"
+
+# prime sudo unattended (local appliance, sudo password is 'raspi')
 echo raspi | sudo -S true 2>/dev/null || true
 
 if [ -z "$PSK" ]; then
@@ -25,29 +47,15 @@ if [ -z "$PSK" ]; then
     echo
 fi
 
-echo "=== Joining $SSID ==="
-# release the radio if the AP-fallback hotspot grabbed it
-sudo nmcli connection down sparkles-ap 2>/dev/null || true
+# launch the switch detached so a dropped SSH session can't kill it mid-connect
+sudo systemd-run --collect --unit=sparkles-wifiswitch bash "$(readlink -f "$0")" --run "$SSID" "$PSK"
 
-sudo nmcli device wifi rescan ifname "$IFACE" 2>/dev/null || true
-sleep 3
-
-if sudo nmcli device wifi connect "$SSID" password "$PSK" ifname "$IFACE"; then
-    # keep this profile from hijacking boot back in the field
-    sudo nmcli connection modify "$SSID" connection.autoconnect no 2>/dev/null || true
-    echo "Connected to $SSID"
-else
-    echo "Failed to join $SSID (wrong password, or not in range)"
-    exit 1
-fi
-
-echo "=== Checking internet ==="
-if ping -c1 -W3 8.8.8.8 >/dev/null 2>&1; then
-    echo "Online. Pi IP: $(hostname -I | awk '{print $1}')"
-    echo "Now run:  bash ~/sparkles/update.sh"
-else
-    echo "Joined $SSID but no internet route — check the network."
-    exit 1
-fi
-
-echo "=== Done ==="
+cat <<EOF
+Switching to "$SSID" in the background.
+If you're on the 'Sparkles' hotspot your SSH will drop now — that's expected.
+Wait ~30s, then:
+  worked  -> join "$SSID" on your laptop, then: ssh julian@sparkles.local
+  failed  -> the Pi is back on the 'Sparkles' hotspot; reconnect to it
+After reconnecting, see what happened:  journalctl -u sparkles-wifiswitch --no-pager
+Once online:  bash ~/sparkles/update.sh
+EOF
