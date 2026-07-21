@@ -23,9 +23,12 @@ git -C "$REPO" bundle create "$BUNDLE" "$BRANCH"
 echo "=== Copying bundle to $PI ==="
 scp "$BUNDLE" "$PI:/tmp/sparkles-update.bundle"
 
-echo "=== Running update.sh on $PI (offline mode) ==="
-# -t so sudo/npm output streams back live
-ssh -t "$PI" 'bash ~/sparkles/update.sh'
+# Pull the bundle into the Pi's repo FIRST, from here — this updates update.sh
+# itself to the offline-capable version before we run it (bootstrap: the Pi's
+# on-disk update.sh may predate the offline logic). Then run it; its own bundle
+# pull is a harmless already-up-to-date no-op. -t streams sudo/npm output back.
+echo "=== Pulling bundle + running update.sh on $PI ==="
+ssh -t "$PI" "set -e; cd ~/sparkles && git pull /tmp/sparkles-update.bundle '$BRANCH' && bash ~/sparkles/update.sh"
 
 echo "=== Done. Master firmware (if changed) still needs a separate flash:"
 echo "    ssh $PI '/home/julian/myenv/bin/pio run -e Master_Pi -t upload'"
