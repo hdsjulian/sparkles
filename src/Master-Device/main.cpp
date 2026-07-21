@@ -499,6 +499,7 @@ static void handleSerialCommand(const char* line) {
     }
     else if (strcmp(cmd, "reannounce") == 0)             { msgHandler.broadcastReannounce(); }
     else if (strcmp(cmd, "reset_system") == 0)           { msgHandler.resetSystem(); }
+    else if (strcmp(cmd, "reset_clients") == 0)          { msgHandler.broadcastResetClients(); }
 
     else if (strcmp(cmd, "toggle_test_mode") == 0) {
         bool next = !msgHandler.getTestMode();

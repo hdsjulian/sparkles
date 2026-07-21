@@ -198,6 +198,7 @@ public:
     void commandCalibrate(int boardId);
     void resetSystem();
     void broadcastReannounce();
+    void broadcastResetClients();
     void stopAllAnimations();
     void setTestMode(bool on, float spacingMeters = 1.0f);
     bool getTestMode();

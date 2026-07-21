@@ -938,6 +938,13 @@ async def reset_system():
     return _ok()
 
 
+@app.get("/resetClients")
+async def reset_clients():
+    # reboot every client, keep the master and its address list intact
+    _send({"cmd": "reset_clients"})
+    return _ok()
+
+
 @app.get("/factoryReset")
 async def factory_reset():
     _send({"cmd": "factory_reset"})

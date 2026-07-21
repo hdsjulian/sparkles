@@ -13,6 +13,7 @@
     commandOTAUpdate,
     reannounce,
     resetSystem,
+    resetClients,
     factoryReset,
     commandAnimate,
     commandAnimationOff,
@@ -285,11 +286,23 @@
   }
 
   async function handleReset() {
-    if (!confirm('Reset system? This will restart all devices.')) return;
+    if (!confirm('Reset system? This restarts the master AND all clients, and wipes the saved board list (positions get reassigned as boards re-announce).')) return;
     error = '';
     try {
       await resetSystem();
       successMsg = 'System reset sent';
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleResetClients() {
+    if (!confirm('Reboot all clients? The master and its board list stay put — boards reboot, re-announce, and re-sync one at a time. Use this when boards get stuck.')) return;
+    error = '';
+    try {
+      await resetClients();
+      successMsg = 'Reboot-all-clients sent — boards return over the next ~30s';
+      setTimeout(() => { successMsg = ''; }, 4000);
     } catch (e) {
       error = e.message;
     }
@@ -691,6 +704,7 @@
   <div class="card danger-zone">
     <div class="card-title" style="color:var(--color-low);">Danger Zone</div>
     <div class="btn-row">
+      <button class="btn btn-ghost" on:click={handleResetClients}>Reboot All Clients</button>
       <button class="btn btn-danger" on:click={handleOTA}>OTA Update</button>
       <button class="btn btn-danger" on:click={handleReset}>Reset System</button>
       <button class="btn btn-danger" on:click={handleFactoryReset}>Factory Reset</button>

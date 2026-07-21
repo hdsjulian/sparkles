@@ -235,6 +235,20 @@ void MessageHandler::broadcastReannounce() {
     ESP_LOGI("MSG", "CMD_REANNOUNCE queued for broadcast");
 }
 
+// Bounce every awake client without touching the master: reach clients directly
+// (not just ones that happen to announce, like resetSystem's pending-broadcast
+// path) and repeat, since a single ESP-NOW broadcast is unacked. Clients stagger
+// their own restart by 100ms*position and re-announce staggered by mac%30, and the
+// master serializes syncs on one task — so the wave back in doesn't flood.
+void MessageHandler::broadcastResetClients() {
+    ESP_LOGI("MSG", "Broadcasting CMD_RESET_SYSTEM to all clients");
+    for (int i = 0; i < 10; i++) {
+        message_data msg = createCommandMessage(CMD_RESET_SYSTEM, true);
+        pushToSendQueue(msg);
+        vTaskDelay(300 / portTICK_PERIOD_MS);
+    }
+}
+
 bool MessageHandler::getTestMode() {
     return testMode;
 }

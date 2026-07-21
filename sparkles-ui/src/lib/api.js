@@ -118,6 +118,9 @@ export const reannounce = () =>
 export const resetSystem = () =>
   fetch(`${BASE}/resetSystem`).then(r => r.json());
 
+export const resetClients = () =>
+  fetch(`${BASE}/resetClients`).then(r => r.json());
+
 export const factoryReset = () =>
   fetch(`${BASE}/factoryReset`).then(r => r.json());
 
