@@ -276,7 +276,19 @@ void MessageHandler::handleTimer(message_data incomingData) {
             sorted[j + 1] = v;
         }
         long long median = (sorted[TIMER_ARRAY_COUNT / 2 - 1] + sorted[TIMER_ARRAY_COUNT / 2]) / 2;
+        // A jump of many seconds means a clock-epoch reset — the master power-cycled
+        // (its esp_timer restarted at 0 while we kept running), so the new offset is
+        // correct but any animation still queued/running carries a startTime from the
+        // OLD epoch. Mixing an old-epoch startTime with the new offset produced the
+        // "absurd microsUntilStart" garbage. Flush the LED state so only fresh-epoch
+        // animations (which schedule correctly against the new offset) are evaluated.
+        long long offsetJump = median - getTimeOffset();
+        if (offsetJump < 0) offsetJump = -offsetJump;
         setTimeOffset(median);
+        if (offsetJump > 2000000) {
+            ESP_LOGW("MSG", "Timer epoch shift (%lld us jump) — master rebooted; flushing stale animations", offsetJump);
+            ledInstance->resetLedTask();
+        }
 
         message_data gotTimerMessage;
         gotTimerMessage.messageType = MSG_GOT_TIMER;
