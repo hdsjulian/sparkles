@@ -66,6 +66,8 @@ static volatile bool sleepUntilCancel = false;
 // should stop showing "sleeping" here, not 11 minutes later when the task
 // object itself finally frees
 static volatile bool sleepUntilWaking = false;
+static volatile int sleepUntilReturned = 0;  // clients back so far during the verified wake
+static volatile int sleepUntilExpected = 0;  // clients expected back (persisted list size)
 static void serialSendDoc(JsonDocument& doc);
 
 // One-shot "sleep right now until HH:MM" — for the pack-up/power-cycle workflow:
@@ -123,20 +125,64 @@ static void sleepUntilTask(void* pvParameters) {
     sleepUntilWaking = true;
     prefs.putBool("suActive", false);
 
+    // count the clients we expect back (the persisted list)
+    int total = 0;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(msgHandler.getItemFromAddressList(i).address,
+                   MessageHandler::emptyAddress, 6) == 0) break;
+        total++;
+    }
+    sleepUntilExpected = total;
+    sleepUntilReturned = 0;
+    // reset "returned" tracking: a client only counts as back once it actually
+    // re-announces and resyncs after hearing the wake sentinel
     msgHandler.setAddressListInactive();
-    msgHandler.startBroadcastSettleTask();
-    msgHandler.broadcastReannounce();
     {
         JsonDocument r; r["event"] = "sleep_until_done"; r["cancelled"] = wasCancelled;
+        r["expected"] = total;
         serialSendDoc(r);
     }
-    // fail-closed clients need to hear "morning": broadcast the wake sentinel
-    // for two full nap cycles plus margin, so even a board that misses its
-    // entire first listen window gets a second full chance
-    unsigned long sentinelStart = millis();
-    while (millis() - sentinelStart < 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL) {
+
+    // VERIFIED WAKE: broadcast the wake sentinel until every known client has
+    // returned, not just for a fixed window. A napping client hears the sentinel
+    // at its next listen window (<=1 nap), self-announces, and the master resyncs
+    // it -> marked active. Keep going until all `total` are active, or a 20 min
+    // hard cap for genuine stragglers. If the list is empty (master was wiped),
+    // fall back to a fixed window and accept whoever announces.
+    unsigned long wakeStart = millis();
+    const unsigned long WAKE_MAX_MS = 20UL * 60UL * 1000UL;
+    const unsigned long WAKE_MIN_MS = 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL; // >=2 nap cycles
+    int returned = -1;
+    while (millis() - wakeStart < WAKE_MAX_MS) {
         msgHandler.sendSleepWakeupMessage(0);
+        int active = msgHandler.getNumDevices();
+        if (active != returned) {
+            returned = active;
+            sleepUntilReturned = active;
+            JsonDocument r; r["event"] = "sleep_until_wake_progress";
+            r["returned"] = returned; r["expected"] = total;
+            r["elapsed_s"] = (long)((millis() - wakeStart) / 1000);
+            serialSendDoc(r);
+        }
+        // done only once everyone's back AND we've covered the minimum window
+        if (total > 0 && returned >= total && millis() - wakeStart >= WAKE_MIN_MS) break;
+        if (total == 0 && millis() - wakeStart >= WAKE_MIN_MS) break;
         vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+
+    // resume normal operation so the woken fleet has traffic to stay awake on
+    msgHandler.startAnimationLoopTask();
+    {
+        JsonDocument r; r["event"] = "sleep_until_wake_done";
+        r["returned"] = (returned < 0) ? 0 : returned; r["expected"] = total;
+        JsonArray missing = r["missing_ids"].to<JsonArray>();
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            if (memcmp(msgHandler.getItemFromAddressList(i).address,
+                       MessageHandler::emptyAddress, 6) == 0) break;
+            if (msgHandler.getActiveStatus(i) != ACTIVE) missing.add(i);
+        }
+        r["success"] = (total > 0 && returned >= total);
+        serialSendDoc(r);
     }
     sleepUntilWaking = false;
     sleepUntilTaskHandle = NULL;
@@ -477,6 +523,10 @@ static void handleSerialCommand(const char* line) {
         if (sleepUntilBroadcasting) {
             r["sleepUntilHours"]   = prefs.getInt("suH", 0);
             r["sleepUntilMinutes"] = prefs.getInt("suM", 0);
+        }
+        if (sleepUntilWaking) {
+            r["wakeReturned"] = sleepUntilReturned;
+            r["wakeExpected"] = sleepUntilExpected;
         }
         serialSendDoc(r);
 

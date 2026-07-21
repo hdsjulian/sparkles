@@ -512,9 +512,12 @@
   <div class="card" style="margin-bottom:1.25rem;">
     <div class="card-title">Sleep Until</div>
     <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
-      For setting up and packing away: resyncs the fleet and puts it to sleep right now,
-      until this time today (or tomorrow if it's already passed). Doesn't touch the
-      recurring Sleep/Wakeup Time above, and resumes automatically if the master loses power.
+      Sleep the whole fleet now, until this time today (or tomorrow if already passed).
+      Use it when packing away, or after a master/Pi reboot to hold everything down until
+      showtime. Survives another power loss (resumes on boot). At the set time the master
+      keeps broadcasting wake until <em>every</em> board has actually re-checked-in — not
+      just for a fixed window — and reports any that don't come back. Doesn't touch the
+      recurring Sleep/Wakeup Time above.
     </p>
     {#if systemInfo?.sleepUntilActive}
       <div class="status-msg" style="margin-bottom:0.75rem;">
@@ -523,7 +526,8 @@
       <button class="btn btn-ghost" on:click={handleSleepUntilCancel}>Cancel — Wake Up Now</button>
     {:else if systemInfo?.sleepUntilWaking}
       <div class="status-msg" style="margin-bottom:0.75rem;">
-        ☀️ Waking up — boards return within one nap cycle (a few minutes), nothing more to do here
+        ☀️ Waking up — {systemInfo.wakeReturned ?? 0}/{systemInfo.wakeExpected ?? '?'} boards back.
+        The master keeps waking until every board returns (up to 20 min); leave this running.
       </div>
     {:else}
       <div class="form-row" style="margin-bottom:0.75rem;">
