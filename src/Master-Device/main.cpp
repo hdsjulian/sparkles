@@ -872,6 +872,21 @@ void setup()
         }
     }
 
+    // On boot, invite every client to re-register — not just when the saved list
+    // is empty. A power-cycle (routine here) resets the master's esp_timer while
+    // clients keep running on stale offsets; the boot-time unicast settle only
+    // reaches clients it can contact right then, so any that were briefly
+    // unreachable get stranded (they think they're synced, so they never
+    // re-announce, and "sync" can't recover a client the master can't reach).
+    // A broadcast reannounce rebuilds contact with the whole awake fleet and
+    // resyncs them against the fresh clock. Skip it if we're (re)entering a
+    // sleep state — sleeping clients should stay down, and the sleep/wake
+    // sequences do their own reannounce at morning.
+    bool enteringSleep = (sleepUntilTaskHandle != NULL) || msgHandler.isInSleepPhase();
+    if (!enteringSleep) {
+        msgHandler.broadcastReannounce();
+    }
+
     // no webserver, the serial bridge handles all communication
     enableLoopWDT(); // if loop() stalls past the watchdog timeout, panic with a backtrace
 }
