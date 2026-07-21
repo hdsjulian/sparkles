@@ -93,6 +93,7 @@ static long secondsUntilTimeOfDay(int targetH, int targetM, int targetS, bool* w
 static void sleepUntilTask(void* pvParameters) {
     int* target = (int*)pvParameters;
     int targetH = target[0], targetM = target[1], targetS = target[2];
+    bool skipResync = target[3] != 0;
     delete[] target;
 
     long totalSeconds = secondsUntilTimeOfDay(targetH, targetM, targetS);
@@ -107,11 +108,16 @@ static void sleepUntilTask(void* pvParameters) {
         serialSendDoc(r);
     }
 
-    msgHandler.startFastResyncTask();
-    while (msgHandler.isFastResyncRunning()) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+    // "Wake Up At" / boot-resume: the fleet is already asleep, so an opening
+    // resync is pointless (unicasts miss sleeping radios) and harmful (it marks
+    // sleepers falsely active). Go straight to holding them down.
+    if (!skipResync) {
+        msgHandler.startFastResyncTask();
+        while (msgHandler.isFastResyncRunning()) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
     }
-    vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
 
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
     unsigned long phaseStart = millis();
@@ -414,7 +420,11 @@ static void handleSerialCommand(const char* line) {
             JsonDocument r; r["event"] = "sleep_until_error"; r["detail"] = "the scheduled sleep phase is already running";
             serialSendDoc(r);
         } else {
-            int* target = new int[3]{ doc["hours"] | 0, doc["minutes"] | 0, doc["seconds"] | 0 };
+            // skip_resync: fleet is already asleep (e.g. after a reboot) — skip the
+            // opening resync (futile, and it falsely marks sleepers active) and go
+            // straight to holding them down until the wake time
+            int* target = new int[4]{ doc["hours"] | 0, doc["minutes"] | 0, doc["seconds"] | 0,
+                                      (doc["skip_resync"] | false) ? 1 : 0 };
             xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
         }
 
@@ -917,7 +927,9 @@ void setup()
             ESP_LOGI("MSG", "Sleep-until target already passed by the time we rebooted, dropping it");
             prefs.putBool("suActive", false);
         } else {
-            int* target = new int[3]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0) };
+            // boot-resume: the fleet has been asleep the whole time we were off, so
+            // skip the opening resync (skip_resync = 1)
+            int* target = new int[4]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0), 1 };
             xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
         }
     }

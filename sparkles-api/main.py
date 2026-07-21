@@ -718,10 +718,14 @@ async def sleep_until(
     hours: int = Query(..., ge=0, le=23),
     minutes: int = Query(..., ge=0, le=59),
     seconds: int = Query(default=0, ge=0, le=59),
+    skipResync: bool = Query(default=False),
 ):
     # one-shot: sleep starting now until this wall-clock time, independent of
-    # (and without altering) the recurring daily sleep/wakeup schedule above
-    _send({"cmd": "sleep_until", "hours": hours, "minutes": minutes, "seconds": seconds})
+    # (and without altering) the recurring daily sleep/wakeup schedule above.
+    # skipResync: fleet is already asleep (post-reboot) — the "Wake Up At" case;
+    # hold them down and wake at the time without an opening resync.
+    _send({"cmd": "sleep_until", "hours": hours, "minutes": minutes,
+           "seconds": seconds, "skip_resync": skipResync})
     return _ok()
 
 

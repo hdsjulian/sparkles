@@ -163,6 +163,20 @@
     }
   }
 
+  async function handleWakeUpAt() {
+    error = '';
+    successMsg = '';
+    if (!confirm(`Fleet is already asleep — hold them down and wake at ${sleepUntilHours}:${sleepUntilMinutes}? Use this after a master/Pi reboot; it won't resync or disturb sleeping boards.`)) return;
+    try {
+      await sleepUntil(sleepUntilHours, sleepUntilMinutes, 0, true);  // skipResync
+      successMsg = 'Holding fleet asleep — will wake automatically at the set time';
+      setTimeout(() => { successMsg = ''; }, 2500);
+      loadSystemInfo();
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   async function handleSleepUntilCancel() {
     error = '';
     try {
@@ -540,7 +554,15 @@
           <input type="number" bind:value={sleepUntilMinutes} min="0" max="59" />
         </div>
       </div>
-      <button class="btn btn-primary" on:click={handleSleepUntil}>Sleep Now Until This Time</button>
+      <div class="btn-row">
+        <button class="btn btn-primary" on:click={handleSleepUntil}>Sleep Now Until This Time</button>
+        <button class="btn btn-ghost" on:click={handleWakeUpAt}>Wake Up At This Time</button>
+      </div>
+      <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.5rem;">
+        <strong>Sleep Now</strong>: put an awake fleet to sleep until the time.
+        <strong>Wake Up At</strong>: fleet is already asleep (after a reboot) — just hold
+        them down and wake at the time, no resync.
+      </p>
     {/if}
   </div>
 
