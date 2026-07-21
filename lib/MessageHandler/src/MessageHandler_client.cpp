@@ -580,17 +580,8 @@ void MessageHandler::runBatterySync() {
 }
 
 void MessageHandler::turnWifiOn() {
-    // Mirror the boot path exactly — this runs after every nap, and it used to
-    // do WiFi.begin(): any board with an SSID stored in NVS (every board that
-    // ever ran an OTA update — Arduino persists credentials by default) then
-    // scanned/associated with the venue AP on every wake. Channel-hopping
-    // during the scan makes the board miss the master's 1 Hz sleep pings
-    // (false "morning" wakes via the fallback), and a successful association
-    // parks the radio on the AP's channel — permanently deaf, so the
-    // fail-closed loop naps forever. ESP-NOW needs no association at all.
     WiFi.mode(WIFI_STA);
-    WiFi.disconnect();     // and stop any auto-reconnect from stored credentials
-    WiFi.setSleep(false);  // modem sleep adds RX latency and skews hardware RX timestamps
+    WiFi.begin(); // Replace with your SSID and password
     if (esp_now_init() != ESP_OK)
     {
       Serial.println("Error initializing ESP-NOW");
