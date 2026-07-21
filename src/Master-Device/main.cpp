@@ -61,6 +61,11 @@ static TaskHandle_t sleepTestTaskHandle = NULL;
 static volatile bool sleepTestCancel = false;
 static TaskHandle_t sleepUntilTaskHandle = NULL;
 static volatile bool sleepUntilCancel = false;
+// true once the wake sequence has started (cancelled or the target time was
+// reached) but before the tail-end sentinel broadcast finishes — the UI
+// should stop showing "sleeping" here, not 11 minutes later when the task
+// object itself finally frees
+static volatile bool sleepUntilWaking = false;
 static void serialSendDoc(JsonDocument& doc);
 
 // One-shot "sleep right now until HH:MM" — for the pack-up/power-cycle workflow:
@@ -115,6 +120,7 @@ static void sleepUntilTask(void* pvParameters) {
     }
     bool wasCancelled = sleepUntilCancel;
     sleepUntilCancel = false;
+    sleepUntilWaking = true;
     prefs.putBool("suActive", false);
 
     msgHandler.setAddressListInactive();
@@ -132,6 +138,7 @@ static void sleepUntilTask(void* pvParameters) {
         msgHandler.sendSleepWakeupMessage(0);
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
+    sleepUntilWaking = false;
     sleepUntilTaskHandle = NULL;
     vTaskDelete(NULL);
 }
@@ -461,8 +468,13 @@ static void handleSerialCommand(const char* line) {
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);
         r["sleepDuration"]= (long)(msgHandler.getSleepDuration() / 1000);
         r["testMode"]     = msgHandler.getTestMode();
-        r["sleepUntilActive"] = (sleepUntilTaskHandle != NULL);
-        if (sleepUntilTaskHandle != NULL) {
+        // "sleeping" only while actually broadcasting sleep — once the wake
+        // sequence starts (cancelled or target reached) the boards are
+        // already on their way up, whatever the tail-end sentinel is still doing
+        bool sleepUntilBroadcasting = (sleepUntilTaskHandle != NULL) && !sleepUntilWaking;
+        r["sleepUntilActive"] = sleepUntilBroadcasting;
+        r["sleepUntilWaking"] = (sleepUntilTaskHandle != NULL) && sleepUntilWaking;
+        if (sleepUntilBroadcasting) {
             r["sleepUntilHours"]   = prefs.getInt("suH", 0);
             r["sleepUntilMinutes"] = prefs.getInt("suM", 0);
         }

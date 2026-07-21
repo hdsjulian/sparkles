@@ -508,6 +508,10 @@
         😴 Sleeping now until {String(systemInfo.sleepUntilHours).padStart(2, '0')}:{String(systemInfo.sleepUntilMinutes).padStart(2, '0')}
       </div>
       <button class="btn btn-ghost" on:click={handleSleepUntilCancel}>Cancel — Wake Up Now</button>
+    {:else if systemInfo?.sleepUntilWaking}
+      <div class="status-msg" style="margin-bottom:0.75rem;">
+        ☀️ Waking up — boards return within one nap cycle (a few minutes), nothing more to do here
+      </div>
     {:else}
       <div class="form-row" style="margin-bottom:0.75rem;">
         <div class="form-group">
