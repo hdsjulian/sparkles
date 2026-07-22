@@ -428,6 +428,21 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
     }
     message_data localData;
     memcpy(&localData, incomingData, len);
+    // RX visibility: log every frame the radio delivers, EXCEPT the high-rate
+    // music animations (MIDI/shimmer) which would flood. If a client goes
+    // "unreachable", watch this: no RX lines at all = nothing is arriving
+    // (radio/range/channel); RX lines present but no reaction = a logic problem.
+    {
+        bool musicAnim = (localData.messageType == MSG_ANIMATION) &&
+            (localData.payload.animation.animationType == MIDI ||
+             localData.payload.animation.animationType == BACKGROUND_SHIMMER);
+        if (!musicAnim) {
+            ESP_LOGI("RX", "type=%d from %02x:%02x:%02x:%02x:%02x:%02x len=%d",
+                     localData.messageType,
+                     mac->src_addr[0], mac->src_addr[1], mac->src_addr[2],
+                     mac->src_addr[3], mac->src_addr[4], mac->src_addr[5], len);
+        }
+    }
     if (localData.messageType == MSG_TIMER) {
         // learn master MAC from the first MSG_TIMER we receive
         if (!instance.hostAddressLearned) {
