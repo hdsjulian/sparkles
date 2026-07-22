@@ -609,6 +609,8 @@ void MessageHandler::runBatterySync() {
 void MessageHandler::turnWifiOn() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(); // Replace with your SSID and password
+    WiFi.setSleep(false); // match boot: modem sleep back on after a nap makes the
+                          // radio miss ESP-NOW packets -> intermittent unreachability
     if (esp_now_init() != ESP_OK)
     {
       Serial.println("Error initializing ESP-NOW");
