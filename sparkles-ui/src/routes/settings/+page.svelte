@@ -9,6 +9,7 @@
     sleepUntil,
     sleepUntilCancel,
     sleepNow,
+    setManualSleepMode,
     toggleLogging,
     toggleTestMode,
     commandOTAUpdate,
@@ -172,6 +173,21 @@
       await sleepUntil(sleepUntilHours, sleepUntilMinutes, 0, true);  // skipResync
       successMsg = 'Holding fleet asleep — will wake automatically at the set time';
       setTimeout(() => { successMsg = ''; }, 2500);
+      loadSystemInfo();
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleToggleManualMode() {
+    error = '';
+    successMsg = '';
+    const turningOn = !systemInfo?.manualMode;
+    if (turningOn && !confirm('Switch to fully manual sleep? The daily schedule is ignored — the fleet only sleeps/wakes when you press Sleep Now / Wake Now. This also wakes everyone now.')) return;
+    try {
+      await setManualSleepMode(turningOn);
+      successMsg = turningOn ? 'Manual mode ON — schedule off, waking now' : 'Manual mode OFF — daily schedule resumes';
+      setTimeout(() => { successMsg = ''; }, 3000);
       loadSystemInfo();
     } catch (e) {
       error = e.message;
@@ -497,9 +513,25 @@
     </div>
   </div>
 
-  <!-- Sleep Time -->
+  <!-- Sleep Mode: schedule vs fully manual -->
   <div class="card" style="margin-bottom:1.25rem;">
-    <div class="card-title">Sleep Time</div>
+    <div class="card-title">Sleep Mode</div>
+    <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+      {#if systemInfo?.manualMode}
+        <strong style="color:var(--color-warning,#f9a825);">Manual</strong> — the daily Sleep/Wakeup Time below is ignored.
+        The fleet stays awake until you press Sleep Now, and only wakes on Wake Now.
+      {:else}
+        <strong>Scheduled</strong> — the fleet sleeps/wakes automatically per the Sleep/Wakeup Time below.
+      {/if}
+    </p>
+    <button class="btn {systemInfo?.manualMode ? 'btn-primary' : 'btn-warning'}" on:click={handleToggleManualMode}>
+      {systemInfo?.manualMode ? 'Resume Daily Schedule' : 'Switch to Manual (wake & stay awake)'}
+    </button>
+  </div>
+
+  <!-- Sleep Time -->
+  <div class="card" style="margin-bottom:1.25rem;{systemInfo?.manualMode ? 'opacity:0.5;' : ''}">
+    <div class="card-title">Sleep Time {#if systemInfo?.manualMode}(ignored — manual mode){/if}</div>
     <div class="form-row" style="margin-bottom:0.75rem;">
       <div class="form-group">
         <label>Hours</label>

@@ -109,6 +109,9 @@ export const sleepNow = () =>
 export const wakeNow = () =>
   fetch(`${BASE}/wakeNow`).then(r => r.json());
 
+export const setManualSleepMode = (active) =>
+  fetch(`${BASE}/setManualMode?active=${active}`).then(r => r.json());
+
 export const toggleLogging = () =>
   fetch(`${BASE}/toggleLogging`).then(r => r.json());
 

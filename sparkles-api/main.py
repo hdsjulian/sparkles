@@ -751,6 +751,14 @@ async def wake_now():
     return _ok()
 
 
+@app.get("/setManualMode")
+async def set_manual_mode_sleep(active: bool = Query(...)):
+    # fully manual sleep/wake: when active, the recurring schedule is ignored and
+    # the fleet only sleeps/wakes on Sleep Now / Wake Now. Enabling it also wakes now.
+    _send({"cmd": "set_manual_mode", "active": active})
+    return _ok()
+
+
 @app.get("/getSystemInfo")
 async def get_system_info():
     return await _request({"cmd": "get_system_info"}, "system_info")

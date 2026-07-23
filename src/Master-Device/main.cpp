@@ -72,6 +72,9 @@ static TaskHandle_t wakeNowTaskHandle = NULL;
 // set by wake_now to stop the recurring scheduled sleep phase and keep loop()
 // from restarting it; auto-clears at the next natural wake (out of sleep window)
 static volatile bool sleepScheduleOverride = false;
+// persistent "fully manual" mode: the recurring sleep/wake schedule is ignored
+// entirely; sleep/wake happen only on explicit Sleep Now / Wake Now. Survives reboot.
+static volatile bool manualMode = false;
 static void serialSendDoc(JsonDocument& doc);
 static void runVerifiedWake(bool wasCancelled);
 
@@ -213,6 +216,17 @@ static void wakeNowTask(void* pvParameters) {
     vTaskDelete(NULL);
 }
 
+// Cancel all sleep activity and wake the whole fleet (verified). Shared by
+// wake_now and by entering manual mode.
+static void triggerWakeAll() {
+    sleepScheduleOverride = true;             // stop + suppress the recurring phase
+    if (sleepUntilTaskHandle != NULL) {
+        sleepUntilCancel = true;              // hold task runs the verified wake
+    } else if (sleepBroadcastTaskHandle == NULL && wakeNowTaskHandle == NULL && !sleepUntilWaking) {
+        xTaskCreatePinnedToCore(wakeNowTask, "wakeNow", 8192, NULL, 1, &wakeNowTaskHandle, 1);
+    }
+}
+
 static void sleepBroadcastTask(void* pvParameters) {
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
 
@@ -228,9 +242,9 @@ static void sleepBroadcastTask(void* pvParameters) {
     }
     vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
 
-    // sleepScheduleOverride: "Wake Now" pressed during the scheduled sleep window —
-    // stop broadcasting and let the wake sequence below run
-    while (msgHandler.isInSleepPhase() && !sleepScheduleOverride) {
+    // stop broadcasting if Wake Now was pressed (sleepScheduleOverride) or manual
+    // mode was enabled mid-phase (manualMode) — then the wake sequence below runs
+    while (msgHandler.isInSleepPhase() && !sleepScheduleOverride && !manualMode) {
         msgHandler.sendSleepWakeupMessage(durationMicros);
         vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
     }
@@ -467,19 +481,22 @@ static void handleSerialCommand(const char* line) {
         if (sleepUntilTaskHandle != NULL) sleepUntilCancel = true;
 
     } else if (strcmp(cmd, "wake_now") == 0) {
-        // cancel EVERY sleep activity and wake the whole fleet:
-        // 1) suppress the recurring scheduled sleep phase (stops it + keeps loop()
-        //    from restarting it until the next natural wake time)
-        // 2) cancel a manual hold (sleep_now/sleep_until) -> it runs the verified wake
-        // 3) if nothing was broadcasting (fleet asleep via fail-closed), run the
-        //    verified wake directly so those clients still get woken
-        sleepScheduleOverride = true;
-        if (sleepUntilTaskHandle != NULL) {
-            sleepUntilCancel = true;
-        } else if (sleepBroadcastTaskHandle == NULL && wakeNowTaskHandle == NULL && !sleepUntilWaking) {
-            xTaskCreatePinnedToCore(wakeNowTask, "wakeNow", 8192, NULL, 1, &wakeNowTaskHandle, 1);
-        }
+        // cancel EVERY sleep activity and wake the whole fleet (manual hold, the
+        // recurring scheduled phase, or a fail-closed-asleep fleet with nothing
+        // broadcasting). The schedule override auto-clears at the next natural wake.
+        triggerWakeAll();
         JsonDocument r; r["event"] = "wake_now_ok";
+        serialSendDoc(r);
+
+    } else if (strcmp(cmd, "set_manual_mode") == 0) {
+        // fully manual sleep/wake: when on, the recurring schedule is ignored
+        // entirely (never auto-sleeps) until turned off. Turning it on also wakes
+        // the fleet now ("wake and don't sleep again until I say so").
+        bool on = doc["active"] | false;
+        manualMode = on;
+        prefs.putBool("manualMode", on);
+        if (on) triggerWakeAll();
+        JsonDocument r; r["event"] = "manual_mode"; r["active"] = on;
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "get_address_list") == 0) {
@@ -575,6 +592,7 @@ static void handleSerialCommand(const char* line) {
         r["sleepIn"]      = (long)(msgHandler.getSleepTime() / 1000);
         r["sleepDuration"]= (long)(msgHandler.getSleepDuration() / 1000);
         r["testMode"]     = msgHandler.getTestMode();
+        r["manualMode"]   = manualMode; // recurring schedule disabled, sleep/wake fully manual
         // "sleeping" only while actually broadcasting sleep — once the wake
         // sequence starts (cancelled or target reached) the boards are
         // already on their way up, whatever the tail-end sentinel is still doing
@@ -948,6 +966,7 @@ void setup()
     // The clock checkpoint is at most ~5 min stale after a crash, but off by the
     // full outage after a power cut; the pi corrects it whenever it reconnects.
     prefs.begin("sparkles");
+    manualMode = prefs.getBool("manualMode", false); // fully-manual sleep persists across reboots
     time_t savedClock = (time_t)prefs.getLong64("clock", 0);
     if (savedClock > 1700000000) {
         struct timeval tv{ savedClock, 0 };
@@ -1109,7 +1128,7 @@ void loop()
     // window (the schedule would wake them then anyway) — so tomorrow's sleep is normal
     if (!msgHandler.isInSleepPhase()) sleepScheduleOverride = false;
 
-    if (msgHandler.isInSleepPhase() && !sleepScheduleOverride &&
+    if (msgHandler.isInSleepPhase() && !sleepScheduleOverride && !manualMode &&
         sleepBroadcastTaskHandle == NULL && sleepUntilTaskHandle == NULL) {
         xTaskCreatePinnedToCore(sleepBroadcastTask, "sleepBroadcast", 4096, NULL, 1, &sleepBroadcastTaskHandle, 1);
     }
