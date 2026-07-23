@@ -94,24 +94,27 @@ static void sleepUntilTask(void* pvParameters) {
     int* target = (int*)pvParameters;
     int targetH = target[0], targetM = target[1], targetS = target[2];
     bool skipResync = target[3] != 0;
+    bool indefinite = target[4] != 0;  // "sleep_now": hold until cancelled, no wake time
     delete[] target;
 
-    long totalSeconds = secondsUntilTimeOfDay(targetH, targetM, targetS);
+    long totalSeconds = indefinite ? 0 : secondsUntilTimeOfDay(targetH, targetM, targetS);
     prefs.putInt("suH", targetH);
     prefs.putInt("suM", targetM);
     prefs.putInt("suS", targetS);
     prefs.putBool("suActive", true);
+    prefs.putBool("suIndef", indefinite);
     {
         JsonDocument r; r["event"] = "sleep_until_start";
         r["targetHours"] = targetH; r["targetMinutes"] = targetM; r["targetSeconds"] = targetS;
-        r["duration_s"] = totalSeconds;
+        r["duration_s"] = totalSeconds; r["indefinite"] = indefinite;
         serialSendDoc(r);
     }
 
-    // "Wake Up At" / boot-resume: the fleet is already asleep, so an opening
-    // resync is pointless (unicasts miss sleeping radios) and harmful (it marks
-    // sleepers falsely active). Go straight to holding them down.
-    if (!skipResync) {
+    // "Wake Up At" / "sleep now" / boot-resume: the fleet is already asleep (or we
+    // just want everyone down definitively), so an opening resync is pointless
+    // (unicasts miss sleeping radios) and harmful (marks sleepers falsely active,
+    // and with many clients can stall long enough that sleep never starts). Skip it.
+    if (!skipResync && !indefinite) {
         msgHandler.startFastResyncTask();
         while (msgHandler.isFastResyncRunning()) {
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -122,7 +125,8 @@ static void sleepUntilTask(void* pvParameters) {
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
     unsigned long phaseStart = millis();
     unsigned long phaseDurationMs = (unsigned long)totalSeconds * 1000UL;
-    while (!sleepUntilCancel && millis() - phaseStart < phaseDurationMs) {
+    // indefinite: broadcast sleep at 1 Hz forever until cancelled (Wake Up Now)
+    while (!sleepUntilCancel && (indefinite || millis() - phaseStart < phaseDurationMs)) {
         msgHandler.sendSleepWakeupMessage(durationMicros);
         vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
     }
@@ -130,6 +134,7 @@ static void sleepUntilTask(void* pvParameters) {
     sleepUntilCancel = false;
     sleepUntilWaking = true;
     prefs.putBool("suActive", false);
+    prefs.putBool("suIndef", false);
 
     // count the clients we expect back (the persisted list)
     int total = 0;
@@ -423,9 +428,24 @@ static void handleSerialCommand(const char* line) {
             // skip_resync: fleet is already asleep (e.g. after a reboot) — skip the
             // opening resync (futile, and it falsely marks sleepers active) and go
             // straight to holding them down until the wake time
-            int* target = new int[4]{ doc["hours"] | 0, doc["minutes"] | 0, doc["seconds"] | 0,
-                                      (doc["skip_resync"] | false) ? 1 : 0 };
+            int* target = new int[5]{ doc["hours"] | 0, doc["minutes"] | 0, doc["seconds"] | 0,
+                                      (doc["skip_resync"] | false) ? 1 : 0, 0 };
             xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+        }
+
+    } else if (strcmp(cmd, "sleep_now") == 0) {
+        // "absolutely definitely put everyone to sleep NOW": no resync, no wake
+        // time — just broadcast sleep and hold it until Wake Up Now. If a
+        // scheduled/other sleep task is already holding them, that's fine — report
+        // and do nothing rather than stacking tasks.
+        if (sleepUntilTaskHandle != NULL || sleepBroadcastTaskHandle != NULL) {
+            JsonDocument r; r["event"] = "sleep_now_ok"; r["detail"] = "already sleeping";
+            serialSendDoc(r);
+        } else {
+            int* target = new int[5]{ 0, 0, 0, 1, 1 }; // skipResync=1, indefinite=1
+            xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+            JsonDocument r; r["event"] = "sleep_now_ok"; r["detail"] = "broadcasting sleep";
+            serialSendDoc(r);
         }
 
     } else if (strcmp(cmd, "sleep_until_cancel") == 0) {
@@ -531,6 +551,7 @@ static void handleSerialCommand(const char* line) {
         r["sleepUntilActive"] = sleepUntilBroadcasting;
         r["sleepUntilWaking"] = (sleepUntilTaskHandle != NULL) && sleepUntilWaking;
         if (sleepUntilBroadcasting) {
+            r["sleepUntilIndefinite"] = prefs.getBool("suIndef", false); // "sleep now", no wake time
             r["sleepUntilHours"]   = prefs.getInt("suH", 0);
             r["sleepUntilMinutes"] = prefs.getInt("suM", 0);
         }
@@ -921,15 +942,18 @@ void setup()
     // client still asleep from before wakes on its own next listen window via
     // the "master's alive but not saying sleep" fallback.
     if (prefs.getBool("suActive", false)) {
+        bool indef = prefs.getBool("suIndef", false);
         bool alreadyPassed = false;
-        secondsUntilTimeOfDay(prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0), &alreadyPassed);
+        if (!indef) secondsUntilTimeOfDay(prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0), &alreadyPassed);
         if (alreadyPassed) {
             ESP_LOGI("MSG", "Sleep-until target already passed by the time we rebooted, dropping it");
             prefs.putBool("suActive", false);
         } else {
             // boot-resume: the fleet has been asleep the whole time we were off, so
-            // skip the opening resync (skip_resync = 1)
-            int* target = new int[4]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0), prefs.getInt("suS", 0), 1 };
+            // skip the opening resync (skip_resync = 1). indefinite carries through
+            // so a rebooted 'sleep now' keeps holding until Wake Up Now.
+            int* target = new int[5]{ prefs.getInt("suH", 0), prefs.getInt("suM", 0),
+                                      prefs.getInt("suS", 0), 1, indef ? 1 : 0 };
             xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
         }
     }

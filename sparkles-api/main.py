@@ -735,6 +735,14 @@ async def sleep_until_cancel():
     return _ok()
 
 
+@app.get("/sleepNow")
+async def sleep_now():
+    # definitively put every device to sleep right now: no resync, hold until
+    # Wake Up Now. Also reachable without auth via sleep_all.sh (serial socket).
+    _send({"cmd": "sleep_now"})
+    return _ok()
+
+
 @app.get("/getSystemInfo")
 async def get_system_info():
     return await _request({"cmd": "get_system_info"}, "system_info")

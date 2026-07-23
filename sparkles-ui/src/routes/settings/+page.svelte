@@ -8,6 +8,7 @@
     setWakeupTime,
     sleepUntil,
     sleepUntilCancel,
+    sleepNow,
     toggleLogging,
     toggleTestMode,
     commandOTAUpdate,
@@ -170,6 +171,20 @@
     try {
       await sleepUntil(sleepUntilHours, sleepUntilMinutes, 0, true);  // skipResync
       successMsg = 'Holding fleet asleep — will wake automatically at the set time';
+      setTimeout(() => { successMsg = ''; }, 2500);
+      loadSystemInfo();
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleSleepNow() {
+    error = '';
+    successMsg = '';
+    if (!confirm('Put ALL devices to sleep right now and hold them until you Wake Up Now? No resync, no wake time — the definitive "everyone down".')) return;
+    try {
+      await sleepNow();
+      successMsg = 'Sleeping all devices now — hold until Wake Up Now';
       setTimeout(() => { successMsg = ''; }, 2500);
       loadSystemInfo();
     } catch (e) {
@@ -535,7 +550,11 @@
     </p>
     {#if systemInfo?.sleepUntilActive}
       <div class="status-msg" style="margin-bottom:0.75rem;">
-        😴 Sleeping now until {String(systemInfo.sleepUntilHours).padStart(2, '0')}:{String(systemInfo.sleepUntilMinutes).padStart(2, '0')}
+        {#if systemInfo.sleepUntilIndefinite}
+          😴 All devices sleeping now — held until you wake them
+        {:else}
+          😴 Sleeping now until {String(systemInfo.sleepUntilHours).padStart(2, '0')}:{String(systemInfo.sleepUntilMinutes).padStart(2, '0')}
+        {/if}
       </div>
       <button class="btn btn-ghost" on:click={handleSleepUntilCancel}>Cancel — Wake Up Now</button>
     {:else if systemInfo?.sleepUntilWaking}
@@ -562,6 +581,13 @@
         <strong>Sleep Now</strong>: put an awake fleet to sleep until the time.
         <strong>Wake Up At</strong>: fleet is already asleep (after a reboot) — just hold
         them down and wake at the time, no resync.
+      </p>
+      <div class="btn-row" style="margin-top:0.75rem;">
+        <button class="btn btn-warning" on:click={handleSleepNow}>💤 Sleep All Now (hold until woken)</button>
+      </div>
+      <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.5rem;">
+        The definitive one: no resync, no time, can't be stalled by a slow sync — every
+        device sleeps immediately and stays down until you press Wake Up Now.
       </p>
     {/if}
   </div>
