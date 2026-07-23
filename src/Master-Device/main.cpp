@@ -68,7 +68,12 @@ static volatile bool sleepUntilCancel = false;
 static volatile bool sleepUntilWaking = false;
 static volatile int sleepUntilReturned = 0;  // clients back so far during the verified wake
 static volatile int sleepUntilExpected = 0;  // clients expected back (persisted list size)
+static TaskHandle_t wakeNowTaskHandle = NULL;
+// set by wake_now to stop the recurring scheduled sleep phase and keep loop()
+// from restarting it; auto-clears at the next natural wake (out of sleep window)
+static volatile bool sleepScheduleOverride = false;
 static void serialSendDoc(JsonDocument& doc);
+static void runVerifiedWake(bool wasCancelled);
 
 // One-shot "sleep right now until HH:MM" — for the pack-up/power-cycle workflow:
 // set the fleet up, then either work on it live or force it dark until showtime,
@@ -132,11 +137,24 @@ static void sleepUntilTask(void* pvParameters) {
     }
     bool wasCancelled = sleepUntilCancel;
     sleepUntilCancel = false;
-    sleepUntilWaking = true;
     prefs.putBool("suActive", false);
     prefs.putBool("suIndef", false);
 
-    // count the clients we expect back (the persisted list)
+    runVerifiedWake(wasCancelled);
+
+    sleepUntilTaskHandle = NULL;
+    vTaskDelete(NULL);
+}
+
+// Broadcast the wake sentinel until every known client has actually re-announced
+// and resynced (marked active), not just for a fixed window. Shared by the
+// sleep-hold cancel/expiry and the standalone "wake now". A napping client hears
+// the sentinel at its next listen window (<=1 nap), self-announces, and the
+// master resyncs it. Keeps going until all are back, or a 20 min cap for genuine
+// stragglers (min 2 nap cycles first). Empty list -> fixed window, accept whoever
+// announces. Then resumes the animation loop so the fleet has traffic to stay up.
+static void runVerifiedWake(bool wasCancelled) {
+    sleepUntilWaking = true;
     int total = 0;
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(msgHandler.getItemFromAddressList(i).address,
@@ -145,8 +163,6 @@ static void sleepUntilTask(void* pvParameters) {
     }
     sleepUntilExpected = total;
     sleepUntilReturned = 0;
-    // reset "returned" tracking: a client only counts as back once it actually
-    // re-announces and resyncs after hearing the wake sentinel
     msgHandler.setAddressListInactive();
     {
         JsonDocument r; r["event"] = "sleep_until_done"; r["cancelled"] = wasCancelled;
@@ -154,12 +170,6 @@ static void sleepUntilTask(void* pvParameters) {
         serialSendDoc(r);
     }
 
-    // VERIFIED WAKE: broadcast the wake sentinel until every known client has
-    // returned, not just for a fixed window. A napping client hears the sentinel
-    // at its next listen window (<=1 nap), self-announces, and the master resyncs
-    // it -> marked active. Keep going until all `total` are active, or a 20 min
-    // hard cap for genuine stragglers. If the list is empty (master was wiped),
-    // fall back to a fixed window and accept whoever announces.
     unsigned long wakeStart = millis();
     const unsigned long WAKE_MAX_MS = 20UL * 60UL * 1000UL;
     const unsigned long WAKE_MIN_MS = 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL; // >=2 nap cycles
@@ -175,13 +185,11 @@ static void sleepUntilTask(void* pvParameters) {
             r["elapsed_s"] = (long)((millis() - wakeStart) / 1000);
             serialSendDoc(r);
         }
-        // done only once everyone's back AND we've covered the minimum window
         if (total > 0 && returned >= total && millis() - wakeStart >= WAKE_MIN_MS) break;
         if (total == 0 && millis() - wakeStart >= WAKE_MIN_MS) break;
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 
-    // resume normal operation so the woken fleet has traffic to stay awake on
     msgHandler.startAnimationLoopTask();
     {
         JsonDocument r; r["event"] = "sleep_until_wake_done";
@@ -196,7 +204,12 @@ static void sleepUntilTask(void* pvParameters) {
         serialSendDoc(r);
     }
     sleepUntilWaking = false;
-    sleepUntilTaskHandle = NULL;
+}
+
+// "Wake Now" with no sleep-hold task running (e.g. fleet asleep via fail-closed).
+static void wakeNowTask(void* pvParameters) {
+    runVerifiedWake(true);
+    wakeNowTaskHandle = NULL;
     vTaskDelete(NULL);
 }
 
@@ -215,7 +228,9 @@ static void sleepBroadcastTask(void* pvParameters) {
     }
     vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
 
-    while (msgHandler.isInSleepPhase()) {
+    // sleepScheduleOverride: "Wake Now" pressed during the scheduled sleep window —
+    // stop broadcasting and let the wake sequence below run
+    while (msgHandler.isInSleepPhase() && !sleepScheduleOverride) {
         msgHandler.sendSleepWakeupMessage(durationMicros);
         vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
     }
@@ -451,6 +466,22 @@ static void handleSerialCommand(const char* line) {
     } else if (strcmp(cmd, "sleep_until_cancel") == 0) {
         if (sleepUntilTaskHandle != NULL) sleepUntilCancel = true;
 
+    } else if (strcmp(cmd, "wake_now") == 0) {
+        // cancel EVERY sleep activity and wake the whole fleet:
+        // 1) suppress the recurring scheduled sleep phase (stops it + keeps loop()
+        //    from restarting it until the next natural wake time)
+        // 2) cancel a manual hold (sleep_now/sleep_until) -> it runs the verified wake
+        // 3) if nothing was broadcasting (fleet asleep via fail-closed), run the
+        //    verified wake directly so those clients still get woken
+        sleepScheduleOverride = true;
+        if (sleepUntilTaskHandle != NULL) {
+            sleepUntilCancel = true;
+        } else if (sleepBroadcastTaskHandle == NULL && wakeNowTaskHandle == NULL && !sleepUntilWaking) {
+            xTaskCreatePinnedToCore(wakeNowTask, "wakeNow", 8192, NULL, 1, &wakeNowTaskHandle, 1);
+        }
+        JsonDocument r; r["event"] = "wake_now_ok";
+        serialSendDoc(r);
+
     } else if (strcmp(cmd, "get_address_list") == 0) {
         emitAddressList();
 
@@ -549,7 +580,7 @@ static void handleSerialCommand(const char* line) {
         // already on their way up, whatever the tail-end sentinel is still doing
         bool sleepUntilBroadcasting = (sleepUntilTaskHandle != NULL) && !sleepUntilWaking;
         r["sleepUntilActive"] = sleepUntilBroadcasting;
-        r["sleepUntilWaking"] = (sleepUntilTaskHandle != NULL) && sleepUntilWaking;
+        r["sleepUntilWaking"] = sleepUntilWaking; // true during either task's verified wake
         if (sleepUntilBroadcasting) {
             r["sleepUntilIndefinite"] = prefs.getBool("suIndef", false); // "sleep now", no wake time
             r["sleepUntilHours"]   = prefs.getInt("suH", 0);
@@ -1074,7 +1105,12 @@ void loop()
         }
     }
 
-    if (msgHandler.isInSleepPhase() && sleepBroadcastTaskHandle == NULL && sleepUntilTaskHandle == NULL) {
+    // "Wake Now" override expires on its own once we're past the scheduled sleep
+    // window (the schedule would wake them then anyway) — so tomorrow's sleep is normal
+    if (!msgHandler.isInSleepPhase()) sleepScheduleOverride = false;
+
+    if (msgHandler.isInSleepPhase() && !sleepScheduleOverride &&
+        sleepBroadcastTaskHandle == NULL && sleepUntilTaskHandle == NULL) {
         xTaskCreatePinnedToCore(sleepBroadcastTask, "sleepBroadcast", 4096, NULL, 1, &sleepBroadcastTaskHandle, 1);
     }
 }

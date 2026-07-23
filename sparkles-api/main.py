@@ -743,6 +743,14 @@ async def sleep_now():
     return _ok()
 
 
+@app.get("/wakeNow")
+async def wake_now():
+    # cancel ALL sleep activity (manual hold + recurring scheduled phase) and
+    # wake the whole fleet, verified until everyone returns
+    _send({"cmd": "wake_now"})
+    return _ok()
+
+
 @app.get("/getSystemInfo")
 async def get_system_info():
     return await _request({"cmd": "get_system_info"}, "system_info")

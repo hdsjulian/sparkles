@@ -10,7 +10,9 @@
     commandBlinkAll,
     commandAnimate,
     commandAnimationOff,
-    removeAllDevices
+    removeAllDevices,
+    sleepNow,
+    wakeNow
   } from '$lib/api.js';
   import DeviceCard from '$lib/components/DeviceCard.svelte';
 
@@ -59,6 +61,29 @@
     try {
       await commandSyncFast();
       actionMsg = 'Sync Fast sent — parallel batches of 5, much quicker';
+      setTimeout(() => { actionMsg = ''; }, 3000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleSleepNow() {
+    error = '';
+    if (!confirm('Put ALL devices to sleep now (no sync) and hold until Wake Now?')) return;
+    try {
+      await sleepNow();
+      actionMsg = 'Sleeping all devices now';
+      setTimeout(() => { actionMsg = ''; }, 3000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleWakeNow() {
+    error = '';
+    try {
+      await wakeNow();
+      actionMsg = 'Waking all devices — keeps going until every board returns';
       setTimeout(() => { actionMsg = ''; }, 3000);
     } catch (e) {
       error = e.message;
@@ -155,6 +180,10 @@
       <button class="btn btn-ghost" on:click={handleBlinkAll}>⚡ Blink All</button>
       <button class="btn btn-primary" on:click={handleAnimate} disabled={$animating}>▶ Animate</button>
       <button class="btn btn-ghost" on:click={handleAnimationOff} disabled={!$animating}>■ Stop Animation</button>
+    </div>
+    <div class="btn-row" style="margin-top:0.75rem;">
+      <button class="btn btn-warning" on:click={handleSleepNow}>💤 Sleep Now</button>
+      <button class="btn btn-primary" on:click={handleWakeNow}>☀️ Wake Now</button>
     </div>
   </div>
 

@@ -106,6 +106,9 @@ export const sleepUntilCancel = () =>
 export const sleepNow = () =>
   fetch(`${BASE}/sleepNow`).then(r => r.json());
 
+export const wakeNow = () =>
+  fetch(`${BASE}/wakeNow`).then(r => r.json());
+
 export const toggleLogging = () =>
   fetch(`${BASE}/toggleLogging`).then(r => r.json());
 

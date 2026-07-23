@@ -11,7 +11,7 @@
 
 SOCK="${SPARKLES_MUSIC_SOCK:-/tmp/music.sock}"
 CMD='{"cmd":"sleep_now"}'
-[ "$1" = "wake" ] && CMD='{"cmd":"sleep_until_cancel"}'
+[ "$1" = "wake" ] && CMD='{"cmd":"wake_now"}'
 
 if [ ! -S "$SOCK" ]; then
     echo "music socket $SOCK not found — is the sparkles service running?"
