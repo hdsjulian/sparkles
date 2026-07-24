@@ -130,6 +130,12 @@ static void sleepUntilTask(void* pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
     }
 
+    // Stop the idle animation loop before broadcasting sleep. Otherwise the master
+    // sends animations AND sleep at once (the resync path above even restarts the
+    // loop), and a napping client can catch an animation instead of the sleep ping
+    // and stay awake -> "some lights don't sleep". Also tells clients to go dark now.
+    msgHandler.stopAllAnimations();
+
     unsigned long long durationMicros = (unsigned long long)SLEEP_BROADCAST_DURATION_MS * 1000ULL;
     unsigned long phaseStart = millis();
     unsigned long phaseDurationMs = (unsigned long)totalSeconds * 1000UL;
@@ -241,6 +247,11 @@ static void sleepBroadcastTask(void* pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
+
+    // stop the idle animation loop (the resync above restarts it) so the master
+    // isn't broadcasting animations while broadcasting sleep — otherwise some
+    // clients catch an animation instead of the sleep ping and stay awake
+    msgHandler.stopAllAnimations();
 
     // stop broadcasting if Wake Now was pressed (sleepScheduleOverride) or manual
     // mode was enabled mid-phase (manualMode) — then the wake sequence below runs
