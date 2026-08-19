@@ -99,23 +99,27 @@ void LedHandler::setAnimation(message_animation& animationData) {
 #elif DEVICE_MODE == MASTER
 void LedHandler::setAnimation(message_animation& animationData) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-    unsigned long long now = esp_timer_get_time();
+    // the calculators return how long the animation lasts, not when it ends —
+    // adding esp_timer_get_time() here made the idle loop wait out the master's
+    // whole uptime between animations, so the ambient blink quietly stopped
+    // happening the longer the installation had been running
     switch (animationData.animationType) {
         case BACKGROUND_SHIMMER:
         case MIDI:
-            microsUntilEnd = 0;
+        case HEARTH:
+            microsUntilEnd = ANIMATION_ENDLESS; // runs until something replaces it
             break;
         case STROBE:
-            microsUntilEnd = now + calculateStrobeTime(animationData);
+            microsUntilEnd = calculateStrobeTime(animationData);
             break;
         case BLINK:
-            microsUntilEnd = now + calculateBlinkTime(animationData);
+            microsUntilEnd = calculateBlinkTime(animationData);
             break;
         case SYNC_ASYNC_BLINK:
-            microsUntilEnd = now + calculateSyncAsyncBlink(animationData);
+            microsUntilEnd = calculateSyncAsyncBlink(animationData);
             break;
         default:
-            microsUntilEnd = 0;
+            microsUntilEnd = 0; // unknown, the loop falls back to its own pacing
             break;
     }
     xSemaphoreGive(configMutex);

@@ -145,6 +145,15 @@ public:
     void startAnnounceAddressTask();
     void startClapSyncTask();
     void startAnimationLoopTask();
+    void stopAnimationLoop();
+    // Restart the idle loop only if it was ever switched on. Sync/sleep/wake all
+    // stop it and put it back afterwards, and those restores used to start it
+    // from nothing — so a master reboot followed by clients announcing lit the
+    // whole installation up on its own. Ambient is now opt-in per session.
+    void resumeAnimationLoop() { if (animationLoopEnabled) startAnimationLoopTask(); }
+    void setAnimationLoopEnabled(bool on) { animationLoopEnabled = on; }
+    // non-blocking: ask the loop to end without waiting for it (hot MIDI path)
+    void requestAnimationLoopStop() { if (animationLoopHandle != nullptr) animationLoopStop = true; }
     bool isAnimationLoopRunning() { return animationLoopHandle != nullptr; }
     animationEnum getLastAnimationType() { return lastAnimationType; }
     void startDarkroomTask();
@@ -224,6 +233,9 @@ private:
     volatile unsigned long lastSleepMsgMillis = 0;
     volatile unsigned long long lastSleepMsgDuration = 0;
     volatile unsigned long lastMasterMsgMillis = 0;
+    // emitter's stamp for the chirp currently being recorded, in master time.
+    // Stamped in onDataRecv: the clap task blocks the receive task while it records.
+    volatile unsigned long long lastChirpEmission = 0;
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};

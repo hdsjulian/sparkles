@@ -140,15 +140,26 @@ void LedHandler::batteryBlink(float batteryPercentage) {
     blink(esp_timer_get_time(), 100, 1, hue, sat, val);
 }
 
+// 0 when the remaining time is unknown or the animation is endless — callers
+// that care about the difference ask isAnimationEndless()
 TickType_t LedHandler::getNextAnimationTicks() {
+    TickType_t nextTicks = 0;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        TickType_t nextTicks = microsToTicks((unsigned long long)microsUntilEnd);
+        if (microsUntilEnd > 0) {
+            nextTicks = microsToTicks((unsigned long long)microsUntilEnd);
+        }
         xSemaphoreGive(configMutex);
-        return nextTicks;
     }
-    else {
-        return 0;
+    return nextTicks;
+}
+
+bool LedHandler::isAnimationEndless() {
+    bool endless = false;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        endless = (microsUntilEnd == ANIMATION_ENDLESS);
+        xSemaphoreGive(configMutex);
     }
+    return endless;
 }
 
 void LedHandler::setMicrosUntilEnd(message_animation& animationData) {
@@ -161,9 +172,12 @@ void LedHandler::setMicrosUntilEnd(message_animation& animationData) {
     }
 }
 
+// a second before the loop's first animation. Was esp_timer_get_time() + 1s,
+// which is a timestamp in a field holding a duration — the loop then slept for
+// the master's entire uptime before it ever broadcast anything.
 void LedHandler::resetMicrosUntilEnd() {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        microsUntilEnd = esp_timer_get_time() + 1000000;
+        microsUntilEnd = 1000000;
         xSemaphoreGive(configMutex);
     }
     else {

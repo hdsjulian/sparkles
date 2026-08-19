@@ -200,7 +200,7 @@ static void runVerifiedWake(bool wasCancelled) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 
-    msgHandler.startAnimationLoopTask();
+    msgHandler.resumeAnimationLoop();
     {
         JsonDocument r; r["event"] = "sleep_until_wake_done";
         r["returned"] = (returned < 0) ? 0 : returned; r["expected"] = total;
@@ -338,7 +338,12 @@ static void handleSerialCommand(const char* line) {
 
     } else if (strcmp(cmd, "animate_toggle") == 0) {
         bool running = msgHandler.isAnimationLoopRunning();
-        running ? msgHandler.stopAllAnimations() : msgHandler.startAnimationLoopTask();
+        if (running) {
+            msgHandler.setAnimationLoopEnabled(false); // stays off until asked for again
+            msgHandler.stopAllAnimations();
+        } else {
+            msgHandler.startAnimationLoopTask();
+        }
         JsonDocument r;
         r["event"] = "animate_status";
         r["status"] = !running;
@@ -346,6 +351,7 @@ static void handleSerialCommand(const char* line) {
         serialSendDoc(r);
 
     } else if (strcmp(cmd, "animation_off") == 0) {
+        msgHandler.setAnimationLoopEnabled(false); // stays off until asked for again
         msgHandler.stopAllAnimations();
 
     } else if (strcmp(cmd, "get_animate_status") == 0) {
@@ -1149,8 +1155,8 @@ void loop()
         } // !musicActive
 
         if (millis() - msgHandler.getLastMidiTime() > MIDI_IDLE_ANIMATION_MS && msgHandler.getLastMidiTime() > 0) {
-            ESP_LOGI("MSG", "No MIDI message for %d minutes, starting animation loop", MIDI_IDLE_ANIMATION_MS / 60000);
-            msgHandler.startAnimationLoopTask();
+            ESP_LOGI("MSG", "No MIDI message for %d minutes, resuming the idle animation", MIDI_IDLE_ANIMATION_MS / 60000);
+            msgHandler.resumeAnimationLoop();
             msgHandler.setLastMidiTime(0);
         }
     }

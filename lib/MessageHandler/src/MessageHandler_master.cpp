@@ -146,10 +146,7 @@ void MessageHandler::handleReceive() {
                         continue;
                     }
                     // Stop animation loop during sync so it doesn't interfere with lastDelay timing
-                    if (animationLoopHandle != NULL) {
-                        vTaskDelete(animationLoopHandle);
-                        animationLoopHandle = NULL;
-                    }
+                    stopAnimationLoop();
                     message_address address = (message_address)incomingData.payload.address;
                     int index = addOrGetAddressId(address.address);
                     ESP_LOGI("MSG", "Address from index %d, total %d", index, getNumDevices());
@@ -205,7 +202,7 @@ void MessageHandler::handleReceive() {
                 writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
                 sendSystemStatus();
                 serialEmitBoard(timerIndex, addressList[timerIndex]);
-                startAnimationLoopTask();
+                resumeAnimationLoop();
             }
             else if (incomingData.messageType == MSG_STATUS) {
                 for (int i = 0; i < NUM_DEVICES; i++) {
@@ -224,10 +221,7 @@ void MessageHandler::handleReceive() {
                      (incomingData.payload.animation.animationType == MIDI ||
                       incomingData.payload.animation.animationType == BACKGROUND_SHIMMER)) {
                 lastMidiTime = millis();
-                if (animationLoopHandle != NULL) {
-                    vTaskDelete(animationLoopHandle);
-                    animationLoopHandle = NULL;
-                }
+                requestAnimationLoopStop(); // don't block the MIDI path waiting for it
             }
 
             // Doesn't need to be sent so nothing will happen right now
@@ -521,6 +515,10 @@ void MessageHandler::runOTAUpdateTask() {
 }
 
 void MessageHandler::startCalculatePositionsTask() {
+    if (calculatePositionsHandle != NULL && eTaskGetState(calculatePositionsHandle) != eDeleted) {
+        ESP_LOGW("MSG", "Position solve already running, ignoring");
+        return;
+    }
     xTaskCreatePinnedToCore(calculatePositionsTaskWrapper, "calculatePositions", 10000, this, 2, &calculatePositionsHandle, 0);
 }
 void MessageHandler::calculatePositionsTaskWrapper(void *pvParameters) {
@@ -886,6 +884,8 @@ void MessageHandler::calculateDistances() {
     message_data maxDistMsg = createCommandMessage(CMD_SET_MAX_DISTANCE, true);
     maxDistMsg.payload.command.param = maxDist;
     pushToSendQueue(maxDistMsg);
+
+    writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress"); // keep the distances over a reboot
 }
 
 void MessageHandler::startCalibrationMaster() {
@@ -990,7 +990,9 @@ void MessageHandler::commandCalibrate(int boardId) {
 }
 
 void MessageHandler::startAnimationLoopTask() {
+    animationLoopEnabled = true; // explicit start, restores may bring it back
     if (animationLoopHandle != NULL) return;
+    animationLoopStop = false;
     xTaskCreatePinnedToCore(runAnimationLoopWrapper, "runAnimationLoop", 10000, this, 2, &animationLoopHandle, 0);
 }
 void MessageHandler::runAnimationLoopWrapper(void *pvParameters) {
@@ -1000,30 +1002,63 @@ void MessageHandler::runAnimationLoopWrapper(void *pvParameters) {
 
 void MessageHandler::runAnimationLoop() {
     ledInstance->resetMicrosUntilEnd();
-    while (true) {
-        TickType_t ticksUntilStart = ledInstance->getNextAnimationTicks();
-        if (ticksUntilStart > 0 ) {
-            TickType_t currentTicks = xTaskGetTickCount();
-            vTaskDelayUntil(&currentTicks, ticksUntilStart);
-        }   else {
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // Waits are sliced so a stop request is noticed within ~50ms instead of
+    // sitting out a multi-second delay. Blink timing doesn't suffer: the sync
+    // precision comes from the startTime stamped below, not from when we wake.
+    const TickType_t SLICE = pdMS_TO_TICKS(50);
+    while (!animationLoopStop) {
+        // Something permanent is on air — shimmer, MIDI, hearth. Wait it out
+        // rather than broadcasting over the top of it; when it is switched off
+        // the animation goes back to a known length and pacing resumes.
+        if (ledInstance->isAnimationEndless()) {
+            for (int i = 0; i < 10 && !animationLoopStop; i++) vTaskDelay(SLICE);
+            continue;
         }
+        TickType_t ticksUntilStart = ledInstance->getNextAnimationTicks();
+        TickType_t target = ticksUntilStart > 0 ? ticksUntilStart : pdMS_TO_TICKS(1000);
+        for (TickType_t waited = 0; waited < target && !animationLoopStop; waited += SLICE) {
+            vTaskDelay(SLICE);
+        }
+        if (animationLoopStop) break;
         message_animation newAnimation;
         newAnimation = ledInstance->createSyncAsyncBlinkRandom();
         newAnimation.animationParams.syncAsyncBlink.startTime = esp_timer_get_time() + 1000000;
         sendAnimation(newAnimation, -1);
 
     }
-
+    // exit on our own terms so nobody vTaskDeletes us mid-send
+    animationLoopHandle = NULL;
+    vTaskDelete(NULL);
 }
 
-void MessageHandler::stopAllAnimations() {
-    if (animationLoopHandle != NULL) {
+// Stop the idle animation loop safely. Never vTaskDelete it: it runs pinned to
+// core 0 while callers sit on core 1, so an async delete can land in the middle
+// of sendAnimation() (or a malloc) and leave the master wedged or panicking —
+// that's what made sleep_now silently kill the master whenever the loop was
+// actually running. Instead ask it to stop and wait for it to leave the loop.
+void MessageHandler::stopAnimationLoop() {
+    if (animationLoopHandle == NULL) return;
+    animationLoopStop = true;
+    for (int i = 0; i < 100 && animationLoopHandle != NULL; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (animationLoopHandle != NULL) { // wedged in a send — last resort
+        ESP_LOGW("MSG", "animation loop did not exit in 1s, deleting");
         vTaskDelete(animationLoopHandle);
         animationLoopHandle = NULL;
     }
+    animationLoopStop = false;
+}
+
+void MessageHandler::stopAllAnimations() {
+    // deliberately does not clear animationLoopEnabled: the sleep paths call
+    // this every night and ambient has to come back at wake. Only the explicit
+    // user-facing stops clear it, via setAnimationLoopEnabled(false).
+    stopAnimationLoop();
     ESP_LOGI("MSG", "Stopping all animations");
-    message_animation stopAnimation;
+    // zero-initialised: the params ride along to every client, and garbage in
+    // startTime made clients schedule the OFF absurdly far out and never darken
+    message_animation stopAnimation{};
     stopAnimation.animationType = OFF;
     sendAnimation(stopAnimation, -1);
     ledInstance->setAnimation(stopAnimation);

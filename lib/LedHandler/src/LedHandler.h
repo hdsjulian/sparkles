@@ -41,7 +41,12 @@ public:
     long long getMicrosUntilStart();
     void setMicrosUntilStart(unsigned long long masterStartTime);
     unsigned long long calculateMicrosUntilStart(unsigned long long masterStartTime);
+    // microsUntilEnd is how much longer the current animation has to run.
+    // Endless and unknown are different answers and the idle loop treats them
+    // differently: it waits out an endless one, and paces itself past unknown.
+    static constexpr long long ANIMATION_ENDLESS = -1;
     TickType_t getNextAnimationTicks();
+    bool isAnimationEndless();
     void setMicrosUntilEnd(message_animation& animationData);
     void resetMicrosUntilEnd();
 

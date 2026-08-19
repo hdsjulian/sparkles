@@ -121,15 +121,12 @@ void MessageHandler::startFastResyncTask() {
     if (fastResyncHandle != NULL) {
         return;
     }
-    if (animationLoopHandle != NULL) {
-        vTaskDelete(animationLoopHandle);
-        animationLoopHandle = NULL;
-    }
+    stopAnimationLoop();
     xTaskCreatePinnedToCore([](void* pv) {
         MessageHandler* self = (MessageHandler*)pv;
         self->runFastResyncAll();
         self->fastResyncHandle = NULL;
-        self->startAnimationLoopTask();
+        self->resumeAnimationLoop();
         vTaskDelete(NULL);
     }, "fastResync", 4096, this, 2, &fastResyncHandle, 1);
 }
@@ -208,8 +205,7 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
         }
     }
     if (numAdresses > 0) {
-        ESP_LOGI("TIMER", "RUNNING ANIMATION LOOP TASK FROM ALL TIMER SYNC");
-        messageHandlerInstance->startAnimationLoopTask();
+        messageHandlerInstance->resumeAnimationLoop();
     }
     messageHandlerInstance->allTimerSyncHandle = NULL;
     vTaskDelete(NULL);
@@ -370,7 +366,7 @@ void MessageHandler::runTimerSync() {
             addressList[timerIndex].active = ACTIVE;
             addressList[timerIndex].lastUpdateTime = millis();
         }
-        startAnimationLoopTask();
+        resumeAnimationLoop();
         // runTimerSync() runs two ways: as its own task (single-board "sync",
         // tracked by timerSyncHandle -> self-delete is correct) or as a plain
         // synchronous call from runAllTimerSyncWrapper's per-device loop ("sync
