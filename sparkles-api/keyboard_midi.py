@@ -31,6 +31,8 @@ log = logging.getLogger("keyboard_midi")
 
 RETRY_DELAY = 3.0
 SUSTAIN_CC  = 64
+INPUT_POLL   = 0.002  # drain interval, worst case 2 ms of added note latency
+PORT_CHECK   = 1.0    # how often to check the keyboard is still on the bus
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--sock",        default=os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock"),
@@ -328,8 +330,23 @@ while True:
     log.info("MIDI ports open: %s", in_port.name)
 
     try:
-        for msg in in_port:
-            _handle_input(msg)
+        # Polled rather than the blocking `for msg in in_port`. A keyboard that
+        # reboots takes its ALSA port with it, and rtmidi does not raise for
+        # that — the blocking read simply goes quiet forever, so the reconnect
+        # below never ran and only a service restart brought MIDI back.
+        last_check = time.monotonic()
+        while True:
+            for msg in in_port.iter_pending():
+                _handle_input(msg)
+            time.sleep(INPUT_POLL)
+            now = time.monotonic()
+            if now - last_check >= PORT_CHECK:
+                last_check = now
+                # re-enumerating on a reboot gives the port a new ALSA client
+                # id, so the old name vanishing is the signal to reopen
+                if in_port.name not in mido.get_input_names():
+                    log.warning("MIDI port %s disappeared — reconnecting", in_port.name)
+                    break
     except Exception as e:
         log.error("MIDI input error: %s — reconnecting", e)
     finally:
