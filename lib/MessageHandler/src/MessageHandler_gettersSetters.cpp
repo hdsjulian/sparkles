@@ -567,6 +567,14 @@ bool MessageHandler::isInSleepPhase() {
         struct timeval tv;
         gettimeofday(&tv, nullptr);
         time_t now = tv.tv_sec;
+        // Never sleep on a clock we do not trust. With no time set the clock
+        // reads 1970-01-01 00:00:00, and midnight sits inside any overnight
+        // window — so a master that booted before the pi handed it the time
+        // would put the whole installation to sleep on the spot.
+        if (now < 1700000000) {
+            xSemaphoreGive(configMutex);
+            return false;
+        }
         struct tm *currentTime = localtime(&now);
         int currentSeconds = currentTime->tm_hour * 3600 + currentTime->tm_min * 60 + currentTime->tm_sec;
         int sleepSeconds = sleepTimeHours * 3600 + sleepTimeMinutes * 60 + sleepTimeSeconds-1;

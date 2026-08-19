@@ -277,6 +277,12 @@ void MessageHandler::resetSystem() {
     }
     pendingBroadcastCommand = CMD_RESET_SYSTEM;
     pendingBroadcastExpiry = millis() + 5000;
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-    ESP.restart();
+    // Wait for the pending broadcast window from a task, not here. This runs
+    // from the serial handler inside loop(), and the loop watchdog panics at
+    // exactly 5 s — so the inline delay tripped it and the master died by
+    // watchdog panic instead of restarting cleanly.
+    xTaskCreatePinnedToCore([](void*) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        ESP.restart();
+    }, "resetRestart", 2048, nullptr, 1, nullptr, 1);
 }

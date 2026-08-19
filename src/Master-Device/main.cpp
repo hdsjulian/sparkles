@@ -9,6 +9,7 @@
 #include <Version.h>
 #include <ArduinoJson.h>
 #include "esp_sleep.h"
+#include "esp_system.h"
 #include "soc/rtc.h"
 #include <Preferences.h>
 
@@ -242,16 +243,13 @@ static void sleepBroadcastTask(void* pvParameters) {
         serialSendDoc(r);
     }
 
-    // Resync all clients once before sending sleep so they wake up with aligned timers.
-    msgHandler.startFastResyncTask();
-    while (msgHandler.isFastResyncRunning()) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-    vTaskDelay(pdMS_TO_TICKS(3000)); // clients still blink/settle after a resync — give them 3s before the first sleep broadcast
-
-    // stop the idle animation loop (the resync above restarts it) so the master
-    // isn't broadcasting animations while broadcasting sleep — otherwise some
-    // clients catch an animation instead of the sleep ping and stay awake
+    // Same shape as sleep_now and sleep_until: no opening resync. Aligning
+    // timers on the way down buys nothing — a night of clock drift undoes it,
+    // and the resync that matters happens on the way back up, when every board
+    // announces itself and the master syncs it then. A sweep here only delays
+    // the sleep and spends minutes of unicast on boards about to go dark.
+    // Animations off first, so a napping client's listen window catches the
+    // sleep ping rather than an animation, which it would read as morning.
     msgHandler.stopAllAnimations();
 
     // stop broadcasting if Wake Now was pressed (sleepScheduleOverride) or manual
@@ -260,22 +258,16 @@ static void sleepBroadcastTask(void* pvParameters) {
         msgHandler.sendSleepWakeupMessage(durationMicros);
         vTaskDelay(pdMS_TO_TICKS(SLEEP_BROADCAST_INTERVAL_MS));
     }
-    // Sleep phase ended — reannounce so clients that are awake can re-pair
-    msgHandler.setAddressListInactive();
-    msgHandler.startBroadcastSettleTask();
-    msgHandler.broadcastReannounce();
+    // Wake Now or manual mode ending the phase is a cancel, same as the manual paths
+    bool wasCancelled = sleepScheduleOverride || manualMode;
     {
         JsonDocument r; r["event"] = "sleep_phase"; r["status"] = "end";
         serialSendDoc(r);
     }
-    // Clients fail closed and keep sleeping through silence, so shout "morning"
-    // (zero duration = wake sentinel) for two full sleep chunks plus margin —
-    // a board that misses its entire first listen window gets a second full chance.
-    unsigned long sentinelStart = millis();
-    while (millis() - sentinelStart < 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL) {
-        msgHandler.sendSleepWakeupMessage(0);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
+    // Exactly the wake the manual paths use: mark everyone inactive, shout the
+    // morning sentinel until every board has actually announced and resynced
+    // rather than for a fixed window and hope, then restart the animation loop.
+    runVerifiedWake(wasCancelled);
     sleepBroadcastTaskHandle = NULL;
     vTaskDelete(NULL);
 }
@@ -489,10 +481,12 @@ static void handleSerialCommand(const char* line) {
             JsonDocument r; r["event"] = "sleep_now_ok"; r["detail"] = "already sleeping";
             serialSendDoc(r);
         } else {
-            int* target = new int[5]{ 0, 0, 0, 1, 1 }; // skipResync=1, indefinite=1
-            xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
+            // ack before spawning: if the task ever dies on startup the pi still
+            // sees that the command was understood, instead of total silence
             JsonDocument r; r["event"] = "sleep_now_ok"; r["detail"] = "broadcasting sleep";
             serialSendDoc(r);
+            int* target = new int[5]{ 0, 0, 0, 1, 1 }; // skipResync=1, indefinite=1
+            xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
         }
 
     } else if (strcmp(cmd, "sleep_until_cancel") == 0) {
@@ -647,7 +641,17 @@ static void handleSerialCommand(const char* line) {
         msgHandler.setOtaUrl(url);
     }
     else if (strcmp(cmd, "reannounce") == 0)             { msgHandler.broadcastReannounce(); }
-    else if (strcmp(cmd, "reset_system") == 0)           { msgHandler.resetSystem(); }
+    else if (strcmp(cmd, "reset_system") == 0) {
+        // A reset comes back awake. Otherwise a "sleep now" left in NVS resumes
+        // on the very next boot and the freshly reset installation sits dark,
+        // and manual mode would keep ignoring the schedule afterwards.
+        prefs.putBool("suActive", false);
+        prefs.putBool("suIndef", false);
+        prefs.putBool("manualMode", false);
+        manualMode = false;
+        sleepScheduleOverride = false;
+        msgHandler.resetSystem();
+    }
     else if (strcmp(cmd, "reset_clients") == 0)          { msgHandler.broadcastResetClients(); }
 
     else if (strcmp(cmd, "toggle_test_mode") == 0) {
@@ -965,6 +969,13 @@ static void handleSerialCommand(const char* line) {
             sleepTestTaskHandle = NULL;
             vTaskDelete(NULL);
         }, "sleepTest", 8192, p, 1, &sleepTestTaskHandle, 1);
+
+    } else {
+        // Nothing matched. Say so: a silently ignored command is indistinguishable
+        // from a line that never arrived, which is exactly what made sleep_now
+        // impossible to diagnose from the pi side.
+        JsonDocument r; r["event"] = "unknown_cmd"; r["cmd"] = cmd;
+        serialSendDoc(r);
     }
 }
 
@@ -1045,19 +1056,39 @@ void setup()
         }
     }
 
-    // On boot, invite every client to re-register — not just when the saved list
-    // is empty. A power-cycle (routine here) resets the master's esp_timer while
-    // clients keep running on stale offsets; the boot-time unicast settle only
-    // reaches clients it can contact right then, so any that were briefly
-    // unreachable get stranded (they think they're synced, so they never
-    // re-announce, and "sync" can't recover a client the master can't reach).
-    // A broadcast reannounce rebuilds contact with the whole awake fleet and
-    // resyncs them against the fresh clock. Skip it if we're (re)entering a
-    // sleep state — sleeping clients should stay down, and the sleep/wake
-    // sequences do their own reannounce at morning.
-    bool enteringSleep = (sleepUntilTaskHandle != NULL) || msgHandler.isInSleepPhase();
-    if (!enteringSleep) {
-        msgHandler.broadcastReannounce();
+    // Nothing else on boot: no reannounce, no sync sweep. A power cycle does
+    // reset the master's esp_timer and leave every client holding a stale
+    // offset, but recovering that here means inviting the whole fleet to
+    // re-announce, and every announce costs a sequential per-client sync.
+    // Clients resync themselves when they announce after their next wake from
+    // sleep. Until then a stale offset makes their animations fire immediately
+    // instead of in step (calculateMicrosUntilStart clamps both directions, so
+    // nothing freezes) — visibly sloppy, never dead. Sync Fast from the
+    // dashboard forces the whole fleet back into step on demand.
+
+    // Why we restarted, on every boot. A reboot loop is otherwise invisible from
+    // the pi side: the log just starts over with no hint whether it was a panic,
+    // the loop watchdog (5 s, panic mode) or a brownout.
+    {
+        const char* why = "unknown";
+        switch (esp_reset_reason()) {
+            case ESP_RST_POWERON:  why = "power_on";   break;
+            case ESP_RST_SW:       why = "software";   break; // ESP.restart(), e.g. reset_system
+            case ESP_RST_PANIC:    why = "panic";      break;
+            case ESP_RST_INT_WDT:  why = "int_wdt";    break;
+            case ESP_RST_TASK_WDT: why = "task_wdt";   break; // loop() stalled past 5 s
+            case ESP_RST_WDT:      why = "other_wdt";  break;
+            case ESP_RST_BROWNOUT: why = "brownout";   break; // supply sagged
+            case ESP_RST_DEEPSLEEP: why = "deepsleep"; break;
+            case ESP_RST_EXT:      why = "external";   break;
+            default: break;
+        }
+        JsonDocument r;
+        r["event"]  = "boot";
+        r["reason"] = why;
+        r["version"] = VERSION;
+        serialSendDoc(r);
+        ESP_LOGW("BOOT", "Reset reason: %s", why);
     }
 
     // no webserver, the serial bridge handles all communication

@@ -31,8 +31,14 @@ void MessageHandler::setup(LedHandler &globalLedInstance) {
     #if (DEVICE_MODE == MASTER)
         ESP_LOGI("MSG", "Master setup");
         bool noClientList = !LittleFS.exists("/clientAddress");
+        // Restores the list with every board marked inactive, and that is all
+        // the master does on boot. No settle, no sync sweep: the settle used to
+        // unicast a timer burst to every board in the list — most of them asleep
+        // — and then run a full sequential sync on top of it, minutes of traffic
+        // aimed largely at radios that were not listening. Clients resync
+        // themselves when they announce, which they do on their next wake from
+        // sleep; Sync Fast forces it sooner.
         handleAddressStruct();
-        startBroadcastSettleTask();
         if (noClientList) {
             ESP_LOGI("MSG", "No client list found, broadcasting CMD_REANNOUNCE");
             delay(500);
