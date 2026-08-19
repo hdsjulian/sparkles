@@ -10,7 +10,10 @@
     commandStartDistanceCalibration,
     commandContinueDistanceCalibration,
     commandAbortDistanceCalibration,
-    commandTestCalibration
+    commandChirpAtPosition,
+    commandTestCalibration,
+    solveMap,
+    clearMap
   } from '$lib/api.js';
 
   // ---- Calibration state machine ----
@@ -29,6 +32,21 @@
   let distState = 'idle';
   let distError = '';
   let distMsg = '';
+
+  // ---- Chirp position calibration (trilateration) ----
+  // One burst of ten chirps per location, three or more locations, then solve.
+  let posX = 0;
+  let posY = 0;
+  let posBusy = false;
+  let posMsg = '';
+  let posError = '';
+  let posLocations = [];   // { slot, x, y, boards }
+
+  // ---- Anchor-free map (solved on the Pi, no coordinates needed) ----
+  let mapBusy = false;
+  let mapError = '';
+  let mapResult = null;
+  let mapFlip = false;
 
   // ---- Test ----
   let testMsg = '';
@@ -215,6 +233,83 @@
     }
   }
 
+  // ---- Chirp position calibration ----
+  async function chirpHere() {
+    posError = '';
+    posBusy = true;
+    posMsg = 'Resyncing clocks...';
+    try {
+      await commandChirpAtPosition(posX, posY);
+    } catch (e) {
+      posBusy = false;
+      posError = e.message;
+    }
+  }
+
+  async function solvePositions() {
+    posError = '';
+    posBusy = true;
+    posMsg = 'Solving positions...';
+    try {
+      await commandEndCalibration();
+    } catch (e) {
+      posBusy = false;
+      posError = e.message;
+    }
+  }
+
+  async function resetPositions() {
+    posError = '';
+    try {
+      await commandResetCalibration();
+      posLocations = [];
+      posMsg = '';
+    } catch (e) {
+      posError = e.message;
+    }
+  }
+
+  // ---- Anchor-free map ----
+  async function runSolveMap(push) {
+    mapError = '';
+    mapBusy = true;
+    try {
+      mapResult = await solveMap(push, mapFlip);
+    } catch (e) {
+      mapError = e.message;
+      mapResult = null;
+    } finally {
+      mapBusy = false;
+    }
+  }
+
+  async function resetMap() {
+    mapError = '';
+    mapResult = null;
+    try {
+      await clearMap();
+    } catch (e) {
+      mapError = e.message;
+    }
+  }
+
+  // fit the solved cloud into the preview box
+  function mapView(result, size = 260, pad = 18) {
+    const pts = [...result.boards.map(b => ({ ...b, kind: 'board' })),
+                 ...result.spots.map(s => ({ ...s, kind: 'spot' }))];
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const span = Math.max(maxX - minX, maxY - minY, 1);
+    const scale = (size - 2 * pad) / span;
+    return pts.map(p => ({
+      ...p,
+      // y flipped: SVG counts downward, a map does not
+      cx: pad + (p.x - minX) * scale,
+      cy: size - pad - (p.y - minY) * scale
+    }));
+  }
+
   // ---- Test ----
   async function handleTest() {
     testError = '';
@@ -334,19 +429,125 @@
     {#if distState === 'idle'}
       <div class="btn-row">
         <button class="btn btn-primary" on:click={startDistanceCalibration}>Start Distance Calibration</button>
+        <span class="state-hint" style="align-self:center;">10 chirps, averaged per board</span>
       </div>
 
     {:else if distState === 'running'}
-      <p class="state-hint">Move to the reference distance and confirm each step.</p>
+      <p class="state-hint">Resyncing clocks, then chirping ten times. Takes a few seconds, nothing to confirm.</p>
       <div class="btn-row">
-        <button class="btn btn-secondary" on:click={continueDistanceCalibration}>Continue</button>
         <button class="btn btn-ghost" on:click={abortDistanceCalibration}>Abort</button>
       </div>
 
     {:else if distState === 'done'}
       <div class="btn-row">
+        <button class="btn btn-primary" on:click={rerunDistanceCalibration}>Run Again</button>
         <button class="btn btn-ghost" on:click={() => { distState = 'idle'; distMsg = ''; }}>Reset</button>
       </div>
+    {/if}
+  </div>
+
+  <!-- ======== Chirp Position Calibration ======== -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Position Calibration (Chirp)</div>
+
+    <p class="state-hint">
+      Put the chirp device at a known spot, enter its coordinates and chirp. Ten chirps per
+      spot, averaged per board. Repeat from at least three spots that are not in a straight
+      line, then solve.
+    </p>
+
+    {#if posError}
+      <div class="status-msg error">{posError}</div>
+    {/if}
+    {#if posMsg}
+      <div class="status-msg info">{posMsg}</div>
+    {/if}
+
+    <div class="form-row" style="margin-bottom:0.75rem;">
+      <div class="form-group">
+        <label>Chirp X</label>
+        <input type="number" step="0.001" bind:value={posX} disabled={posBusy} />
+      </div>
+      <div class="form-group">
+        <label>Chirp Y</label>
+        <input type="number" step="0.001" bind:value={posY} disabled={posBusy} />
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" on:click={chirpHere} disabled={posBusy}>Chirp Here</button>
+      <!-- not gated on the local count: after a page reload the master still
+           holds the locations but this list starts empty -->
+      <button class="btn btn-secondary" on:click={solvePositions} disabled={posBusy}>
+        Solve Positions ({posLocations.length})
+      </button>
+      <button class="btn btn-ghost" on:click={resetPositions} disabled={posBusy}>Reset</button>
+    </div>
+
+    {#if posLocations.length}
+      <ul class="loc-list">
+        {#each posLocations as loc}
+          <li>#{loc.slot + 1} ({loc.x.toFixed(2)}, {loc.y.toFixed(2)}) — {loc.boards} boards</li>
+        {/each}
+      </ul>
+    {/if}
+  </div>
+
+  <!-- ======== Anchor-free map ======== -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Map Without Coordinates</div>
+
+    <p class="state-hint">
+      Solves every board's position from the chirp distances alone — where you stood is
+      an unknown too, so the coordinates above can stay at zero. Chirp from four or more
+      spots that are spread out and roughly surround the boards, then solve. The result is
+      correct up to a mirror flip, which the distances cannot settle.
+    </p>
+
+    {#if mapError}
+      <div class="status-msg error">{mapError}</div>
+    {/if}
+
+    <div class="btn-row">
+      <button class="btn btn-primary" on:click={() => runSolveMap(false)} disabled={mapBusy}>
+        {mapBusy ? 'Solving...' : 'Solve Map'}
+      </button>
+      <button class="btn btn-secondary" on:click={() => runSolveMap(true)} disabled={mapBusy || !mapResult}>
+        Send to Boards
+      </button>
+      <label class="flip-toggle">
+        <input type="checkbox" bind:checked={mapFlip} disabled={mapBusy} /> mirror
+      </label>
+      <button class="btn btn-ghost" on:click={resetMap} disabled={mapBusy}>Clear</button>
+    </div>
+
+    {#if mapResult}
+      <div class="map-stats">
+        <span><strong>{mapResult.boards.length}</strong> boards</span>
+        <span><strong>{mapResult.spots.length}</strong> spots</span>
+        <span>fit <strong>{mapResult.rms} m</strong></span>
+        <span>speaker offset <strong>{mapResult.offset} m</strong></span>
+        {#if mapResult.untrusted}
+          <span class="warn">{mapResult.untrusted} board(s) heard too few spots</span>
+        {/if}
+        {#if mapResult.pushed !== undefined}
+          <span class="ok">sent {mapResult.pushed} positions</span>
+        {/if}
+      </div>
+
+      <svg class="map-view" viewBox="0 0 260 260" role="img" aria-label="Solved board map">
+        {#each mapView(mapResult) as p}
+          {#if p.kind === 'spot'}
+            <rect x={p.cx - 4} y={p.cy - 4} width="8" height="8" class="spot" />
+          {:else}
+            <circle cx={p.cx} cy={p.cy} r="3.5" class:untrusted={!p.trusted} class="board" />
+          {/if}
+        {/each}
+      </svg>
+      <p class="state-hint" style="margin-top:0.5rem;">
+        Squares are the chirp spots the solver recovered, circles are boards. Hollow circles
+        heard fewer than three spots and are not sent to the mesh.
+      </p>
     {/if}
   </div>
 

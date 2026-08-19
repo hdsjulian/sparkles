@@ -24,6 +24,9 @@ export const calibrationStatus = writable(null);
 // Distance calibration status from SSE
 export const distanceStatus = writable(null);
 
+// Chirp position calibration status from SSE { status, slot, x, y, chirp, boards }
+export const positionStatus = writable(null);
+
 // Last clientClap event
 export const clientClap = writable(null);
 

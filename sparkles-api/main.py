@@ -23,7 +23,11 @@ from pydantic import BaseModel
 
 import auth
 import compile as fw_compile
+import mapsolve
 from serial_bridge import bridge
+
+# chirp distances collected from the mesh, fed by _map_measurement_collector
+map_data = mapsolve.MapMeasurements()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("sparkles")
@@ -93,6 +97,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_battery_low_watcher())
     asyncio.create_task(_heap_low_watcher())
     asyncio.create_task(_mesh_event_watcher())
+    asyncio.create_task(_map_measurement_collector())
     yield
     bridge.stop()
 
@@ -400,6 +405,26 @@ async def _heap_low_watcher():
                         logger.warning("heap-low relay failed: %s", exc)
             else:
                 low = False  # recovered → re-arm for the next dip
+    finally:
+        bridge.unsubscribe(queue)
+
+
+async def _map_measurement_collector():
+    """Keep the chirp distance matrix for the anchor-free solve.
+
+    The master emits one chirp_distance per board at the end of every burst, and
+    announces the slot it is about to measure — a re-run of a spot replaces it.
+    """
+    queue = bridge.subscribe()
+    try:
+        while True:
+            frame = await queue.get()
+            event = frame.get("event")
+            if event == "chirp_distance":
+                map_data.record(frame.get("boardId"), frame.get("slot"), frame.get("distance"))
+            elif event in ("position_status", "distance_status") and frame.get("status") == "running":
+                if frame.get("chirp") in (0, None):   # start of a burst, not a per-chirp tick
+                    map_data.clear_slot(frame.get("slot", 0))
     finally:
         bridge.unsubscribe(queue)
 

@@ -9,6 +9,7 @@
 
   const allLinks = [
     { href: '/',            label: 'Dashboard',   icon: '⊞', roles: ['admin', 'user'] },
+    { href: '/map',         label: 'Map',          icon: '🗺', roles: ['admin', 'user'] },
     { href: '/battery',     label: 'Battery',      icon: '🔋', roles: ['admin', 'user'] },
     { href: '/settings',    label: 'Settings',     icon: '⚙',  roles: ['admin'] },
     { href: '/animations',  label: 'Animations',   icon: '✨', roles: ['admin', 'user'] },

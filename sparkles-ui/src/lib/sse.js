@@ -7,6 +7,7 @@ import {
   currentAnimationName,
   calibrationStatus,
   distanceStatus,
+  positionStatus,
   clientClap,
   deviceListError
 } from './stores.js';
@@ -108,6 +109,13 @@ export function setupSSE() {
   };
   es.addEventListener('distance_status', onDistance);
   es.addEventListener('distanceStatus',  onDistance);
+
+  const onPosition = (e) => {
+    try { positionStatus.set(JSON.parse(e.data)); }
+    catch { positionStatus.set({ status: e.data }); }
+  };
+  es.addEventListener('position_status', onPosition);
+  es.addEventListener('positionStatus',  onPosition);
 
   const onClientClap = (e) => {
     try { clientClap.set(JSON.parse(e.data)); }

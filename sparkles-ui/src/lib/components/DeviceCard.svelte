@@ -3,17 +3,19 @@
 
   export let device;
 
-  let xPos = device.xPos ?? 0;
-  let yPos = device.yPos ?? 0;
-  let zPos = device.zPos ?? 0;
+  // the master sends lowercase xpos/ypos, both in the address dump and in the
+  // live update_board events — reading xPos left every card showing 0,0
+  let xPos = device.xpos ?? 0;
+  let yPos = device.ypos ?? 0;
+  let zPos = device.zpos ?? 0;
   let error = '';
   let successMsg = '';
 
   // Reactive update when device prop changes
   $: {
-    xPos = device.xPos ?? 0;
-    yPos = device.yPos ?? 0;
-    zPos = device.zPos ?? 0;
+    xPos = device.xpos ?? 0;
+    yPos = device.ypos ?? 0;
+    zPos = device.zpos ?? 0;
   }
 
   function formatMac(addr) {
@@ -73,13 +75,15 @@
   }
 
   $: bclass = batteryClass(device.batteryPercentage ?? 0);
+  // status is the string the master sends, `active` was never in the payload
+  $: isActive = device.status === 'active' || device.active === true;
 </script>
 
 <div class="card device-card">
   <div class="device-header">
     <div class="device-id">#{device.boardId}</div>
-    <span class="badge" class:badge-active={device.active} class:badge-inactive={!device.active}>
-      {device.active ? 'Active' : 'Inactive'}
+    <span class="badge" class:badge-active={isActive} class:badge-inactive={!isActive}>
+      {isActive ? 'Active' : 'Inactive'}
     </span>
   </div>
 
