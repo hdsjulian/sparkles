@@ -656,6 +656,11 @@ static void handleSerialCommand(const char* line) {
         // already on their way up, whatever the tail-end sentinel is still doing
         bool sleepUntilBroadcasting = (sleepUntilTaskHandle != NULL) && !sleepUntilWaking;
         r["sleepUntilActive"] = sleepUntilBroadcasting;
+        // The recurring schedule broadcasting sleep looks exactly like a dead
+        // fleet from outside — boards sync, nap, and go deaf — and nothing here
+        // reported it, so it was the one sleep state you could not see.
+        r["sleepPhaseActive"] = (sleepBroadcastTaskHandle != NULL);
+        r["inSleepWindow"]    = msgHandler.isInSleepPhase();
         r["sleepUntilWaking"] = sleepUntilWaking; // true during either task's verified wake
         if (sleepUntilBroadcasting) {
             r["sleepUntilIndefinite"] = prefs.getBool("suIndef", false); // "sleep now", no wake time
