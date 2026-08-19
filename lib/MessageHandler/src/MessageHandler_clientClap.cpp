@@ -208,6 +208,59 @@ void MessageHandler::runClapTask() {
     vTaskDelete(NULL);
 }
 
+// Listen for half a second and report what the microphone actually produced.
+// A dead mic reads a flat line, a broken bias network sits on a rail, and a
+// healthy one hovers near mid-scale with a few counts of room noise — which is
+// the difference between "the mic is broken" and "the chirp never got here".
+void MessageHandler::runMicTest() {
+    const int pin = AUDIO_PIN;
+    const int rate = 10000;              // same as the chirp recorder
+    const int wanted = rate / 2;         // half a second
+    pinMode(pin, INPUT);
+
+    uint16_t lo = 4095, hi = 0;
+    uint64_t sum = 0, sumsq = 0;
+    unsigned long long next = esp_timer_get_time();
+    const unsigned long long interval = 1000000ULL / rate;
+    for (int i = 0; i < wanted; i++) {
+        while (esp_timer_get_time() < next) {}
+        uint16_t v = (uint16_t)analogRead(pin);
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+        sum += v;
+        sumsq += (uint64_t)v * v;
+        next += interval;
+    }
+
+    uint16_t mean = (uint16_t)(sum / wanted);
+    double var = (double)sumsq / wanted - (double)mean * mean;
+    if (var < 0) var = 0;
+
+    message_data msg;
+    msg.messageType = MSG_MIC_TEST;
+    memcpy(msg.targetAddress, hostAddress, 6);
+    msg.payload.micTest.minLevel  = lo;
+    msg.payload.micTest.maxLevel  = hi;
+    msg.payload.micTest.meanLevel = mean;
+    msg.payload.micTest.rms       = (uint16_t)sqrt(var);
+    msg.payload.micTest.samples   = (uint16_t)wanted;
+    ESP_LOGI("MIC", "min %u max %u mean %u rms %u", lo, hi, mean, msg.payload.micTest.rms);
+    pushToSendQueue(msg);
+
+    micTestTaskHandle = nullptr;
+    vTaskDelete(NULL);
+}
+
+void MessageHandler::runMicTestWrapper(void *pvParameters) {
+    ((MessageHandler *)pvParameters)->runMicTest();
+}
+
+void MessageHandler::startMicTestTask() {
+    if (micTestTaskHandle != nullptr) return;      // already measuring
+    if (clapTaskHandle != nullptr) return;         // a calibration owns the ADC
+    xTaskCreatePinnedToCore(runMicTestWrapper, "runMicTest", 4096, this, 5, &micTestTaskHandle, 1);
+}
+
 void MessageHandler::startClapTask() {
     if (clapTaskHandle != nullptr) {
         vTaskDelete(clapTaskHandle);

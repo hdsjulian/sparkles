@@ -150,6 +150,7 @@ static_assert(CHIRP_BURST_COUNT <= NUM_CLAPS, "one measurement slot per chirp of
 #define MSG_TIMER_QUERY 19
 #define MSG_TIMER_RESPONSE 20
 #define MSG_SOUND_DEVICE 21 // clap/chirp device announce, master learns its address from this
+#define MSG_MIC_TEST 22 // client's reply to CMD_MIC_TEST, raw ADC statistics
 
 #if DEVICE_MODE == MASTER
 extern bool g_loggingEnabled;
@@ -186,6 +187,7 @@ extern MessageHandler& getMessageHandlerInstance();
 #define CMD_TEST_MODE_ON      17
 #define CMD_TEST_MODE_OFF     18
 #define CMD_SET_MAX_DISTANCE  19
+#define CMD_MIC_TEST          20
 
 
 
@@ -467,6 +469,17 @@ struct message_timer {
   message_timer() :  counter(0), sendTime(0), receiveTime(0), lastDelay(0), reset(false), addressId(0) {}
 } ;
 
+// Raw ADC statistics from the microphone, enough to tell a dead mic from a
+// working one that simply had nothing to hear.
+struct message_mic_test {
+  uint16_t minLevel;   // raw counts, 0-4095
+  uint16_t maxLevel;
+  uint16_t meanLevel;  // sits near mid-rail on a healthy bias network
+  uint16_t rms;        // deviation about the mean — the actual signal
+  uint16_t samples;
+  message_mic_test() : minLevel(0), maxLevel(0), meanLevel(0), rms(0), samples(0) {}
+};
+
 struct message_clap {
   unsigned long long clapTime;
   bool clapHappened;
@@ -527,6 +540,7 @@ union message_payload {
   struct message_ask_command    askCommand;
   struct message_sleep_wakeup   sleepWakeup;
   struct message_clap           clap;
+  struct message_mic_test       micTest;
   struct message_config_data    configData;
   struct message_update_version updateVersion;
   struct message_command        command;

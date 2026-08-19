@@ -148,6 +148,9 @@ void MessageHandler::handleReceive() {
                         ESP_LOGE("MSG", "CMD_OTA_UPDATE: WiFi failed, aborting");
                     }
                 }
+                if (commandMessage.commandType == CMD_MIC_TEST) {
+                    startMicTestTask();
+                }
                 if (commandMessage.commandType == CMD_REANNOUNCE) {
                     // The MAC stagger belongs in the announce task, not here.
                     // This is handleReceive, the client's only message loop —

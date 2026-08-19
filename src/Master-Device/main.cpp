@@ -745,6 +745,13 @@ static void handleSerialCommand(const char* line) {
         message_animation anim = ledInstance.createCandle(esp_timer_get_time() + 100000, 30000, 30, 80, 30);
         msgHandler.sendAnimation(anim, boardId);
 
+    } else if (strcmp(cmd, "mic_test") == 0) {
+        // boardId -1 asks the whole fleet; replies arrive as mic_test events
+        int boardId = doc["boardId"] | -1;
+        message_data m = msgHandler.createCommandMessage(CMD_MIC_TEST, boardId < 0);
+        if (boardId >= 0) memcpy(m.targetAddress, msgHandler.getItemFromAddressList(boardId).address, 6);
+        msgHandler.pushToSendQueue(m);
+
     } else if (strcmp(cmd, "hearth") == 0) {
         // no need to stop the idle loop, HEARTH marks itself endless and the
         // loop waits it out — and so resumes by itself once it is switched off

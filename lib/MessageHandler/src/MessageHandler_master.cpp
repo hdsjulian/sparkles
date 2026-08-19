@@ -296,6 +296,30 @@ void MessageHandler::handleReceive() {
 
             }
 
+            else if (incomingData.messageType == MSG_MIC_TEST) {
+                const message_mic_test &m = incomingData.payload.micTest;
+                for (int i = 0; i < NUM_DEVICES; i++) {
+                    if (memcmp(addressList[i].address, incomingData.senderAddress, 6) != 0) continue;
+                    // a flat line means nothing reached the ADC at all; a mean
+                    // pinned to a rail means the bias network, not the mic
+                    const char *verdict = "ok";
+                    if (m.maxLevel == m.minLevel)            verdict = "flat — no signal at all";
+                    else if (m.meanLevel < 100)              verdict = "pinned low";
+                    else if (m.meanLevel > 3995)             verdict = "pinned high";
+                    else if (m.rms < 2)                      verdict = "silent — mic or bias";
+                    JsonDocument doc;
+                    doc["event"]   = "mic_test";
+                    doc["boardId"] = i;
+                    doc["min"]     = m.minLevel;
+                    doc["max"]     = m.maxLevel;
+                    doc["mean"]    = m.meanLevel;
+                    doc["rms"]     = m.rms;
+                    doc["verdict"] = verdict;
+                    String out; serializeJson(doc, out); Serial.println(out);
+                    break;
+                }
+            }
+
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
             }
 

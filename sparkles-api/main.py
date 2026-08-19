@@ -1074,6 +1074,13 @@ async def command_shimmer(boardId: int = Query(default=-1)):
     return _ok()
 
 
+@app.get("/commandMicTest")
+async def command_mic_test(boardId: int = Query(default=-1)):
+    """Ask a board (or the whole fleet) what its microphone is producing."""
+    _send({"cmd": "mic_test", "boardId": boardId})
+    return _ok()
+
+
 @app.get("/commandHearth")
 async def command_hearth(
     minBurnS: int = Query(default=60),
