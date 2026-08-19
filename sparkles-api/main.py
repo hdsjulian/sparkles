@@ -754,6 +754,13 @@ async def sleep_until(
     return _ok()
 
 
+@app.get("/wakeCancel")
+async def wake_cancel():
+    """Stop a verified wake that has nothing left to wait for."""
+    _send({"cmd": "wake_cancel"})
+    return _ok()
+
+
 @app.get("/sleepUntilCancel")
 async def sleep_until_cancel():
     _send({"cmd": "sleep_until_cancel"})

@@ -108,6 +108,9 @@ export const sleepUntil = (hours, minutes, seconds = 0, skipResync = false) =>
 export const sleepUntilCancel = () =>
   fetch(`${BASE}/sleepUntilCancel`).then(r => r.json());
 
+export const wakeCancel = () =>
+  fetch(`${BASE}/wakeCancel`).then(r => r.json());
+
 export const sleepNow = () =>
   fetch(`${BASE}/sleepNow`).then(r => r.json());
 

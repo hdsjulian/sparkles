@@ -68,6 +68,9 @@ static volatile bool sleepUntilCancel = false;
 // should stop showing "sleeping" here, not 11 minutes later when the task
 // object itself finally frees
 static volatile bool sleepUntilWaking = false;
+// aborts a verified wake early — asking for sleep while one is running must win,
+// otherwise the wake keeps shouting the morning sentinel over the sleep broadcast
+static volatile bool wakeCancel = false;
 static volatile int sleepUntilReturned = 0;  // clients back so far during the verified wake
 static volatile int sleepUntilExpected = 0;  // clients expected back (persisted list size)
 static TaskHandle_t wakeNowTaskHandle = NULL;
@@ -185,19 +188,27 @@ static void runVerifiedWake(bool wasCancelled) {
     const unsigned long WAKE_MAX_MS = 20UL * 60UL * 1000UL;
     const unsigned long WAKE_MIN_MS = 2UL * SLEEP_BROADCAST_DURATION_MS + 60000UL; // >=2 nap cycles
     int returned = -1;
-    while (millis() - wakeStart < WAKE_MAX_MS) {
+    unsigned long lastArrival = millis();
+    while (!wakeCancel && millis() - wakeStart < WAKE_MAX_MS) {
         msgHandler.sendSleepWakeupMessage(0);
         int active = msgHandler.getNumDevices();
         if (active != returned) {
             returned = active;
+            lastArrival = millis();
             sleepUntilReturned = active;
+            // The list was empty when the wake started (a reset, say), so there
+            // is no target to count towards — report what has actually turned up
+            // rather than "6/0".
+            if (total == 0) sleepUntilExpected = active;
             JsonDocument r; r["event"] = "sleep_until_wake_progress";
             r["returned"] = returned; r["expected"] = total;
             r["elapsed_s"] = (long)((millis() - wakeStart) / 1000);
             serialSendDoc(r);
         }
         if (total > 0 && returned >= total && millis() - wakeStart >= WAKE_MIN_MS) break;
-        if (total == 0 && millis() - wakeStart >= WAKE_MIN_MS) break;
+        // Nothing was expected, so the two-nap minimum has nothing to protect:
+        // stop once boards have stopped arriving instead of sitting out 11 min.
+        if (total == 0 && millis() - lastArrival > 60000UL && millis() - wakeStart >= 60000UL) break;
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 
@@ -214,6 +225,7 @@ static void runVerifiedWake(bool wasCancelled) {
         r["success"] = (total > 0 && returned >= total);
         serialSendDoc(r);
     }
+    wakeCancel = false;
     sleepUntilWaking = false;
 }
 
@@ -457,7 +469,12 @@ static void handleSerialCommand(const char* line) {
         prefs.putInt("wakeS", doc["seconds"].as<int>());
 
     } else if (strcmp(cmd, "sleep_until") == 0) {
-        if (sleepUntilTaskHandle != NULL) {
+        if (sleepUntilWaking) {
+            wakeCancel = true;
+            JsonDocument r; r["event"] = "sleep_until_error";
+            r["detail"] = "cancelling the wake first, ask again in a moment";
+            serialSendDoc(r);
+        } else if (sleepUntilTaskHandle != NULL) {
             JsonDocument r; r["event"] = "sleep_until_error"; r["detail"] = "already running — cancel it first";
             serialSendDoc(r);
         } else if (sleepBroadcastTaskHandle != NULL) {
@@ -477,7 +494,15 @@ static void handleSerialCommand(const char* line) {
         // time — just broadcast sleep and hold it until Wake Up Now. If a
         // scheduled/other sleep task is already holding them, that's fine — report
         // and do nothing rather than stacking tasks.
-        if (sleepUntilTaskHandle != NULL || sleepBroadcastTaskHandle != NULL) {
+        // A verified wake still running is not "already sleeping" — asking for
+        // sleep during one has to win, or the fleet is unreachable for up to
+        // 20 minutes while the two broadcasts argue.
+        if (sleepUntilWaking) {
+            wakeCancel = true;
+            JsonDocument r; r["event"] = "sleep_now_ok";
+            r["detail"] = "cancelling the wake first, ask again in a moment";
+            serialSendDoc(r);
+        } else if (sleepUntilTaskHandle != NULL || sleepBroadcastTaskHandle != NULL) {
             JsonDocument r; r["event"] = "sleep_now_ok"; r["detail"] = "already sleeping";
             serialSendDoc(r);
         } else {
@@ -488,6 +513,12 @@ static void handleSerialCommand(const char* line) {
             int* target = new int[5]{ 0, 0, 0, 1, 1 }; // skipResync=1, indefinite=1
             xTaskCreatePinnedToCore(sleepUntilTask, "sleepUntil", 4096, target, 1, &sleepUntilTaskHandle, 1);
         }
+
+    } else if (strcmp(cmd, "wake_cancel") == 0) {
+        // stop a verified wake that has nothing left to wait for
+        wakeCancel = true;
+        JsonDocument r; r["event"] = "wake_cancel_ok";
+        serialSendDoc(r);
 
     } else if (strcmp(cmd, "sleep_until_cancel") == 0) {
         if (sleepUntilTaskHandle != NULL) sleepUntilCancel = true;

@@ -9,6 +9,7 @@
     sleepUntil,
     sleepUntilCancel,
     sleepNow,
+    wakeCancel,
     setManualSleepMode,
     toggleLogging,
     toggleTestMode,
@@ -202,6 +203,18 @@
       await sleepNow();
       successMsg = 'Sleeping all devices now — hold until Wake Up Now';
       setTimeout(() => { successMsg = ''; }, 2500);
+      loadSystemInfo();
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleWakeCancel() {
+    error = '';
+    try {
+      await wakeCancel();
+      successMsg = 'Stopped waking';
+      setTimeout(() => { successMsg = ''; }, 2000);
       loadSystemInfo();
     } catch (e) {
       error = e.message;
@@ -591,8 +604,14 @@
       <button class="btn btn-ghost" on:click={handleSleepUntilCancel}>Cancel — Wake Up Now</button>
     {:else if systemInfo?.sleepUntilWaking}
       <div class="status-msg" style="margin-bottom:0.75rem;">
-        ☀️ Waking up — {systemInfo.wakeReturned ?? 0}/{systemInfo.wakeExpected ?? '?'} boards back.
-        The master keeps waking until every board returns (up to 20 min); leave this running.
+        ☀️ Waking up — {systemInfo.wakeReturned ?? 0}{systemInfo.wakeExpected
+          ? ` of ${systemInfo.wakeExpected}` : ''} boards back.
+        The master keeps waking until every board returns (up to 20 min). You can let it
+        run, or stop it and put the fleet straight back to sleep.
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" on:click={handleWakeCancel}>Stop Waking</button>
+        <button class="btn btn-warning" on:click={handleSleepNow}>💤 Sleep All Now</button>
       </div>
     {:else}
       <div class="form-row" style="margin-bottom:0.75rem;">
