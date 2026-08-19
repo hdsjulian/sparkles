@@ -237,6 +237,11 @@ void LedHandler::ledTask()
                 xTaskCreatePinnedToCore(runBioluminescenceWrapper, "runBioLum", 10000, this, 2, &animationTaskHandle, 1);
             }
         }
+        else if (getCurrentAnimation() == HEARTH) {
+            if (animationTaskHandle == NULL || eTaskGetState(animationTaskHandle) == eDeleted) {
+                xTaskCreatePinnedToCore(runHearthWrapper, "runHearth", 10000, this, 2, &animationTaskHandle, 1);
+            }
+        }
         else {
             ledsOff();
             setCurrentAnimation(OFF);
@@ -996,6 +1001,85 @@ void LedHandler::runBreath() {
     }
     ledsOff();
     setCurrentAnimation(OFF);
+}
+
+void LedHandler::runHearthWrapper(void *pvParameters) {
+    LedHandler *instance = (LedHandler *)pvParameters;
+    instance->runHearth();
+}
+
+// One window of a burning house. Catch, burn, gutter out, stay dark, catch
+// again — forever, off a single broadcast. Every duration is drawn fresh each
+// cycle, so a hundred windows never fall into step with each other.
+void LedHandler::runHearth() {
+    message_animation anim = getAnimation();
+    animation_hearth p = anim.animationParams.hearth;
+
+    const uint32_t frameMs = 40;
+    auto randFloat = []() { return (float)(esp_random() & 0xFFFF) / 65535.0f; };
+    auto randRange = [](uint16_t lo, uint16_t hi) -> uint32_t {
+        return (hi > lo) ? lo + (esp_random() % (uint32_t)(hi - lo + 1)) : lo;
+    };
+    // interruptible wait, so turning the animation off is noticed within a frame
+    auto hold = [&](uint32_t ms) {
+        for (uint32_t t = 0; t < ms && getCurrentAnimation() == HEARTH; t += frameMs) {
+            vTaskDelay(pdMS_TO_TICKS(frameMs));
+        }
+    };
+
+    // Start somewhere random in the cycle. Without this every window in the
+    // house lights and dies together for the first few minutes.
+    hold(randRange(0, p.maxBurnS + p.maxDarkS) * 250);
+
+    while (getCurrentAnimation() == HEARTH) {
+        // this flame's character: hue and peak drift per cycle so the same
+        // window never looks like the same lamp twice
+        int hueShift = (int)(esp_random() % (uint32_t)(p.hueVariance * 2 + 1)) - p.hueVariance;
+        uint8_t hue = (uint8_t)(((int)p.hue + hueShift + 256) % 256);
+        float peak = p.brightness * (0.75f + 0.25f * randFloat());
+
+        uint32_t steps = p.fadeInMs / frameMs;
+        if (steps < 1) steps = 1;
+        for (uint32_t i = 0; i <= steps && getCurrentAnimation() == HEARTH; i++) {
+            float t = (float)i / (float)steps;
+            writeLeds(CHSV(hue, p.saturation, (uint8_t)(peak * t * t)));  // ease in, like catching
+            vTaskDelay(pdMS_TO_TICKS(frameMs));
+        }
+
+        uint32_t burnMs = randRange(p.minBurnS, p.maxBurnS) * 1000;
+        float flicker = peak;
+        for (uint32_t t = 0; t < burnMs && getCurrentAnimation() == HEARTH; t += frameMs) {
+            float target = peak * (0.75f + 0.25f * randFloat());
+            flicker = 0.88f * flicker + 0.12f * target;   // smoothed, same as the candle
+            if ((esp_random() % 100) < p.flarePercent) flicker = peak * 0.55f;  // gust
+            writeLeds(CHSV(hue + (uint8_t)(randFloat() * 6.0f), p.saturation, (uint8_t)flicker));
+            vTaskDelay(pdMS_TO_TICKS(frameMs));
+        }
+
+        // A flame flares before it dies. Without this the window just dims,
+        // which reads as someone turning a knob rather than a candle going out.
+        float flare = fminf(255.0f, peak * 1.3f);
+        for (uint32_t i = 0; i < 5 && getCurrentAnimation() == HEARTH; i++) {
+            writeLeds(CHSV(hue, p.saturation, (uint8_t)(peak + (flare - peak) * (i / 4.0f))));
+            vTaskDelay(pdMS_TO_TICKS(frameMs));
+        }
+        uint32_t outSteps = p.fadeOutMs / frameMs;
+        if (outSteps < 1) outSteps = 1;
+        for (uint32_t i = 0; i <= outSteps && getCurrentAnimation() == HEARTH; i++) {
+            float t = 1.0f - (float)i / (float)outSteps;
+            float v = flare * t * t * (0.8f + 0.2f * randFloat()); // still guttering on the way down
+            writeLeds(CHSV(hue, p.saturation, (uint8_t)v));
+            vTaskDelay(pdMS_TO_TICKS(frameMs));
+        }
+
+        ledsOff();
+        hold(randRange(p.minDarkS, p.maxDarkS) * 1000);
+    }
+
+    ledsOff();
+    setCurrentAnimation(OFF);
+    animationTaskHandle = NULL;
+    vTaskDelete(NULL);
 }
 
 void LedHandler::runBioluminescenceWrapper(void *pvParameters) {

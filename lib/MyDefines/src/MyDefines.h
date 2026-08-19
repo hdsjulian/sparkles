@@ -218,6 +218,7 @@ enum animationEnum {
     STROBE,
     BREATH,
     BIOLUMINESCENCE,
+    HEARTH, // append only, clients decode these by number
 };
 
 
@@ -356,6 +357,30 @@ struct animation_background_shimmer {
   animation_background_shimmer() : hue(0), saturation(0), value(0) {}
 };
 
+// Candlelit windows: each one catches, burns for a while, gutters out, stays
+// dark, catches again. Runs forever off a single broadcast — nothing is sent
+// per frame, the board owns its own flame.
+// The dark stretch is the effect and the battery saving at once: a window that
+// is out draws nothing, and across a hundred of them the house stays lit
+// regardless. Burn 90 s of every 120 and cap brightness at 70 of 255 and the
+// LEDs draw about a fifth of what they would lit solid.
+struct animation_hearth {
+  uint16_t minBurnS;      // how long a window keeps burning
+  uint16_t maxBurnS;
+  uint16_t minDarkS;      // how long it stays out, i.e. the duty cycle
+  uint16_t maxDarkS;
+  uint16_t fadeInMs;      // catching
+  uint16_t fadeOutMs;     // guttering
+  uint8_t  hue;           // ~20 is candle orange
+  uint8_t  hueVariance;   // per-window drift so no two windows match
+  uint8_t  saturation;
+  uint8_t  brightness;    // peak cap, the other half of the saving
+  uint8_t  flarePercent;  // chance per frame of a gust
+  animation_hearth() : minBurnS(60), maxBurnS(180), minDarkS(15), maxDarkS(50),
+                       fadeInMs(1800), fadeOutMs(2500), hue(20), hueVariance(6),
+                       saturation(230), brightness(70), flarePercent(3) {}
+};
+
 struct animation_bioluminescence {
   uint32_t minInterval;  // ms between pulses (min)
   uint32_t maxInterval;  // ms between pulses (max)
@@ -388,6 +413,7 @@ union animation_params {
   struct animation_candle candle;
   struct animation_breath breath;
   struct animation_bioluminescence bioluminescence;
+  struct animation_hearth hearth;
   animation_params() {}
   ~animation_params() {}
 };

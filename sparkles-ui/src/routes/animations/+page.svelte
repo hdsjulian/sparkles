@@ -1,5 +1,5 @@
 <script>
-  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence, commandCandleAll } from '$lib/api.js';
+  import { setSyncAsyncParams, commandStrobeAll, commandBatteryBlinkAll, commandAnimationOff, commandBreath, commandBioluminescence, commandCandleAll, commandHearth } from '$lib/api.js';
   import HueSatPicker from '$lib/components/HueSatPicker.svelte';
 
   let error = '';
@@ -170,6 +170,37 @@
         await commandCandleAll(candle);
         candleActive = true;
         successMsg = 'Candle started';
+      }
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  // ----- Hearth -----
+  let hearth = { minBurnS: 60, maxBurnS: 180, minDarkS: 15, maxDarkS: 50,
+                 fadeInMs: 1800, fadeOutMs: 2500, hue: 20, hueVariance: 6,
+                 saturation: 230, brightness: 70, flarePercent: 3 };
+  let hearthActive = false;
+
+  // share of the cycle a window spends lit, times the brightness cap — roughly
+  // what the LEDs draw against being lit solid at full
+  $: hearthDuty = (hearth.minBurnS + hearth.maxBurnS) /
+                  (hearth.minBurnS + hearth.maxBurnS + hearth.minDarkS + hearth.maxDarkS);
+  $: hearthLoad = Math.round(hearthDuty * (hearth.brightness / 255) * 100);
+  $: hearthLit  = Math.round(hearthDuty * 100);
+
+  async function toggleHearth() {
+    error = ''; successMsg = '';
+    try {
+      if (hearthActive) {
+        await commandAnimationOff();
+        hearthActive = false;
+        successMsg = 'Hearth stopped';
+      } else {
+        await commandHearth(hearth);
+        hearthActive = true;
+        successMsg = 'Hearth burning';
       }
       setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
@@ -377,6 +408,34 @@
     </div>
     <button class="btn {candleActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleCandle}>
       {candleActive ? 'Turn Off Candle' : 'Start Candle'}
+    </button>
+  </div>
+
+  <!-- Hearth -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Hearth</div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      Every window burns like a candle, gutters out on its own, stays dark a while and
+      catches again. Runs forever from one broadcast — nothing is sent per frame. The dark
+      stretch is the battery saving as much as the effect.
+    </p>
+    <HueSatPicker bind:hue={hearth.hue} bind:saturation={hearth.saturation} brightness={hearth.brightness} />
+    <div class="form-row">
+      <div class="form-group"><label>Burn min (s)</label><input type="number" min="5" max="3600" bind:value={hearth.minBurnS} /></div>
+      <div class="form-group"><label>Burn max (s)</label><input type="number" min="5" max="3600" bind:value={hearth.maxBurnS} /></div>
+      <div class="form-group"><label>Dark min (s)</label><input type="number" min="0" max="3600" bind:value={hearth.minDarkS} /></div>
+      <div class="form-group"><label>Dark max (s)</label><input type="number" min="0" max="3600" bind:value={hearth.maxDarkS} /></div>
+      <div class="form-group"><label>Brightness cap</label><input type="number" min="1" max="255" bind:value={hearth.brightness} /></div>
+      <div class="form-group"><label>Hue variance</label><input type="number" min="0" max="40" bind:value={hearth.hueVariance} /></div>
+      <div class="form-group"><label>Gust chance (%)</label><input type="number" min="0" max="30" bind:value={hearth.flarePercent} /></div>
+      <div class="form-group"><label>Catch / gutter (ms)</label><input type="number" min="100" max="10000" step="100" bind:value={hearth.fadeOutMs} /></div>
+    </div>
+    <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:0.75rem;">
+      About <strong>{hearthLit}%</strong> of windows lit at any moment — roughly
+      <strong>{hearthLoad}%</strong> of the LED draw of holding them all on at full.
+    </p>
+    <button class="btn {hearthActive ? 'btn-warning' : 'btn-primary'}" on:click={toggleHearth}>
+      {hearthActive ? 'Stop Hearth' : 'Start Hearth'}
     </button>
   </div>
 

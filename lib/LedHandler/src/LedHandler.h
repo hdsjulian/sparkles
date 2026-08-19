@@ -90,6 +90,7 @@ private:
     static void runCandleWrapper(void *pvParameters);
     static void runBreathWrapper(void *pvParameters);
     static void runBioluminescenceWrapper(void *pvParameters);
+    static void runHearthWrapper(void *pvParameters);
     void ledTask();
     void runMidi();
     void runBlink();
@@ -99,7 +100,8 @@ private:
     void runCandle();
     void runBreath();
     void runBioluminescence();
-    
+    void runHearth();
+
     static void ledsOff();
     float midiHue = 25.0f / 360.0f;
     float midiSat = 0.4f;

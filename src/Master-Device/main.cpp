@@ -36,6 +36,7 @@ static const char* animationTypeName(animationEnum type) {
         case STROBE:             return "strobe";
         case BREATH:             return "breath";
         case BIOLUMINESCENCE:    return "bioluminescence";
+        case HEARTH:             return "hearth";
         default:                 return "unknown";
     }
 }
@@ -687,6 +688,24 @@ static void handleSerialCommand(const char* line) {
         int boardId = doc["boardId"] | -1;
         message_animation anim = ledInstance.createCandle(esp_timer_get_time() + 100000, 30000, 30, 80, 30);
         msgHandler.sendAnimation(anim, boardId);
+
+    } else if (strcmp(cmd, "hearth") == 0) {
+        // no need to stop the idle loop, HEARTH marks itself endless and the
+        // loop waits it out — and so resumes by itself once it is switched off
+        message_animation anim;
+        anim.animationType = HEARTH;
+        anim.animationParams.hearth.minBurnS     = doc["minBurnS"]     | 60;
+        anim.animationParams.hearth.maxBurnS     = doc["maxBurnS"]     | 180;
+        anim.animationParams.hearth.minDarkS     = doc["minDarkS"]     | 15;
+        anim.animationParams.hearth.maxDarkS     = doc["maxDarkS"]     | 50;
+        anim.animationParams.hearth.fadeInMs     = doc["fadeInMs"]     | 1800;
+        anim.animationParams.hearth.fadeOutMs    = doc["fadeOutMs"]    | 2500;
+        anim.animationParams.hearth.hue          = doc["hue"]          | 20;
+        anim.animationParams.hearth.hueVariance  = doc["hueVariance"]  | 6;
+        anim.animationParams.hearth.saturation   = doc["saturation"]   | 230;
+        anim.animationParams.hearth.brightness   = doc["brightness"]   | 70;
+        anim.animationParams.hearth.flarePercent = doc["flarePercent"] | 3;
+        msgHandler.sendAnimation(anim, doc["boardId"] | -1);
 
     } else if (strcmp(cmd, "bioluminescence") == 0) {
         message_animation anim;

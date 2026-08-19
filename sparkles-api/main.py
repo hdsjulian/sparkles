@@ -326,7 +326,7 @@ async def send_log(body: LogMessage):
 # request) and MIDI (streamed continuously, never sent as a discrete command)
 _ANIMATION_CMDS = {
     "animate_toggle", "blink", "blink_all", "blink_battery_all",
-    "strobe_all", "bioluminescence", "breath", "candle_all",
+    "strobe_all", "bioluminescence", "breath", "candle_all", "hearth",
 }
 
 
@@ -1064,6 +1064,30 @@ async def set_maintenance_mode(active: bool = Query(...)):
 @app.get("/commandShimmer")
 async def command_shimmer(boardId: int = Query(default=-1)):
     _send({"cmd": "shimmer", "boardId": boardId})
+    return _ok()
+
+
+@app.get("/commandHearth")
+async def command_hearth(
+    minBurnS: int = Query(default=60),
+    maxBurnS: int = Query(default=180),
+    minDarkS: int = Query(default=15),
+    maxDarkS: int = Query(default=50),
+    fadeInMs: int = Query(default=1800),
+    fadeOutMs: int = Query(default=2500),
+    hue: int = Query(default=20),
+    hueVariance: int = Query(default=6),
+    saturation: int = Query(default=230),
+    brightness: int = Query(default=70),
+    flarePercent: int = Query(default=3),
+    boardId: int = Query(default=-1),
+):
+    """Candlelit windows, burning and guttering out on their own, forever."""
+    _send({"cmd": "hearth", "minBurnS": minBurnS, "maxBurnS": maxBurnS,
+           "minDarkS": minDarkS, "maxDarkS": maxDarkS, "fadeInMs": fadeInMs,
+           "fadeOutMs": fadeOutMs, "hue": hue, "hueVariance": hueVariance,
+           "saturation": saturation, "brightness": brightness,
+           "flarePercent": flarePercent, "boardId": boardId})
     return _ok()
 
 
