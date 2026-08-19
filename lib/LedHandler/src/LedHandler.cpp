@@ -1046,14 +1046,21 @@ void LedHandler::runHearth() {
             vTaskDelay(pdMS_TO_TICKS(frameMs));
         }
 
+        // Smoothing this hard (the candle uses 0.88/0.12) leaves a swing of about
+        // one level in 255 between gusts — invisible, so all you saw was the gust
+        // dipping once a second and crawling back: slow pulsing, not a flame.
+        // Follow the target much more closely, over a wider range, on an
+        // irregular frame so it never falls into a rhythm.
         uint32_t burnMs = randRange(p.minBurnS, p.maxBurnS) * 1000;
         float flicker = peak;
-        for (uint32_t t = 0; t < burnMs && getCurrentAnimation() == HEARTH; t += frameMs) {
-            float target = peak * (0.75f + 0.25f * randFloat());
-            flicker = 0.88f * flicker + 0.12f * target;   // smoothed, same as the candle
-            if ((esp_random() % 100) < p.flarePercent) flicker = peak * 0.55f;  // gust
-            writeLeds(CHSV(hue + (uint8_t)(randFloat() * 6.0f), p.saturation, (uint8_t)flicker));
-            vTaskDelay(pdMS_TO_TICKS(frameMs));
+        for (uint32_t t = 0; t < burnMs && getCurrentAnimation() == HEARTH; ) {
+            uint32_t step = 25 + (esp_random() % 45);
+            float target = peak * (0.45f + 0.55f * randFloat());
+            flicker = 0.55f * flicker + 0.45f * target;
+            if ((esp_random() % 100) < p.flarePercent) flicker = peak * 0.35f;  // gust
+            writeLeds(CHSV(hue + (uint8_t)(randFloat() * 8.0f), p.saturation, (uint8_t)flicker));
+            vTaskDelay(pdMS_TO_TICKS(step));
+            t += step;
         }
 
         // A flame flares before it dies. Without this the window just dims,
