@@ -74,6 +74,12 @@ static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x
 #define CHIRP_STEPS 8
 #define CHIRP_STEP_MS 3
 static constexpr int chirpFrequencies[CHIRP_STEPS] = {1000, 1700, 1200, 2000, 1500, 1100, 1800, 1300};
+// One distance calibration is a burst of chirps. Emitter and clients both count
+// them off the same calibration broadcast, so chirp n happens at n * period on
+// both sides. The period has to cover the client's record window plus its
+// correlation and leave the room quiet again before the next chirp.
+#define CHIRP_BURST_COUNT 10
+#define CHIRP_BURST_PERIOD_MS 500
 // Clients compiled before message_log was added to the payload union have sizeof(message_data)==80.
 // Their pushToRecvQueue strictly checks len==80 and drops anything else.
 // Send exactly this size to stay compatible until all clients are OTA-updated.
@@ -121,6 +127,7 @@ static constexpr size_t ESPNOW_CLIENT_COMPAT_SIZE = 80;
 #define AUDIO_PIN 5
 #define NUM_DEVICES 180
 #define NUM_CLAPS 20
+static_assert(CHIRP_BURST_COUNT <= NUM_CLAPS, "one measurement slot per chirp of the burst");
 
 #define MSG_ADDRESS 1
 #define MSG_TIMER 2
@@ -437,7 +444,8 @@ struct message_timer {
 struct message_clap {
   unsigned long long clapTime;
   bool clapHappened;
-  message_clap() : clapTime(0), clapHappened(true) {}
+  uint8_t chirpIndex; // which chirp of the burst this belongs to, emitter and client agree on it
+  message_clap() : clapTime(0), clapHappened(true), chirpIndex(0) {}
 };
 struct message_config_data {
   int boardId;

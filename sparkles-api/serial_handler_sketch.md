@@ -165,6 +165,7 @@ static void handleSerialCommand(const String& line) {
     else if (strcmp(cmd, "calibration_end") == 0)             { mh.endCalibration(); }
     else if (strcmp(cmd, "calibration_test") == 0)            { mh.testCalibration(); }
     else if (strcmp(cmd, "calibration_calibrate") == 0)       { mh.commandCalibrate(doc["boardId"]); }
+    else if (strcmp(cmd, "chirp_position") == 0)              { mh.chirpAtPosition(doc["x"],doc["y"]); }
     else if (strcmp(cmd, "dist_cal_start") == 0)              { mh.startDistanceCalibrationMaster(); }
     else if (strcmp(cmd, "dist_cal_continue") == 0)           { mh.continueDistanceCalibration(); }
     else if (strcmp(cmd, "dist_cal_end") == 0)                { mh.endDistanceCalibration(); }

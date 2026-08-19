@@ -902,6 +902,57 @@ async def command_calibrate(boardId: int = Query(...)):
 # Distance calibration
 # ---------------------------------------------------------------------------
 
+@app.get("/commandChirpAtPosition")
+async def command_chirp_at_position(x: float = Query(0.0), y: float = Query(0.0)):
+    """Run one chirp burst with the chirp device standing at (x, y).
+
+    The coordinates are only used by the master's own trilateration. For the
+    anchor-free solve below they are ignored — chirp from wherever you like.
+    """
+    _send({"cmd": "chirp_position", "x": x, "y": y})
+    return _ok()
+
+
+# ---------------------------------------------------------------------------
+# Anchor-free map: solve board positions without knowing where anything is
+# ---------------------------------------------------------------------------
+
+@app.get("/mapMeasurements")
+async def map_measurements():
+    """What the collector has heard so far, per board and per spot."""
+    return JSONResponse(map_data.summary())
+
+
+@app.get("/clearMap")
+async def clear_map():
+    map_data.clear()
+    return _ok("Map measurements cleared")
+
+
+@app.get("/solveMap")
+async def solve_map(push: bool = Query(False), flip: bool = Query(False)):
+    """Recover every board's position from the chirp distances alone.
+
+    No spot coordinates needed: the constellation is fixed by the distances up to
+    rotation, translation and a mirror flip. push=true writes the result back to
+    the master, flip=true mirrors it if the map comes out handed wrong.
+    """
+    result = await asyncio.to_thread(mapsolve.solve, map_data, 2, True, flip)
+    if not result.get("ok"):
+        raise HTTPException(400, detail=result.get("reason", "solve failed"))
+    if push:
+        pushed = 0
+        for board in result["boards"]:
+            if not board["trusted"]:
+                continue
+            _send({"cmd": "submit_positions", "boardId": board["boardId"],
+                   "xpos": board["x"], "ypos": board["y"]})
+            pushed += 1
+            await asyncio.sleep(0.05)   # one config broadcast per board, don't flood the mesh
+        result["pushed"] = pushed
+    return JSONResponse(result)
+
+
 @app.get("/commandStartDistanceCalibration")
 async def command_start_distance_calibration():
     _send({"cmd": "dist_cal_start"})

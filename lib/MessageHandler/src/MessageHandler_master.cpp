@@ -6,6 +6,48 @@
 #include "WiFi.h"
 #include <ArduinoJson.h>
 
+// A chirp needs 200 ms to travel further than the client's record window reaches,
+// anything outside that is a bad correlation or a stale clock, not a distance
+static constexpr long long MAX_CHIRP_FLIGHT_US = 200000;
+// how long after the last chirp the burst waits for the final client replies
+static constexpr int DIST_CAL_SETTLE_MS = 1500;
+// a tight cluster of measurements must not start rejecting its own members
+static constexpr float CHIRP_OUTLIER_FLOOR_M = 0.30f;
+
+static void sortFloats(float* values, int count) {
+    for (int i = 1; i < count; i++) {
+        float v = values[i];
+        int j = i - 1;
+        while (j >= 0 && values[j] > v) { values[j + 1] = values[j]; j--; }
+        values[j + 1] = v;
+    }
+}
+
+// Reflections and missed peaks show up as single wild measurements, so keep only
+// what sits near the median and average that. Sorts values in place.
+static float averageWithoutOutliers(float* values, int count, int& kept) {
+    kept = 0;
+    if (count <= 0) return 0.0f;
+    sortFloats(values, count);
+    float median = (count % 2) ? values[count / 2]
+                               : 0.5f * (values[count / 2 - 1] + values[count / 2]);
+
+    float deviations[NUM_CLAPS];
+    for (int i = 0; i < count; i++) deviations[i] = fabsf(values[i] - median);
+    sortFloats(deviations, count);
+    float mad = (count % 2) ? deviations[count / 2]
+                            : 0.5f * (deviations[count / 2 - 1] + deviations[count / 2]);
+    float tolerance = fmaxf(CHIRP_OUTLIER_FLOOR_M, 2.5f * mad);
+
+    float sum = 0;
+    for (int i = 0; i < count; i++) {
+        if (fabsf(values[i] - median) > tolerance) continue;
+        sum += values[i];
+        kept++;
+    }
+    return (kept > 0) ? (sum / kept) : median;
+}
+
 static void serialEmitBoard(int id, const client_address& a) {
     JsonDocument doc;
     doc["event"] = "update_board";
@@ -196,44 +238,68 @@ void MessageHandler::handleReceive() {
             }*/
 
             else if (incomingData.messageType == MSG_CLAP) {
-                int clapIndex = getClapIndex();
+                const message_clap clap = incomingData.payload.clap;
+                bool burst = burstActive;
+                // during a burst the chirp index picks the slot, so a reply that
+                // arrives after the next chirp is still counted correctly
+                int slot = burst ? (int)clap.chirpIndex : getClapIndex();
+                if (slot < 0 || slot >= (burst ? CHIRP_BURST_COUNT : NUM_CLAPS)) {
+                    ESP_LOGW("MSG", "MSG_CLAP with out of range chirp index %d, dropping", slot);
+                    continue;
+                }
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
+                    if (!clap.clapHappened) continue; // nothing emitted, no timestamp to keep
                     // sound devices send their emission timestamp in master time,
                     // 0 means old firmware or unsynced device
-                    if (incomingData.payload.clap.clapTime != 0) {
-                        setLastClapTime(incomingData.payload.clap.clapTime);
-                    } else {
-                        setLastClapTime(micros() - getClapDeviceDelay());
-                    }
+                    unsigned long long emission = (clap.clapTime != 0)
+                                                  ? clap.clapTime
+                                                  : (micros() - getClapDeviceDelay());
+                    setLastClapTime(emission);
+                    if (burst) recordChirpEmission(slot, emission);
                     {
                         JsonDocument doc;
                         doc["event"]    = "calibration_status";
                         doc["status"]   = 3;
-                        doc["clapId"]   = clapIndex;
-                        doc["clapTime"] = (unsigned long long)incomingData.payload.clap.clapTime;
+                        doc["clapId"]   = slot;
+                        doc["clapTime"] = emission;
                         String out; serializeJson(doc, out); Serial.println(out);
                     }
+                    if (burst) emitBurstStatus("running", slot + 1);
 
                 }
                 else {
+                    if (!clap.clapHappened) continue; // client heard nothing this round
+                    unsigned long long emission = burst ? chirpEmissions[slot] : getLastClapTime();
+                    if (emission == 0) continue;      // no emission stamp for this slot
+                    long long flightTime = (long long)clap.clapTime - (long long)emission;
+                    if (flightTime <= 0 || flightTime > MAX_CHIRP_FLIGHT_US) {
+                        ESP_LOGW("MSG", "Chirp %d: implausible flight time %lld us, dropping", slot, flightTime);
+                        continue;
+                    }
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
-                            addressList[i].distances[clapIndex] = convertMicrosToMeters(incomingData.payload.clap.clapTime-getLastClapTime());
-                            float distance = convertMicrosToMeters((incomingData.msgReceiveTime - addressList[i].delay / 2)-getLastClapTime());
+                            // during a burst this is one of ten samples for the same spot,
+                            // it only becomes a distance once the burst is averaged
+                            float meters = convertMicrosToMeters((unsigned long long)flightTime);
+                            if (burst) {
+                                burstSamples[i][slot] = meters;
+                            } else {
+                                addressList[i].distances[slot] = meters;
+                            }
                             {
                                 JsonDocument doc;
                                 doc["event"]        = "client_clap";
-                                doc["clapId"]       = clapIndex;
+                                doc["clapId"]       = slot;
                                 doc["boardId"]      = i;
-                                doc["clapDistance"] = addressList[i].distances[clapIndex];
+                                doc["clapDistance"] = meters;
                                 String out; serializeJson(doc, out); Serial.println(out);
                             }
-                            
+
                             break;
                         }
                     }
                 }
-                
+
             }
 
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
@@ -463,6 +529,12 @@ void MessageHandler::calculatePositionsTaskWrapper(void *pvParameters) {
 }
 void MessageHandler::runCalculatePositionsTask() {
     while (true) {
+        int solved = 0;
+        int locations = 0;
+        float worstResidual = 0.0f;
+        for (int j = 0; j < NUM_CLAPS; j++) {
+            if (clapTable[j].clapTime != 0) locations++;
+        }
         for (int i = 0; i < NUM_DEVICES; i++) {
             if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
                 continue;
@@ -548,8 +620,43 @@ void MessageHandler::runCalculatePositionsTask() {
             // Store the calculated position
             addressList[i].xPos = x;
             addressList[i].yPos = y;
+            solved++;
 
-            ESP_LOGI("MSG", "Device %d position calculated: X=%.2f, Y=%.2f", i, x, y);
+            // How far the measured distances sit from the solved point. Large on
+            // every board means a constant offset (speaker latency), large on one
+            // board means that board's measurements are bad.
+            float sumSq = 0;
+            int used = 0;
+            for (int j = 0; j < NUM_CLAPS; j++) {
+                if (clapTable[j].clapTime == 0) continue;
+                float dj = addressList[i].distances[j];
+                if (dj <= 0) continue;
+                float dx = x - clapTable[j].xPos;
+                float dy = y - clapTable[j].yPos;
+                float err = sqrtf(dx * dx + dy * dy) - dj;
+                sumSq += err * err;
+                used++;
+            }
+            float residual = (used > 0) ? sqrtf(sumSq / used) : 0.0f;
+            if (residual > worstResidual) worstResidual = residual;
+
+            // the board needs its own position for the distance and position effects
+            message_data configMessage = createConfigMessage(i);
+            memcpy(configMessage.targetAddress, addressList[i].address, 6);
+            pushToSendQueue(configMessage);
+
+            ESP_LOGI("MSG", "Device %d position calculated: X=%.2f, Y=%.2f, residual %.2f m over %d locations",
+                     i, x, y, residual, used);
+            {
+                JsonDocument doc;
+                doc["event"]     = "position_result";
+                doc["boardId"]   = i;
+                doc["x"]         = x;
+                doc["y"]         = y;
+                doc["locations"] = used;
+                doc["residual"]  = residual;
+                String out; serializeJson(doc, out); Serial.println(out);
+            }
         }
 
         for (int i = 0; i < NUM_DEVICES; i++) {
@@ -562,6 +669,19 @@ void MessageHandler::runCalculatePositionsTask() {
             doc["status"] = 5;
             String out; serializeJson(doc, out); Serial.println(out);
         }
+        {
+            JsonDocument doc;
+            doc["event"]         = "position_status";
+            doc["status"]        = solved > 0 ? "solved" : "failed";
+            doc["boards"]        = solved;
+            doc["locations"]     = locations;
+            doc["worstResidual"] = worstResidual;
+            if (solved == 0) doc["reason"] = "no board heard three usable locations";
+            String out; serializeJson(doc, out); Serial.println(out);
+        }
+        ESP_LOGI("MSG", "Trilateration done: %d boards from %d locations, worst residual %.2f m",
+                 solved, locations, worstResidual);
+        writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress"); // keep the positions over a reboot
         vTaskDelete(calculatePositionsHandle);
     }
 }
@@ -575,14 +695,9 @@ void MessageHandler::endCalibration() {
 
 void MessageHandler::abortDistanceCalibration() {
     ESP_LOGI("MSG", "Aborting distance calibration, resetting all data");
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        clapIndex = 0;
-        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
-        for (int i = 0; i < NUM_CLIENTS; i++) {
-            memset(addressList[i].distances, 0, sizeof(float) * NUM_CLAPS);
-        }
-        xSemaphoreGive(configMutex);
-    }
+    burstActive = false;
+    memset(chirpEmissions, 0, sizeof(chirpEmissions));
+    clearClapMeasurements();
     message_data cancelMsg = createCommandMessage(CMD_CANCEL_CALIBRATION, true);
     pushToSendQueue(cancelMsg);
 }
@@ -595,30 +710,167 @@ void MessageHandler::endDistanceCalibration() {
 
 }
 
+void MessageHandler::emitBurstStatus(const char* status, int chirpsHeard, int boardsMeasured, const char* reason) {
+    JsonDocument doc;
+    doc["event"]  = burstIsDistance ? "distance_status" : "position_status";
+    doc["status"] = status;
+    doc["chirp"]  = chirpsHeard;
+    doc["total"]  = CHIRP_BURST_COUNT;
+    doc["slot"]   = burstSlot;
+    doc["x"]      = burstX;
+    doc["y"]      = burstY;
+    doc["boards"] = boardsMeasured;
+    if (reason != nullptr) doc["reason"] = reason;
+    String out; serializeJson(doc, out); Serial.println(out);
+}
+
+void MessageHandler::clearClapMeasurements() {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        clapIndex = 0;
+        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            memset(addressList[i].distances, 0, sizeof(float) * NUM_CLAPS);
+        }
+        xSemaphoreGive(configMutex);
+    }
+}
+
+// One burst measures one spot: the chirps land in burstSamples and only the slot
+// being measured is cleared, everything already recorded from other spots stays.
+void MessageHandler::beginBurst(int slot, float xPos, float yPos, bool isDistance) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        memset(chirpEmissions, 0, sizeof(chirpEmissions));
+        memset(burstSamples, 0, sizeof(burstSamples));
+        memset(&clapTable[slot], 0, sizeof(clap_table));
+        for (int i = 0; i < NUM_DEVICES; i++) {
+            addressList[i].distances[slot] = 0.0f;
+        }
+        burstSlot = slot;
+        burstX = xPos;
+        burstY = yPos;
+        burstIsDistance = isDistance;
+        xSemaphoreGive(configMutex);
+    }
+    burstActive = true;
+    ESP_LOGI("MSG", "Chirp burst at slot %d, position (%.2f, %.2f)", slot, xPos, yPos);
+    emitBurstStatus("running", 0);
+}
+
+// Ten chirps in, one distance per board out: outliers dropped, the rest averaged.
+void MessageHandler::finishBurst() {
+    bool wasActive = burstActive;
+    burstActive = false;
+    if (!wasActive) {
+        // aborted while the chirps were still running, nothing left to average
+        ESP_LOGI("MSG", "Chirp burst was aborted, skipping the average");
+        return;
+    }
+    message_data endMessage = createCommandMessage(CMD_END_CALIBRATION, true);
+    pushToSendQueue(endMessage);
+
+    unsigned long long firstEmission = 0;
+    int chirpsHeard = 0;
+    for (int c = 0; c < CHIRP_BURST_COUNT; c++) {
+        if (chirpEmissions[c] == 0) continue;
+        if (firstEmission == 0) firstEmission = chirpEmissions[c];
+        chirpsHeard++;
+    }
+    if (chirpsHeard == 0) {
+        // no emitter, no measurements — writing the slot now would zero every board
+        ESP_LOGE("MSG", "Chirp device never reported, keeping the previous data");
+        emitBurstStatus("failed", 0, 0, "no chirps from the chirp device");
+        return;
+    }
+
+    int boardsMeasured = 0;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) continue;
+        float samples[CHIRP_BURST_COUNT];
+        int count = 0;
+        for (int c = 0; c < CHIRP_BURST_COUNT; c++) {
+            if (burstSamples[i][c] > 0) samples[count++] = burstSamples[i][c];
+        }
+        int kept = 0;
+        float distance = averageWithoutOutliers(samples, count, kept);
+        addressList[i].distances[burstSlot] = (count > 0) ? distance : 0.0f;
+        if (count > 0) boardsMeasured++;
+        ESP_LOGI("MSG", "Device %d at slot %d: %.2f m (%d of %d chirps kept)",
+                 i, burstSlot, addressList[i].distances[burstSlot], kept, count);
+        JsonDocument doc;
+        doc["event"]    = "chirp_distance";
+        doc["boardId"]  = i;
+        doc["slot"]     = burstSlot;
+        doc["distance"] = addressList[i].distances[burstSlot];
+        doc["kept"]     = kept;
+        doc["chirps"]   = count;
+        String out; serializeJson(doc, out); Serial.println(out);
+    }
+
+    if (boardsMeasured == 0) {
+        // the spot stays unrecorded so the operator can just chirp again from it
+        ESP_LOGW("MSG", "Nobody heard the burst at slot %d, not recording the spot", burstSlot);
+        emitBurstStatus("failed", chirpsHeard, 0, "no board heard the chirps");
+        return;
+    }
+
+    // a slot only counts for the solver once it carries the emitter's spot and
+    // the moment it fired there
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        clapTable[burstSlot].xPos = burstX;
+        clapTable[burstSlot].yPos = burstY;
+        clapTable[burstSlot].clapTime = firstEmission;
+        if (!burstIsDistance && burstSlot == clapIndex && clapIndex < NUM_CLAPS) clapIndex++;
+        xSemaphoreGive(configMutex);
+    }
+
+    if (burstIsDistance) calculateDistances();
+    ESP_LOGI("MSG", "Burst at slot %d done, %d chirps, %d boards measured",
+             burstSlot, chirpsHeard, boardsMeasured);
+    emitBurstStatus("done", chirpsHeard, boardsMeasured);
+}
+
+void MessageHandler::recordChirpEmission(int chirpIndex, unsigned long long emissionTime) {
+    if (chirpIndex < 0 || chirpIndex >= CHIRP_BURST_COUNT) return;
+    chirpEmissions[chirpIndex] = emissionTime;
+}
+
 void MessageHandler::calculateDistances() {
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
             continue;
         }
-        int distanceCounter = 0;
-        float distanceSum = 0.0f;
+        float measurements[NUM_CLAPS];
+        int measured = 0;
         for (int j = 0; j < NUM_CLAPS; j++) {
             if (clapTable[j].clapTime == 0) {
                 continue;
             }
-            if (addressList[i].distances[j] == 0) {
+            if (addressList[i].distances[j] <= 0) {
                 continue;
             }
-            distanceCounter++;
-            distanceSum += addressList[i].distances[j];
+            measurements[measured++] = addressList[i].distances[j];
         }
-        if (distanceCounter > 0) {
-            addressList[i].distanceFromCenter = (distanceCounter > 0) ? (distanceSum / distanceCounter) : 0.0f;
+        int kept = 0;
+        if (measured > 0) {
+            addressList[i].distanceFromCenter = averageWithoutOutliers(measurements, measured, kept);
+            ESP_LOGI("MSG", "Device %d distance from center: %.2f m (%d of %d chirps kept)",
+                     i, addressList[i].distanceFromCenter, kept, measured);
+        } else {
+            // heard nothing is not the same as standing at the emitter, keep what we had
+            ESP_LOGW("MSG", "Device %d heard no chirp, keeping %.2f m",
+                     i, addressList[i].distanceFromCenter);
         }
-        else {
-            addressList[i].distanceFromCenter = 0.0f;
+        {
+            JsonDocument doc;
+            doc["event"]    = "distance_result";
+            doc["boardId"]  = i;
+            doc["distance"] = addressList[i].distanceFromCenter;
+            doc["kept"]     = kept;
+            doc["chirps"]   = measured;
+            String out; serializeJson(doc, out); Serial.println(out);
         }
-        ESP_LOGI("MSG", "Device %d distance from center: %.2f", i, addressList[i].distanceFromCenter);
+        if (measured == 0) continue;
+        serialEmitBoard(i, addressList[i]);
         message_data configMessage = createConfigMessage(i);
         memcpy(configMessage.targetAddress, addressList[i].address, 6);
         pushToSendQueue(configMessage);
@@ -647,41 +899,64 @@ void MessageHandler::startCalibrationMaster() {
     }
 }
 
+// Distance from the centre is a single spot, so it always measures slot 0 and
+// drops whatever else was in the table
 void MessageHandler::startDistanceCalibrationMaster() {
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        ESP_LOGI("MSG", "Starting Distance calibration as master");
-        clapIndex = 0;
-        memset(clapTable, 0, sizeof(clap_table) * NUM_CLAPS);
-        xSemaphoreGive(configMutex);
-        startDistanceCalibrationCommandTask(CMD_START_DISTANCE_CALIBRATION);
+    ESP_LOGI("MSG", "Starting Distance calibration as master");
+    clearClapMeasurements();
+    startChirpBurstTask(CMD_START_DISTANCE_CALIBRATION, 0, 0.0f, 0.0f, true);
+}
+
+// The chirp device stands at a known spot: one burst gives every board its
+// distance to that spot. Three or more spots and the solver can trilaterate.
+void MessageHandler::chirpAtPosition(float xPos, float yPos) {
+    int slot = getClapIndex();
+    if (slot < 0 || slot >= NUM_CLAPS) {
+        ESP_LOGW("MSG", "No measurement slots left (%d), reset the calibration first", slot);
+        burstIsDistance = false;
+        emitBurstStatus("failed", 0, 0, "no measurement slots left, reset first");
+        return;
     }
+    startChirpBurstTask(slot == 0 ? CMD_START_DISTANCE_CALIBRATION : CMD_CONTINUE_DISTANCE_CALIBRATION,
+                        slot, xPos, yPos, false);
 }
 
 // Clock offsets drift tens of µs per second, refresh every participant
 // right before the measurement, then send the calibration command
-struct DistCalPresyncArgs { MessageHandler* self; int commandType; };
+struct ChirpBurstArgs { MessageHandler* self; int commandType; int slot; float xPos; float yPos; bool isDistance; };
 
-void MessageHandler::startDistanceCalibrationCommandTask(int commandType) {
-    auto* args = new DistCalPresyncArgs{this, commandType};
+// One command runs the whole thing: resync, one burst of CHIRP_BURST_COUNT chirps
+// counted off by the emitter and the clients themselves, then the average.
+void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance) {
+    if (distCalHandle != NULL) {
+        ESP_LOGW("MSG", "Chirp burst already running, ignoring");
+        return;
+    }
+    auto* args = new ChirpBurstArgs{this, commandType, slot, xPos, yPos, isDistance};
     xTaskCreatePinnedToCore([](void* pv) {
-        auto* a = (DistCalPresyncArgs*)pv;
+        auto* a = (ChirpBurstArgs*)pv;
         MessageHandler* self = a->self;
-        int commandType = a->commandType;
+        ChirpBurstArgs burst = *a;
         delete a;
         bool animationWasRunning = self->animationLoopHandle != NULL;
         if (animationWasRunning) {
-            vTaskDelete(self->animationLoopHandle);
-            self->animationLoopHandle = NULL;
+            self->stopAnimationLoop();
         }
         self->runFastResyncAll();
         self->runClapDeviceTimerSync();
-        message_data commandMessage = self->createCommandMessage(commandType, true);
+        self->beginBurst(burst.slot, burst.xPos, burst.yPos, burst.isDistance);
+        message_data commandMessage = self->createCommandMessage(burst.commandType, true);
         self->pushToSendQueue(commandMessage);
+        // the burst runs unattended on the emitter and the clients, wait it out
+        // plus a settle window for the last replies to land
+        vTaskDelay(pdMS_TO_TICKS(CHIRP_BURST_COUNT * CHIRP_BURST_PERIOD_MS + DIST_CAL_SETTLE_MS));
+        self->finishBurst();
         if (animationWasRunning) {
-            self->startAnimationLoopTask();
+            self->resumeAnimationLoop();
         }
+        self->distCalHandle = NULL;
         vTaskDelete(NULL);
-    }, "distCalSync", 4096, args, 2, NULL, 1);
+    }, "chirpBurst", 8192, args, 2, &distCalHandle, 1);
 }
 
 void MessageHandler::cancelCalibration() {
@@ -703,10 +978,10 @@ void MessageHandler::continueCalibration(float xPos, float yPos) {
     pushToSendQueue(continueMessage);
 }
 
+// Same thing again, a full burst that replaces the previous measurements
 void MessageHandler::continueDistanceCalibration() {
-    setClap(0, 0); // Set clap position to 0,0 for distance calibration
-    clapIndex++;
-    startDistanceCalibrationCommandTask(CMD_CONTINUE_DISTANCE_CALIBRATION);
+    clearClapMeasurements();
+    startChirpBurstTask(CMD_CONTINUE_DISTANCE_CALIBRATION, 0, 0.0f, 0.0f, true);
 }
 void MessageHandler::commandCalibrate(int boardId) {
     message_data commandMessage = createCommandMessage(CMD_START_CALIBRATION, false);

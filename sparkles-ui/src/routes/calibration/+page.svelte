@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { calibrationStatus, distanceStatus, clientClap } from '$lib/stores.js';
+  import { calibrationStatus, distanceStatus, positionStatus, clientClap } from '$lib/stores.js';
   import {
     commandStartCalibration,
     commandCancelCalibration,
@@ -64,13 +64,46 @@
     const s = ev.status;
     if (s === 'started' || s === 'running') {
       distState = 'running';
-      distMsg = 'Distance calibration running...';
+      distMsg = ev.chirp
+        ? `Chirp ${ev.chirp} of ${ev.total}...`
+        : 'Distance calibration running...';
     } else if (s === 'done' || s === 'complete') {
       distState = 'done';
-      distMsg = 'Distance calibration complete!';
+      distMsg = `Distance calibration complete, averaged over ${ev.total ?? 10} chirps.`;
+    } else if (s === 'failed') {
+      distState = 'idle';
+      distMsg = '';
+      distError = `Distance calibration failed: ${ev.reason ?? 'no measurements'}`;
     } else if (s === 'aborted' || s === 'cancelled') {
       distState = 'idle';
       distMsg = '';
+    }
+  });
+
+  const unsubPos = positionStatus.subscribe(ev => {
+    if (!ev) return;
+    const s = ev.status;
+    if (s === 'running') {
+      posBusy = true;
+      posError = '';
+      posMsg = ev.chirp
+        ? `Location ${ev.slot + 1}: chirp ${ev.chirp} of ${ev.total}...`
+        : `Location ${ev.slot + 1} at (${ev.x?.toFixed(2)}, ${ev.y?.toFixed(2)}): chirping...`;
+    } else if (s === 'done') {
+      posBusy = false;
+      posMsg = `Location ${ev.slot + 1} recorded: ${ev.boards} boards heard ${ev.chirp} chirps.`;
+      posLocations = [
+        ...posLocations.filter(l => l.slot !== ev.slot),
+        { slot: ev.slot, x: ev.x, y: ev.y, boards: ev.boards }
+      ].sort((a, b) => a.slot - b.slot);
+    } else if (s === 'solved') {
+      posBusy = false;
+      posMsg = `Trilateration done: ${ev.boards} boards positioned from ${ev.locations} locations, `
+             + `worst residual ${(ev.worstResidual ?? 0).toFixed(2)} m.`;
+    } else if (s === 'failed') {
+      posBusy = false;
+      posMsg = '';
+      posError = ev.reason ?? 'Chirp burst failed';
     }
   });
 
@@ -85,6 +118,7 @@
   onDestroy(() => {
     unsubCal();
     unsubDist();
+    unsubPos();
     unsubClap();
   });
 
@@ -158,11 +192,13 @@
     }
   }
 
-  async function continueDistanceCalibration() {
+  // another full burst, replaces the previous measurements
+  async function rerunDistanceCalibration() {
     distError = '';
     try {
       await commandContinueDistanceCalibration();
-      distMsg = 'Continue sent...';
+      distState = 'running';
+      distMsg = 'Distance calibration running...';
     } catch (e) {
       distError = e.message;
     }
@@ -346,4 +382,50 @@
     color: var(--color-text-muted);
     margin-bottom: 0.75rem;
   }
+
+  .loc-list {
+    list-style: none;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .loc-list li {
+    padding: 0.15rem 0;
+  }
+
+  .flip-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .map-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    margin-top: 0.9rem;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .map-stats .warn { color: #e9a04f; }
+  .map-stats .ok   { color: #4fbf7a; }
+
+  .map-view {
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    margin-top: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius);
+  }
+
+  .map-view .board { fill: var(--color-primary, #e94560); }
+  .map-view .board.untrusted { fill: none; stroke: var(--color-text-muted); stroke-width: 1.2; }
+  .map-view .spot { fill: none; stroke: #4f9be9; stroke-width: 1.6; }
 </style>

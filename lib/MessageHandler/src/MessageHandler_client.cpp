@@ -70,11 +70,17 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_COMMAND) {
                 message_command commandMessage = (message_command)incomingData.payload.command;
-                if (commandMessage.commandType == CMD_START_CALIBRATION || commandMessage.commandType == CMD_START_DISTANCE_CALIBRATION || commandMessage.commandType == CMD_CONTINUE_CALIBRATION || commandMessage.commandType == CMD_CONTINUE_DISTANCE_CALIBRATION) {
+                if (commandMessage.commandType == CMD_START_CALIBRATION || commandMessage.commandType == CMD_CONTINUE_CALIBRATION) {
+                    setChirpMode(false); // position calibration listens for a hand clap
+                    startCalibrationClient();
+                }
+                if (commandMessage.commandType == CMD_START_DISTANCE_CALIBRATION || commandMessage.commandType == CMD_CONTINUE_DISTANCE_CALIBRATION) {
+                    setChirpMode(true); // distance calibration always comes from the chirp device
                     startCalibrationClient();
                 }
                 if (commandMessage.commandType == CMD_TEST_CALIBRATION) {
                     setCalibrationTest(true);
+                    setChirpMode(false);
                     startCalibrationClient();
                 }
                 if (commandMessage.commandType == CMD_CANCEL_CALIBRATION || commandMessage.commandType == CMD_END_CALIBRATION) {
@@ -454,6 +460,12 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
     }
     // stamps for the sleep listen window (handleSleepWakeup blocks the receive task,
     // so it reads these instead of the queue)
+    // the emitter announces each chirp just before playing it, and the clap task
+    // needs that stamp within the same recording window — the queue is too late,
+    // recording blocks the receive task for the whole window
+    if (localData.messageType == MSG_CLAP && localData.payload.clap.clapHappened) {
+        instance.lastChirpEmission = localData.payload.clap.clapTime;
+    }
     if (localData.messageType == MSG_SLEEP_WAKEUP) {
         instance.lastSleepMsgDuration = localData.payload.sleepWakeup.duration;
         instance.lastSleepMsgMillis = millis();

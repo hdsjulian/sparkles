@@ -628,6 +628,7 @@ static void handleSerialCommand(const char* line) {
     else if (strcmp(cmd, "calibration_end") == 0)        { msgHandler.endCalibration(); }
     else if (strcmp(cmd, "calibration_test") == 0)       { msgHandler.testCalibration(); }
     else if (strcmp(cmd, "calibration_calibrate") == 0)  { msgHandler.commandCalibrate(doc["boardId"].as<int>()); }
+    else if (strcmp(cmd, "chirp_position") == 0)         { msgHandler.chirpAtPosition(doc["x"].as<float>(), doc["y"].as<float>()); }
     else if (strcmp(cmd, "dist_cal_start") == 0)         { msgHandler.startDistanceCalibrationMaster(); }
     else if (strcmp(cmd, "dist_cal_continue") == 0)      { msgHandler.continueDistanceCalibration(); }
     else if (strcmp(cmd, "dist_cal_end") == 0)           { msgHandler.endDistanceCalibration(); }

@@ -1,7 +1,7 @@
 // Chirp-Device: drop-in replacement for the Clap-Device for distance calibration.
-// On CMD_START/CONTINUE_DISTANCE_CALIBRATION it broadcasts MSG_CLAP(true) with the
-// synced emission timestamp, plays the chirp via I2S -> PCM5102A -> boombox line-in,
-// then broadcasts MSG_CLAP(false).
+// On CMD_START/CONTINUE_DISTANCE_CALIBRATION it plays a burst of CHIRP_BURST_COUNT
+// chirps via I2S -> PCM5102A -> boombox line-in, announcing each one with MSG_CLAP
+// carrying its synced emission timestamp and its index in the burst.
 // I2S pins (PCM5102A): BCLK GPIO6, WS GPIO7, DOUT GPIO16
 
 #include <Arduino.h>
@@ -139,26 +139,58 @@ void i2sInit() {
         },
     };
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(txChan, &stdCfg));
-    ESP_ERROR_CHECK(i2s_channel_enable(txChan));
+    // Left in READY on purpose, not enabled. An enabled channel clocks silence
+    // through a 6 x 240 frame ring — 33 ms at 44.1 kHz — and a write lands
+    // wherever the DMA happens to be, so the sound leaves an unknown time after
+    // we stamp it. Each chirp preloads the ring while stopped instead, and
+    // starts on the enable, which we can timestamp.
 }
 
-void broadcastClapMessage(bool happened) {
+void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime) {
     message_data clapMessage;
     clapMessage.messageType = MSG_CLAP;
     memcpy(clapMessage.targetAddress, broadcastAddress, 6);
     memcpy(clapMessage.senderAddress, myAddress, 6);
-    clapMessage.payload.clap.clapTime = (unsigned long long)syncedTime();
+    clapMessage.payload.clap.clapTime = (unsigned long long)emitTime;
     clapMessage.payload.clap.clapHappened = happened;
+    clapMessage.payload.clap.chirpIndex = chirpIndex;
     esp_now_send(broadcastAddress, (uint8_t *)&clapMessage, sizeof(clapMessage));
 }
 
-void playChirp() {
-    size_t written = 0;
-    broadcastClapMessage(true);
-    i2s_channel_write(txChan, chirpBuffer, sizeof(chirpBuffer), &written, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(CHIRP_STEPS * CHIRP_STEP_MS + 20));
-    broadcastClapMessage(false);
-    ESP_LOGI("CHIRP", "Done");
+// One calibration = CHIRP_BURST_COUNT chirps on a fixed schedule. Every chirp is
+// announced with its own emission timestamp and index; the clients count the same
+// schedule off the same calibration broadcast and report one measurement per index.
+void playChirpBurst() {
+    // a cancelled burst leaves the channel enabled, and preload only works from
+    // READY — no ESP_ERROR_CHECK, being already stopped is the normal case
+    i2s_channel_disable(txChan);
+    TickType_t base = xTaskGetTickCount();
+    for (int chirp = 0; chirp < CHIRP_BURST_COUNT; chirp++) {
+        // whole chirp fits the ring (4224 of 5760 bytes), so enabling starts it
+        size_t loaded = 0;
+        ESP_ERROR_CHECK(i2s_channel_preload_data(txChan, chirpBuffer, sizeof(chirpBuffer), &loaded));
+
+        long long emitTime = syncedTime();
+        ESP_ERROR_CHECK(i2s_channel_enable(txChan));
+        broadcastClapMessage(true, chirp, emitTime);
+
+        if (loaded < sizeof(chirpBuffer)) { // only if the ring is ever reconfigured smaller
+            size_t written = 0;
+            i2s_channel_write(txChan, (const uint8_t *)chirpBuffer + loaded,
+                              sizeof(chirpBuffer) - loaded, &written, portMAX_DELAY);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(CHIRP_STEPS * CHIRP_STEP_MS + 10)); // let it drain
+        ESP_ERROR_CHECK(i2s_channel_disable(txChan));                // back to READY to preload again
+        ESP_LOGI("CHIRP", "Chirp %d/%d, preloaded %u of %u bytes",
+                 chirp + 1, CHIRP_BURST_COUNT, (unsigned)loaded, (unsigned)sizeof(chirpBuffer));
+
+        // absolute schedule off the base, an overrun can't push the rest of the burst along
+        TickType_t target = base + pdMS_TO_TICKS((chirp + 1) * CHIRP_BURST_PERIOD_MS);
+        int32_t wait = (int32_t)(target - xTaskGetTickCount());
+        if (wait > 0) vTaskDelay(wait);
+    }
+    ESP_LOGI("CHIRP", "Burst done");
 }
 
 // Map the 32-bit hardware MAC-time RX stamp into the esp_timer domain. The smallest
@@ -193,7 +225,7 @@ void IRAM_ATTR onDataRecv(const esp_now_recv_info *info, const uint8_t *data, in
 void onDataSent(const uint8_t *, esp_now_send_status_t) {}
 
 void chirpTask(void *) {
-    playChirp();
+    playChirpBurst();
     chirpTaskHandle = nullptr;
     vTaskDelete(nullptr);
 }

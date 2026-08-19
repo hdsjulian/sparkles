@@ -194,6 +194,22 @@ export const commandResetCalibration = () =>
 export const commandEndCalibration = () =>
   fetch(`${BASE}/commandEndCalibration`).then(r => r.json());
 
+export const commandChirpAtPosition = (x, y) =>
+  fetch(`${BASE}/commandChirpAtPosition?x=${x}&y=${y}`).then(r => r.json());
+
+export const getMapMeasurements = () =>
+  fetch(`${BASE}/mapMeasurements`).then(r => r.json());
+
+export const solveMap = (push = false, flip = false) =>
+  fetch(`${BASE}/solveMap?push=${push}&flip=${flip}`).then(async r => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail ?? 'Solve failed');
+    return body;
+  });
+
+export const clearMap = () =>
+  fetch(`${BASE}/clearMap`).then(r => r.json());
+
 export const commandStartDistanceCalibration = () =>
   fetch(`${BASE}/commandStartDistanceCalibration`).then(r => r.json());
 

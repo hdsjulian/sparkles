@@ -114,6 +114,9 @@ public:
     void setWakeupTime(int hours, int minutes, int seconds);
     void setHasClapHappened(bool hasClapHappened);
     bool getHasClapHappened();
+    // chirp mode: listen for the chirp burst instead of a hand clap
+    void setChirpMode(bool mode) { chirpMode = mode; }
+    bool getChirpMode() { return chirpMode; }
     void setClapDeviceDelay(int delay);
     int getClapDeviceDelay();
     unsigned long long getLastMidiTime();
@@ -153,13 +156,15 @@ public:
     void runTimerSyncAt(int index);
     void runFastResyncAll();
     void runClapDeviceTimerSync();
-    void startDistanceCalibrationCommandTask(int commandType);
+    void startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance);
     int acquireTxSlot(const uint8_t *mac);
     void releaseTxSlot(int slot);
     void recordTxDelay(const uint8_t *mac);
     void runBatterySync();
     void toggleWiFiTask();
     void runClapTask();
+    float detectChirp(int audioPin, const float* tmpl, float tmplEnergy,
+                      unsigned long long& recordStart, float& peakCorr);
     void runOTAUpdateTask();
     void runCalculatePositionsTask();
     void runClapSync();
@@ -187,6 +192,12 @@ public:
     void resetCalibration();
     void continueDistanceCalibration();
     void endDistanceCalibration();
+    void chirpAtPosition(float xPos, float yPos);
+    void beginBurst(int slot, float xPos, float yPos, bool isDistance);
+    void finishBurst();
+    void emitBurstStatus(const char* status, int chirpsHeard, int boardsMeasured = 0, const char* reason = nullptr);
+    void recordChirpEmission(int chirpIndex, unsigned long long emissionTime);
+    void clearClapMeasurements();
     void startDistanceCalibrationMaster();
     void startDistanceCalibrationClient();
     void calculateDistances();
@@ -235,7 +246,10 @@ private:
     message_midi_params midiParams;
     message_darkroom_params darkroomParams;
     SemaphoreHandle_t configMutex, updateOTAMutex;
-    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, fastResyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr;
+    volatile bool animationLoopStop = false; // cooperative stop for runAnimationLoop
+    // deliberately not persisted: a reboot comes back with ambient off
+    volatile bool animationLoopEnabled = false;
+    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, fastResyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr, distCalHandle = nullptr;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;
@@ -283,6 +297,19 @@ private:
     unsigned long lastAdminPresent = 0;
     int clapIndex = 0;
     unsigned long long lastClapTime = 0;
+    volatile bool chirpMode = false;
+    // A burst is CHIRP_BURST_COUNT chirps from one spot. Emission stamp per chirp
+    // index, so a client reply that lands after the next chirp is still matched to
+    // the chirp it belongs to; the per-client samples are averaged at the end into
+    // one distance for that spot, held in clapTable[burstSlot] / distances[burstSlot].
+    unsigned long long chirpEmissions[CHIRP_BURST_COUNT] = {0};
+#if DEVICE_MODE == MASTER
+    float burstSamples[NUM_CLIENTS][CHIRP_BURST_COUNT] = {};
+#endif
+    volatile bool burstActive = false;
+    int burstSlot = 0;
+    float burstX = 0.0f, burstY = 0.0f;
+    bool burstIsDistance = true;
     // Constructor and Deleted Functions
     MessageHandler();
     MessageHandler(const MessageHandler&) = delete;
