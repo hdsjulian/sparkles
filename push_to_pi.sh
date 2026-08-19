@@ -28,7 +28,15 @@ scp "$BUNDLE" "$PI:/tmp/sparkles-update.bundle"
 # on-disk update.sh may predate the offline logic). Then run it; its own bundle
 # pull is a harmless already-up-to-date no-op. -t streams sudo/npm output back.
 echo "=== Pulling bundle + running update.sh on $PI ==="
-ssh -t "$PI" "set -e; cd ~/sparkles && git pull /tmp/sparkles-update.bundle '$BRANCH' && bash ~/sparkles/update.sh"
+# auth_config.yaml is rewritten by auth.py at startup, so the pi's copy is always
+# dirty and this pull would abort on it. Set it aside first; update.sh (the fresh
+# one this pull installs) merges the live users back out of the copy.
+ssh -t "$PI" "set -e; cd ~/sparkles && \
+  if [ -f sparkles-api/auth_config.yaml ] && ! git diff --quiet -- sparkles-api/auth_config.yaml; then \
+    cp sparkles-api/auth_config.yaml sparkles-api/auth_config.local.yaml && \
+    git checkout -- sparkles-api/auth_config.yaml; \
+  fi && \
+  git pull /tmp/sparkles-update.bundle '$BRANCH' && bash ~/sparkles/update.sh"
 
 echo "=== Done. Master firmware (if changed) still needs a separate flash:"
 echo "    ssh $PI '/home/julian/myenv/bin/pio run -e Master_Pi -t upload'"

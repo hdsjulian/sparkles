@@ -57,6 +57,9 @@ if local.get("users"):
 else:
     print("no users in the local copy, leaving the pulled file alone")
 PY
+    # retire it: the merged file now holds the live users, and a backup left in
+    # place would re-apply these same users over every future change
+    mv "$AUTH_BACKUP" "$AUTH_BACKUP.applied"
 fi
 
 echo "=== Rebuilding frontend ==="

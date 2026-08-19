@@ -5,4 +5,6 @@ sparkles-api/colors.json
 sparkles-api/schedule.json
 sparkles-api/clock_trust.json
 __pycache__/
-auth_config.local.yaml  # pi's live credentials, set aside by update.sh
+# pi's live credentials, set aside by update.sh across a pull
+auth_config.local.yaml
+auth_config.local.yaml.applied
