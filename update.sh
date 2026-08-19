@@ -17,6 +17,19 @@ else
     ONLINE=0
 fi
 
+# auth.py rewrites auth_config.yaml at startup (password_plain -> password_hash,
+# and yaml.dump reformats the rest), so the pi's copy always differs from git and
+# any commit touching that file aborts the pull. Set it aside, take the incoming
+# version, then put the live users back — access rules come from git, credentials
+# stay on the pi.
+AUTH="$REPO/sparkles-api/auth_config.yaml"
+AUTH_BACKUP="$REPO/sparkles-api/auth_config.local.yaml"
+if [ -f "$AUTH" ] && ! git -C "$REPO" diff --quiet -- sparkles-api/auth_config.yaml; then
+    echo "=== Setting aside local auth_config.yaml ==="
+    cp "$AUTH" "$AUTH_BACKUP"
+    git -C "$REPO" checkout -- sparkles-api/auth_config.yaml
+fi
+
 echo "=== Pulling $BRANCH ==="
 if [ "$ONLINE" = "1" ]; then
     git -C "$REPO" pull
@@ -25,6 +38,25 @@ elif [ -f "$BUNDLE" ]; then
     git -C "$REPO" pull "$BUNDLE" "$BRANCH"
 else
     echo "No internet and no bundle at $BUNDLE — building/restarting with the code already on disk"
+fi
+
+if [ -f "$AUTH_BACKUP" ]; then
+    echo "=== Restoring local users into auth_config.yaml ==="
+    python3 - "$AUTH" "$AUTH_BACKUP" <<'PY'
+import sys, yaml
+merged_path, local_path = sys.argv[1], sys.argv[2]
+with open(merged_path) as f:
+    merged = yaml.safe_load(f) or {}
+with open(local_path) as f:
+    local = yaml.safe_load(f) or {}
+if local.get("users"):
+    merged["users"] = local["users"]          # live hashes win, rules come from git
+    with open(merged_path, "w") as f:
+        yaml.dump(merged, f, allow_unicode=True, sort_keys=False)
+    print("kept %d local user(s)" % len(local["users"]))
+else:
+    print("no users in the local copy, leaving the pulled file alone")
+PY
 fi
 
 echo "=== Rebuilding frontend ==="
