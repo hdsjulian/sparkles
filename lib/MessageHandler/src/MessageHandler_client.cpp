@@ -149,11 +149,13 @@ void MessageHandler::handleReceive() {
                     }
                 }
                 if (commandMessage.commandType == CMD_REANNOUNCE) {
-                    uint8_t mac[6];
-                    WiFi.macAddress(mac);
-                    uint32_t delayMs = (mac[5] % 30) * 2000;
-                    ESP_LOGI("MSG", "CMD_REANNOUNCE: re-announcing in %u ms", delayMs);
-                    vTaskDelay(delayMs / portTICK_PERIOD_MS);
+                    // The MAC stagger belongs in the announce task, not here.
+                    // This is handleReceive, the client's only message loop —
+                    // sleeping it for up to 58 s meant the board answered
+                    // nothing at all, timer bursts included, so the master could
+                    // never sync it and it sat there announcing forever.
+                    ESP_LOGI("MSG", "CMD_REANNOUNCE received");
+                    staggerAnnounce = true;
                     setAddressAnnounced(false);
                     if (announceTaskHandle == NULL) {
                         xTaskCreatePinnedToCore(announceAddressWrapper, "runAnnounceAddress", 10000, this, 2, &announceTaskHandle, 1);
@@ -510,6 +512,13 @@ void MessageHandler::announceAddressWrapper(void *pvParameters) {
 }
 
 void MessageHandler::runAnnounceAddress() {
+    if (staggerAnnounce) {
+        // spread a fleet-wide reannounce so the master isn't stampeded
+        staggerAnnounce = false;
+        uint8_t mac[6];
+        WiFi.macAddress(mac);
+        vTaskDelay(pdMS_TO_TICKS((mac[5] % 30) * 2000));
+    }
     message_data messageData;
     messageData.messageType = MSG_ADDRESS;
     memcpy(messageData.targetAddress, broadcastAddress, 6);

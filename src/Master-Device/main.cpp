@@ -190,17 +190,16 @@ static void runVerifiedWake(bool wasCancelled) {
     const unsigned long WAKE_STALL_MS = 5UL * 60UL * 1000UL; // no arrivals for this long = done
     int returned = -1;
     unsigned long lastArrival = millis();
-    unsigned long lastReannounce = 0;
+    // Once, up front. A board that was already awake never announces on its own
+    // — the morning sentinel means nothing to one that never napped — so without
+    // this the count sits at 0 of N for the full twenty minutes. Clients keep
+    // announcing until the master acknowledges them, so one prompt is enough,
+    // and repeating it restarts every client's announce in the middle of being
+    // synced. Sleeping boards still arrive on their own via the sentinel.
+    msgHandler.broadcastReannounce();
+
     while (!wakeCancel && millis() - wakeStart < WAKE_MAX_MS) {
         msgHandler.sendSleepWakeupMessage(0);
-        // A board that was already awake never announces on its own — the
-        // sentinel only means anything inside the nap loop — so without this the
-        // count sits at 0 of N for the full twenty minutes and the wake can
-        // never finish. Sleeping boards still come back via the sentinel.
-        if (lastReannounce == 0 || millis() - lastReannounce > 60000UL) {
-            lastReannounce = millis();
-            msgHandler.broadcastReannounce();
-        }
         int active = msgHandler.getNumDevices();
         if (active != returned) {
             returned = active;

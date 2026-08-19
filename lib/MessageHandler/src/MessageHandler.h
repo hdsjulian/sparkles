@@ -181,6 +181,7 @@ public:
     void runDarkroomTask();
     int addPeer(uint8_t * address);
     bool addressAnnounced = false;
+    volatile bool staggerAnnounce = false; // set by CMD_REANNOUNCE, consumed by the announce task
     void sendAnimation(message_animation animationMessage, int addressId);
     //helpers
 
