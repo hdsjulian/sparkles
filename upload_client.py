@@ -15,6 +15,7 @@ PORTS = [
 PORT_COLORS = ["\033[92m", "\033[96m", "\033[95m"]  # green, cyan, magenta
 RESET = "\033[0m"
 BOLD  = "\033[1m"
+RED   = "\033[91m"
 
 VALID_ENVS = ["Master_Device", "Client_Device", "Clap_Device", "Raspi-Device", "Test_Device", "Log_Device"]
 
@@ -33,14 +34,14 @@ def monitor_and_upload(port, env, color):
     while True:
         connected = os.path.exists(port)
         if connected and not last_connected:
-            print(f"Device detected on {port}, uploading...")
+            print(f"{color}Device detected on {port}, uploading...{RESET}")
             upload = subprocess.run([
                 "pio", "run", "-e", env, "-t", "upload", "--upload-port", port
             ], capture_output=True, text=True)
             if upload.returncode == 0:
                 print(f"{color}{BOLD}✔ DONE: {port}{RESET}")
             else:
-                print(f"Upload failed on {port}:\n", upload.stdout, upload.stderr)
+                print(f"{RED}Upload failed{RESET} {color}on {port}{RESET}:\n", upload.stdout, upload.stderr)
             while os.path.exists(port):
                 time.sleep(0.5)
         last_connected = connected
