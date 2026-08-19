@@ -62,8 +62,12 @@ def _save_settings(data: dict):
         json.dump(data, f, indent=2)
 
 # Public paths that never require a token
+# /getMidiParams is read by aubioAlgo, a local daemon with no session to
+# authenticate with. The 401 it got instead was silent: it falls back to its
+# compiled-in defaults, so every parameter set in the UI — mode included — was
+# quietly ignored and the pitch detector always ran in frequency mode.
 _PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png", "/karaoke",
-                 "/internal/keyboard_event"}
+                 "/internal/keyboard_event", "/getMidiParams"}
 # /keyboard/ is public so the karaoke page can list and play songs without login
 _PUBLIC_PREFIXES = ("/_app/", "/login", "/karaoke", "/keyboard/")
 
