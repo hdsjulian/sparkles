@@ -25,6 +25,12 @@ parser.add_argument('--api', default='http://localhost:8080', help='FastAPI base
 parser.add_argument('--log', action='store_true', help='Enable logging to aubioAlgo.txt')
 parser.add_argument('--random', action='store_true', help='Generate random pitch/RMS instead of USB mic')
 parser.add_argument('--debug', action='store_true', help='DEBUG log level (writes per-frame logs to disk — adds latency)')
+parser.add_argument('--list-devices', action='store_true', help='List audio input devices and exit')
+parser.add_argument('--device', default=None,
+                    help='Input device index, or part of its name — default is the first with an input channel, '
+                         'which on a pi is often not the microphone')
+parser.add_argument('--meter', action='store_true',
+                    help='Print level and pitch every 200ms regardless of the silence gate, and send nothing')
 args = parser.parse_args()
 
 logging.basicConfig(
@@ -126,18 +132,44 @@ if not args.noserial:
 # ---------------------------------------------------------------------------
 # Audio setup
 # ---------------------------------------------------------------------------
+def list_devices():
+    p = pyaudio.PyAudio()
+    print("input devices:")
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info['maxInputChannels'] > 0:
+            print(f"  [{i}] {info['name']}  channels={info['maxInputChannels']} "
+                  f"rate={int(info['defaultSampleRate'])}")
+    p.terminate()
+
+
 def open_audio():
     while True:
         try:
             p = pyaudio.PyAudio()
             selected_index = None
+            inputs = []
             for i in range(p.get_device_count()):
                 info = p.get_device_info_by_index(i)
-                log.debug(f"Audio device {i}: {info['name']} | in={info['maxInputChannels']} rate={info['defaultSampleRate']}")
-                if info['maxInputChannels'] > 0 and selected_index is None:
+                if info['maxInputChannels'] <= 0:
+                    continue
+                inputs.append((i, info['name']))
+                # Default is simply the first input-capable device, which on a pi
+                # is as likely to be an HDMI or dummy device returning silence as
+                # it is the microphone. --device picks by index or by name.
+                if args.device is not None:
+                    if args.device.isdigit():
+                        if i == int(args.device):
+                            selected_index = i
+                    elif args.device.lower() in info['name'].lower():
+                        if selected_index is None:
+                            selected_index = i
+                elif selected_index is None:
                     selected_index = i
+            log.info("input devices: %s", ", ".join(f"[{i}] {n}" for i, n in inputs) or "none")
             if selected_index is None:
-                raise RuntimeError("No input audio device found")
+                raise RuntimeError(f"No input audio device matched {args.device!r}"
+                                   if args.device else "No input audio device found")
             log.info(f"Opening audio on device {selected_index}: {p.get_device_info_by_index(selected_index)['name']}")
             stream = p.open(format=pyaudio.paFloat32,
                             channels=1, rate=44100, input=True,
@@ -152,6 +184,10 @@ def open_audio():
                 pass
             log.info(f"Retrying audio in {RETRY_DELAY}s...")
             time.sleep(RETRY_DELAY)
+
+if args.list_devices:
+    list_devices()
+    sys.exit(0)
 
 p, stream = open_audio()
 
@@ -291,6 +327,8 @@ def get_current_note():
     max_backlog_frames = 0
     max_work_ms        = 0.0
     last_stat          = start_time
+    peak_db            = -96.0   # loudest frame since the last stats line
+    last_meter         = 0.0
 
     while True:
         if args.random:
@@ -330,6 +368,16 @@ def get_current_note():
             if work_ms > max_work_ms:
                 max_work_ms = work_ms
 
+        if db > peak_db:
+            peak_db = db
+
+        # --meter: what the microphone is doing, ahead of every gate, so a level
+        # too low to pass them is still visible
+        if args.meter and time.time() - last_meter >= 0.2:
+            last_meter = time.time()
+            bar = "#" * max(0, min(40, int((db + 90) / 2)))
+            print(f"{db:7.1f} dB  {pitch_val:7.1f} Hz  {bar}", flush=True)
+
         if pitch_val > 0:
             buffer_pitch.append(pitch_val)
             buffer_rms.append(db)
@@ -343,7 +391,9 @@ def get_current_note():
                 avg_pitch = 0.0
                 avg_db    = -96.0
 
-            if avg_db > DB_SILENCE:
+            if args.meter:
+                pass  # measuring only, nothing goes to the fleet
+            elif avg_db > DB_SILENCE:
                 log.debug(f"Pitch={avg_pitch:.1f}Hz  dB={avg_db:.1f}")
                 mode = midi_params['mode']
                 if mode == FREQUENCY_MODE:
@@ -360,11 +410,17 @@ def get_current_note():
             last_output = now
 
         if now - last_stat >= 2.0:
-            log.info("loop stats: backlog<=%.0f ms, work<=%.1f ms (hop budget %.1f ms)",
+            # peak level against the gate that has to be cleared before anything
+            # is sent — without it a silent or too-quiet input looks identical to
+            # a healthy one in the log
+            log.info("loop stats: peak %.1f dB (gate %.1f, mode %s), backlog<=%.0f ms, "
+                     "work<=%.1f ms (hop budget %.1f ms)",
+                     peak_db, max(DB_SILENCE, midi_params['rmsMin']), midi_params['mode'],
                      max_backlog_frames / samplerate * 1000.0, max_work_ms,
                      hop_s / samplerate * 1000.0)
             max_backlog_frames = 0
             max_work_ms        = 0.0
+            peak_db            = -96.0
             last_stat          = now
 
 if __name__ == '__main__':

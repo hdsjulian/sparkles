@@ -1,5 +1,16 @@
+import argparse
+import sys
+
 import pyaudio
 import numpy as np
+
+# Same trap as aubioAlgo had: picking the first input-capable device is a coin
+# toss once an interface is plugged in, and calibrating the wrong input looks
+# exactly like a dead microphone.
+ap = argparse.ArgumentParser()
+ap.add_argument('--list-devices', action='store_true', help='List input devices and exit')
+ap.add_argument('--device', default=None, help='Device index, or part of its name (e.g. Scarlett)')
+cli = ap.parse_args()
 
 SAMPLERATE = 44100
 RECORD_SECONDS = 3
@@ -8,16 +19,34 @@ NUM_STEPS = 7
 
 p = pyaudio.PyAudio()
 
+if cli.list_devices:
+    print("input devices:")
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info['maxInputChannels'] > 0:
+            print(f"  [{i}] {info['name']}  rate={int(info['defaultSampleRate'])}")
+    p.terminate()
+    sys.exit(0)
+
 input_device_index = None
 for i in range(p.get_device_count()):
     info = p.get_device_info_by_index(i)
-    if info['maxInputChannels'] > 0:
+    if info['maxInputChannels'] <= 0:
+        continue
+    if cli.device is not None:
+        if cli.device.isdigit():
+            if i == int(cli.device):
+                input_device_index = i
+        elif cli.device.lower() in info['name'].lower() and input_device_index is None:
+            input_device_index = i
+    elif input_device_index is None:
         input_device_index = i
-        print(f"Using device {i}: {info['name']}")
-        break
 
 if input_device_index is None:
-    raise RuntimeError("No input audio device found")
+    raise RuntimeError(f"No input device matched {cli.device!r}" if cli.device
+                       else "No input audio device found")
+print(f"Using device {input_device_index}: "
+      f"{p.get_device_info_by_index(input_device_index)['name']}")
 
 stream = p.open(
     format=pyaudio.paFloat32,
