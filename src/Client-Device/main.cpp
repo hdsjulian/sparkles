@@ -79,10 +79,25 @@ void setup()
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false); // modem sleep adds RX latency and skews hardware RX timestamps
   ESP_LOGI("", "Setup1");
-  if (esp_now_init() != ESP_OK)
-  {
-    Serial.println("Error initializing ESP-NOW");
-    return;
+  // A warm ESP.restart() leaves the wifi driver part-way through teardown, so
+  // esp_now_init() can fail here where it succeeds on a cold boot. setup() used
+  // to give up and return on that — starting no tasks at all and leaving the
+  // board powered but completely inert, which is why "reboot all" stranded
+  // boards that the physical reset button brought back fine. Retry, and if it
+  // truly will not come up, reboot rather than sit there dead.
+  esp_err_t nowErr = ESP_FAIL;
+  for (int attempt = 0; attempt < 10 && nowErr != ESP_OK; attempt++) {
+    esp_now_deinit();               // no-op if it was never up
+    nowErr = esp_now_init();
+    if (nowErr != ESP_OK) {
+      ESP_LOGW("BOOT", "esp_now_init failed (%d), retry %d/10", (int)nowErr, attempt + 1);
+      delay(200);
+    }
+  }
+  if (nowErr != ESP_OK) {
+    ESP_LOGE("BOOT", "esp_now_init never came up, restarting");
+    delay(500);
+    ESP.restart();
   }
   delay(1000);
   ledInstance.setup();
