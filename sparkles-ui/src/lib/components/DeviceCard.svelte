@@ -1,5 +1,5 @@
 <script>
-  import { commandBlink, commandSync, submitPositions, removeDevice } from '$lib/api.js';
+  import { commandBlink, commandSync, submitPositions, removeDevice, commandResetClient } from '$lib/api.js';
 
   export let device;
 
@@ -59,6 +59,19 @@
       setTimeout(() => { successMsg = ''; }, 2000);
     } catch (e) {
       error = `Submit failed: ${e.message}`;
+    }
+  }
+
+  async function handleReboot() {
+    error = '';
+    successMsg = '';
+    if (!confirm(`Reboot board #${device.boardId}? It drops off the mesh for a few seconds and re-announces itself.`)) return;
+    try {
+      await commandResetClient(device.boardId);
+      successMsg = 'Rebooting';
+      setTimeout(() => { successMsg = ''; }, 2500);
+    } catch (e) {
+      error = `Reboot failed: ${e.message}`;
     }
   }
 
@@ -130,6 +143,7 @@
     <button class="btn btn-ghost btn-sm" on:click={handleBlink}>Blink</button>
     <button class="btn btn-ghost btn-sm" on:click={handleSync}>Sync</button>
     <button class="btn btn-primary btn-sm" on:click={handleSubmitPosition}>Save Pos</button>
+    <button class="btn btn-ghost btn-sm" on:click={handleReboot}>Reboot</button>
     <button class="btn btn-ghost btn-sm btn-danger" on:click={handleRemove}>Remove</button>
   </div>
 </div>

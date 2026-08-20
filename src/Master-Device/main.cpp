@@ -704,6 +704,7 @@ static void handleSerialCommand(const char* line) {
         msgHandler.resetSystem();
     }
     else if (strcmp(cmd, "reset_clients") == 0)          { msgHandler.broadcastResetClients(); }
+    else if (strcmp(cmd, "reset_client") == 0)           { msgHandler.resetClient(doc["boardId"] | -1); }
 
     else if (strcmp(cmd, "toggle_test_mode") == 0) {
         bool next = !msgHandler.getTestMode();

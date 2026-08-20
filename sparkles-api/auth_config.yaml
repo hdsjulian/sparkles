@@ -24,6 +24,7 @@ access:
     "GET /commandOTAUpdate":              [admin]
     "GET /factoryReset":                  [admin]
     "GET /resetSystem":                   [admin]
+    "GET /commandResetClient":            [admin]
     "GET /toggleLogging":                 [admin]
     "GET /toggleTestMode":                [admin]
     "GET /commandStartCalibration":       [admin]

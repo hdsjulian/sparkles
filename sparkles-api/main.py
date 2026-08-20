@@ -1078,6 +1078,13 @@ async def command_shimmer(boardId: int = Query(default=-1)):
     return _ok()
 
 
+@app.get("/commandResetClient")
+async def command_reset_client(boardId: int = Query(...)):
+    """Restart one board."""
+    _send({"cmd": "reset_client", "boardId": boardId})
+    return _ok()
+
+
 @app.get("/commandMicTest")
 async def command_mic_test(boardId: int = Query(default=-1)):
     """Ask a board (or the whole fleet) what its microphone is producing."""

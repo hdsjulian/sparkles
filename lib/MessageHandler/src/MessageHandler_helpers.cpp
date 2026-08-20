@@ -240,13 +240,42 @@ void MessageHandler::broadcastReannounce() {
 // path) and repeat, since a single ESP-NOW broadcast is unacked. Clients stagger
 // their own restart by 100ms*position and re-announce staggered by mac%30, and the
 // master serializes syncs on one task — so the wave back in doesn't flood.
-void MessageHandler::broadcastResetClients() {
-    ESP_LOGI("MSG", "Broadcasting CMD_RESET_SYSTEM to all clients");
-    for (int i = 0; i < 10; i++) {
-        message_data msg = createCommandMessage(CMD_RESET_SYSTEM, true);
-        pushToSendQueue(msg);
-        vTaskDelay(300 / portTICK_PERIOD_MS);
+// One board at a time, addressed directly, a second apart. A broadcast reset
+// restarted the whole fleet at once and a good share of them came back wedged;
+// spacing them out keeps each board's boot to itself. Runs as a task because a
+// hundred boards at a second each is a hundred seconds, and the loop watchdog
+// panics at five.
+void MessageHandler::resetClient(int index) {
+    if (index < 0 || index >= NUM_DEVICES) return;
+    if (memcmp(addressList[index].address, emptyAddress, 6) == 0) return;
+    message_data msg = createCommandMessage(CMD_RESET_SYSTEM, false);
+    memcpy(msg.targetAddress, addressList[index].address, 6);
+    pushToSendQueue(msg);
+    ESP_LOGI("MSG", "CMD_RESET_SYSTEM sent to board %d", index);
+}
+
+void MessageHandler::runResetClients() {
+    int sent = 0;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
+        resetClient(i);
+        sent++;
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    ESP_LOGI("MSG", "Reset sent to %d clients, one per second", sent);
+    resetClientsHandle = NULL;
+    vTaskDelete(NULL);
+}
+
+void MessageHandler::broadcastResetClients() {
+    if (resetClientsHandle != NULL) {
+        ESP_LOGW("MSG", "Client reset already walking the list, ignoring");
+        return;
+    }
+    ESP_LOGI("MSG", "Resetting every client, one per second");
+    xTaskCreatePinnedToCore([](void* pv) {
+        ((MessageHandler*)pv)->runResetClients();
+    }, "resetClients", 4096, this, 1, &resetClientsHandle, 1);
 }
 
 bool MessageHandler::getTestMode() {

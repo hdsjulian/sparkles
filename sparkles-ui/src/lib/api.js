@@ -48,6 +48,9 @@ export const commandAnimationOff = () =>
 export const submitPositions = (boardId, xpos, ypos, zpos) =>
   fetch(`${BASE}/submitPositions?xpos=${xpos}&ypos=${ypos}&zpos=${zpos}&boardId=${boardId}`).then(r => r.json());
 
+export const commandResetClient = (boardId) =>
+  fetch(`${BASE}/commandResetClient?boardId=${boardId}`).then(r => r.json());
+
 export const commandBlink = (boardId) =>
   fetch(`${BASE}/commandBlink?boardId=${boardId}`).then(r => r.json());
 

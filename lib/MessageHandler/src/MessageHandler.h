@@ -223,6 +223,8 @@ public:
     void resetSystem();
     void broadcastReannounce();
     void broadcastResetClients();
+    void resetClient(int index);
+    void runResetClients();
     void stopAllAnimations();
     void setTestMode(bool on, float spacingMeters = 1.0f);
     bool getTestMode();
@@ -265,7 +267,7 @@ private:
     volatile bool animationLoopStop = false; // cooperative stop for runAnimationLoop
     // deliberately not persisted: a reboot comes back with ambient off
     volatile bool animationLoopEnabled = false;
-    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, fastResyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr, distCalHandle = nullptr, micTestTaskHandle = nullptr;
+    TaskHandle_t announceTaskHandle = nullptr, timerSyncHandle = nullptr, allTimerSyncHandle = nullptr, fastResyncHandle = nullptr, batterySyncHandle = nullptr, wifiToggleTask = nullptr, otaUpdateHandle = nullptr, clapTaskHandle = nullptr, calculatePositionsHandle = nullptr, clapSyncHandle = nullptr, handleSendHandle = nullptr, handleReceiveHandle = nullptr, animationLoopHandle = nullptr, darkroomHandle = nullptr, distCalHandle = nullptr, micTestTaskHandle = nullptr, resetClientsHandle = nullptr;
     esp_now_peer_info_t peerInfo;
     esp_now_peer_num_t peerNum;
     QueueHandle_t receiveQueue, sendQueue ;
