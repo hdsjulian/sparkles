@@ -117,20 +117,29 @@ def _fetch_midi_params():
         log.warning(f"midi_params fetch failed: {e}")
     apply_auto_levels()   # a fetch would otherwise overwrite what the room told us
 
-def _report_level(db, pitch_val):
-    """Tell the API what we are hearing so the web level test can use it.
+# Latest level, published to the API by one background thread. Spawning a
+# thread per sample was five a second for as long as the service runs, and they
+# pile up the moment the API is slow to answer.
+_level_report = {'db': -96.0, 'pitch': 0.0}
+
+
+def _level_reporter():
+    """Publish what we are hearing so the web level test can use it.
 
     Nothing else can open the audio device while this process holds it, so the
     browser cannot measure for itself — it reads what we already compute.
     """
     import urllib.request
-    try:
-        body = json.dumps({"db": round(float(db), 2), "pitch": round(float(pitch_val), 1)}).encode()
-        req = urllib.request.Request(f"{args.api}/internal/aubio_level", data=body,
-                                     headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=1).read()
-    except Exception:
-        pass   # best effort: the test is a convenience, never worth a stall here
+    while True:
+        time.sleep(0.2)
+        try:
+            body = json.dumps({"db": round(float(_level_report['db']), 2),
+                               "pitch": round(float(_level_report['pitch']), 1)}).encode()
+            req = urllib.request.Request(f"{args.api}/internal/aubio_level", data=body,
+                                         headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=1).read()
+        except Exception:
+            pass   # best effort: the test is a convenience, never worth a stall
 
 
 def _poll_midi_params():
@@ -150,6 +159,7 @@ def _poll_midi_params():
 
 if not args.noserial:
     _open_sock()
+    threading.Thread(target=_level_reporter, daemon=True).start()
     threading.Thread(target=_poll_midi_params, daemon=True).start()
 
 # ---------------------------------------------------------------------------
@@ -211,6 +221,8 @@ def list_devices():
     p.terminate()
 
 
+CALIBRATION_SECONDS = 1.5   # how long to listen to the room
+CALIBRATION_TIMEOUT = 4.0   # hard ceiling: never hang the startup on a silent device
 AUTO_MARGIN_DB = 8.0    # how far above the room the gate sits
 AUTO_SPAN_DB   = 25.0   # assumed vocal range until something louder is heard
 AUTO_MIN_FLOOR = -75.0  # a silent digital input reads absurdly low; do not trust it
@@ -224,9 +236,24 @@ auto_levels = {'min': None, 'max': None}
 
 
 def calibrate_levels(stream):
-    """Listen to an empty room for a moment and put the gate just above it."""
-    frames, floor_samples = int(1.5 * samplerate / hop_s), []
+    """Listen to an empty room for a moment and put the gate just above it.
+
+    Bounded by the clock, not by a frame count. stream.read() blocks until the
+    device delivers, so a device that is open but not streaming — claimed by
+    something else, or a rate the interface will not actually run — would hang
+    here for ever, before the detection loop ever starts. The only sign of that
+    from outside is the midi_params poll still logging on its own thread, which
+    looks exactly like a healthy process.
+    """
+    log.info("measuring the room for %.1fs...", CALIBRATION_SECONDS)
+    deadline = time.time() + CALIBRATION_TIMEOUT
+    frames, floor_samples = int(CALIBRATION_SECONDS * samplerate / hop_s), []
     for _ in range(frames):
+        if time.time() > deadline:
+            log.warning("level calibration timed out after %.1fs with %d frame(s) — "
+                        "the device is open but not delivering audio",
+                        CALIBRATION_TIMEOUT, len(floor_samples))
+            break
         try:
             data = stream.read(hop_s, exception_on_overflow=False)
         except Exception as exc:
@@ -238,6 +265,7 @@ def calibrate_levels(stream):
         rms = np.sqrt(np.mean(block ** 2))
         floor_samples.append(20 * np.log10(rms) if rms > 0 else -96.0)
     if not floor_samples:
+        log.warning("no audio during calibration — leaving the thresholds alone")
         return
     floor_samples.sort()
     noise = floor_samples[len(floor_samples) // 2]          # median, ignores a cough
@@ -552,7 +580,7 @@ def get_current_note():
             if args.meter:
                 bar = "#" * max(0, min(40, int((db + 90) / 2)))
                 print(f"{db:7.1f} dB  {pitch_val:7.1f} Hz  {bar}", flush=True)
-            threading.Thread(target=_report_level, args=(db, pitch_val), daemon=True).start()
+            _level_report['db'], _level_report['pitch'] = db, pitch_val
 
         if pitch_val > 0:
             buffer_pitch.append(pitch_val)
