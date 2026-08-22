@@ -12,7 +12,17 @@
   // hears to /audioLevel and this samples that — the browser never touches audio.
   const TEST_STEPS = 5;
   const STEP_SECONDS = 3;
-  let levelTest = { step: 0, recording: false, results: [], error: '', live: null, stale: true };
+  const LEAD_SECONDS = 2;   // start the note before anything is measured
+  // What to aim for at each step, so the loudness is prompted rather than guessed
+  const STEP_LABELS = [
+    'barely audible — only just singing',
+    'quiet',
+    'normal singing voice',
+    'loud',
+    'as loud as you will ever perform',
+  ];
+  let levelTest = { step: 0, phase: 'idle', remaining: 0, results: [],
+                    error: '', live: null, stale: true };
   let liveTimer = null;
 
   async function pollLive() {
@@ -37,12 +47,27 @@
     liveTimer = null;
   }
 
+  async function countdown(phase, seconds) {
+    levelTest.phase = phase;
+    for (let left = seconds; left > 0; left--) {
+      levelTest.remaining = left;
+      levelTest = levelTest;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
   async function recordStep() {
     levelTest.error = '';
-    levelTest.recording = true;
+    // Lead-in first: measuring from the instant of the click would catch the
+    // breath before the note and drag the step down.
+    await countdown('ready', LEAD_SECONDS);
+
+    levelTest.phase = 'recording';
+    levelTest.remaining = STEP_SECONDS;
     levelTest = levelTest;
     const samples = [];
-    const until = Date.now() + STEP_SECONDS * 1000;
+    const started = Date.now();
+    const until = started + STEP_SECONDS * 1000;
     while (Date.now() < until) {
       try {
         const l = await getAudioLevel();
@@ -50,24 +75,36 @@
         // a step look quieter than it was actually sung
         if (!l.stale && typeof l.db === 'number' && l.db > -90) samples.push(l.db);
       } catch { /* keep sampling, one dropped read does not spoil a step */ }
+      levelTest.remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      levelTest = levelTest;
       await new Promise(r => setTimeout(r, 200));
     }
-    levelTest.recording = false;
+    levelTest.phase = 'idle';
     if (!samples.length) {
       levelTest.error = 'Heard nothing — is aubio running and the input right?';
       levelTest = levelTest;
       return;
     }
     const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
-    levelTest.results = [...levelTest.results,
-      { step: levelTest.step + 1, db: avg, peak: Math.max(...samples), n: samples.length }];
+    const previous = levelTest.results[levelTest.results.length - 1];
+    levelTest.results = [...levelTest.results, {
+      step: levelTest.step + 1,
+      db: avg,
+      peak: Math.max(...samples),
+      // step up from the previous level: the five steps are only meaningful if
+      // each one is actually louder than the last
+      delta: previous ? avg - previous.db : null,
+    }];
     levelTest.step += 1;
     levelTest = levelTest;
   }
 
   function resetTest() {
-    levelTest = { step: 0, recording: false, results: [], error: '', live: levelTest.live, stale: levelTest.stale };
+    levelTest = { step: 0, phase: 'idle', remaining: 0, results: [], error: '',
+                  live: levelTest.live, stale: levelTest.stale };
   }
+
+  $: notLouder = levelTest.results.filter(r => r.delta !== null && r.delta <= 0);
 
   // quietest step sets the gate, loudest sets the top of the range
   $: testMin = levelTest.results.length ? Math.min(...levelTest.results.map(r => r.db)) : null;
@@ -410,19 +447,53 @@
 
     {#if levelTest.results.length}
       <table class="level-table">
-        <thead><tr><th>step</th><th>average</th><th>peak</th></tr></thead>
+        <thead><tr><th>step</th><th>level</th><th>average</th><th>peak</th><th>step up</th></tr></thead>
         <tbody>
           {#each levelTest.results as r}
-            <tr><td>{r.step}</td><td>{r.db.toFixed(1)} dB</td><td>{r.peak.toFixed(1)} dB</td></tr>
+            <tr>
+              <td>{r.step}</td>
+              <td class="muted">{STEP_LABELS[r.step - 1].split(' —')[0]}</td>
+              <td>{r.db.toFixed(1)} dB</td>
+              <td>{r.peak.toFixed(1)} dB</td>
+              <td class:warn={r.delta !== null && r.delta <= 0}>
+                {r.delta === null ? '—' : `${r.delta > 0 ? '+' : ''}${r.delta.toFixed(1)} dB`}
+              </td>
+            </tr>
           {/each}
         </tbody>
       </table>
+      {#if notLouder.length}
+        <p class="hint warn" style="margin-top:0.5rem;">
+          Step{notLouder.length > 1 ? 's' : ''} {notLouder.map(r => r.step).join(', ')}
+          {notLouder.length > 1 ? 'were' : 'was'} no louder than the one before. The range still
+          works, but redoing those gives a truer spread.
+        </p>
+      {/if}
+    {/if}
+
+    {#if levelTest.step < TEST_STEPS}
+      <div class="step-prompt">
+        <span class="step-num">step {levelTest.step + 1} of {TEST_STEPS}</span>
+        <strong>{STEP_LABELS[levelTest.step]}</strong>
+        {#if levelTest.phase === 'ready'}
+          <span class="step-cue">take a breath and start the note</span>
+        {:else if levelTest.phase === 'recording'}
+          <span class="step-cue recording">measuring — hold it steady</span>
+        {/if}
+      </div>
     {/if}
 
     <div class="btn-row" style="margin-top:0.75rem;">
       {#if levelTest.step < TEST_STEPS}
-        <button class="btn btn-primary" on:click={recordStep} disabled={levelTest.recording}>
-          {levelTest.recording ? `Recording ${STEP_SECONDS}s...` : `Record step ${levelTest.step + 1} of ${TEST_STEPS}`}
+        <button class="btn btn-primary" on:click={recordStep}
+                disabled={levelTest.phase !== 'idle'}>
+          {#if levelTest.phase === 'ready'}
+            Start singing… {levelTest.remaining}
+          {:else if levelTest.phase === 'recording'}
+            Hold it… {levelTest.remaining}s
+          {:else}
+            Record step {levelTest.step + 1} of {TEST_STEPS}
+          {/if}
         </button>
       {:else}
         <button class="btn btn-primary" on:click={applyTest}>
@@ -505,6 +576,15 @@
 </div>
 
 <style>
+  .step-prompt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem;
+                 padding: 0.55rem 0.7rem; margin-bottom: 0.25rem; border-radius: var(--radius);
+                 background: rgba(255,255,255,0.04); }
+  .step-num { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+              color: var(--color-text-muted); }
+  .step-cue { font-size: 0.8rem; color: var(--color-text-muted); }
+  .step-cue.recording { color: var(--color-ok, #4fbf7a); }
+  .warn { color: #e9a04f; }
+
   .hint { font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.75rem; }
   .muted { color: var(--color-text-muted); font-size: 0.8rem; }
   .live-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem; }
