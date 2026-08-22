@@ -32,6 +32,9 @@ parser.add_argument('--device', default=os.environ.get('SPARKLES_AUDIO_DEVICE'),
                          'first device with an input channel, which on a pi is often not the microphone')
 parser.add_argument('--meter', action='store_true',
                     help='Print level and pitch every 200ms regardless of the silence gate, and send nothing')
+parser.add_argument('--no-auto-level', dest='auto_level', action='store_false',
+                    default=os.environ.get('SPARKLES_AUTO_LEVEL', '1') != '0',
+                    help='Do not derive the thresholds from the room — use the values from the UI as given')
 args = parser.parse_args()
 
 logging.basicConfig(
@@ -110,6 +113,7 @@ def _fetch_midi_params():
                  f"rms={midi_params.get('rmsMin'):.1f}..{midi_params.get('rmsMax'):.1f}")
     except Exception as e:
         log.warning(f"midi_params fetch failed: {e}")
+    apply_auto_levels()   # a fetch would otherwise overwrite what the room told us
 
 def _poll_midi_params():
     # Wait for FastAPI to be ready, then keep params fresh
@@ -135,6 +139,48 @@ if not args.noserial:
 # ---------------------------------------------------------------------------
 input_channels = 1   # set by open_audio; >1 means the read path deinterleaves
 
+# Recognising the input by name rather than taking whatever enumerates first.
+# Interfaces and USB microphones score positively; the pi's own pseudo-devices
+# and loopbacks score negatively — several of those report input channels and
+# would happily be selected while returning silence forever.
+DEVICE_PREFERRED = ('scarlett', 'focusrite', 'shure', 'rode', 'zoom', 'behringer', 'audio-technica',
+                    'yeti', 'snowball', 'samson', 'presonus', 'motu', 'steinberg', 'usb audio',
+                    'usb pnp', 'microphone', 'mic')
+DEVICE_AVOIDED = ('dummy', 'null', 'loopback', 'monitor', 'dmix', 'surround', 'hdmi',
+                  'bcm2835', 'default', 'sysdefault', 'pulse', 'jack')
+
+
+def score_device(name):
+    low = name.lower()
+    score = 0
+    for i, token in enumerate(DEVICE_PREFERRED):
+        if token in low:
+            score += 100 - i        # earlier in the list is a stronger claim
+            break
+    for token in DEVICE_AVOIDED:
+        if token in low:
+            score -= 100
+            break
+    return score
+
+
+def pick_device(inputs, want):
+    """inputs: [(index, name)]. Explicit choice wins, else the best-scoring one."""
+    if want:
+        if want.isdigit():
+            for i, _ in inputs:
+                if i == int(want):
+                    return i, "index given"
+        for i, name in inputs:
+            if want.lower() in name.lower():
+                return i, "name given"
+        # asked for something absent — fall through to automatic rather than
+        # retry forever on a name that may never appear
+    if not inputs:
+        return None, "nothing available"
+    best = max(inputs, key=lambda entry: (score_device(entry[1]), -entry[0]))
+    return best[0], f"auto, score {score_device(best[1])}"
+
 
 def list_devices():
     p = pyaudio.PyAudio()
@@ -147,39 +193,68 @@ def list_devices():
     p.terminate()
 
 
+AUTO_MARGIN_DB = 8.0    # how far above the room the gate sits
+AUTO_SPAN_DB   = 25.0   # assumed vocal range until something louder is heard
+AUTO_MIN_FLOOR = -75.0  # a silent digital input reads absurdly low; do not trust it
+AUTO_MIN_CEIL  = -25.0
+
+# Derived from the room rather than configured. The thresholds that matter are
+# relative to whatever the chain actually delivers — swapping a USB mic for an
+# interface and a dynamic mic moves the whole scale, and a number tuned for one
+# is meaningless for the other.
+auto_levels = {'min': None, 'max': None}
+
+
+def calibrate_levels(stream):
+    """Listen to an empty room for a moment and put the gate just above it."""
+    frames, floor_samples = int(1.5 * samplerate / hop_s), []
+    for _ in range(frames):
+        try:
+            data = stream.read(hop_s, exception_on_overflow=False)
+        except Exception as exc:
+            log.warning("level calibration read failed: %s", exc)
+            return
+        block = np.frombuffer(data, dtype=aubio.float_type)
+        if input_channels > 1:
+            block = block[0::input_channels]
+        rms = np.sqrt(np.mean(block ** 2))
+        floor_samples.append(20 * np.log10(rms) if rms > 0 else -96.0)
+    if not floor_samples:
+        return
+    floor_samples.sort()
+    noise = floor_samples[len(floor_samples) // 2]          # median, ignores a cough
+    gate  = min(AUTO_MIN_CEIL, max(AUTO_MIN_FLOOR, noise + AUTO_MARGIN_DB))
+    auto_levels['min'] = gate
+    auto_levels['max'] = gate + AUTO_SPAN_DB
+    log.info("levels from the room: noise %.1f dB -> gate %.1f dB, top %.1f dB "
+             "(raises itself if you sing louder)", noise, gate, auto_levels['max'])
+    apply_auto_levels()
+
+
+def apply_auto_levels():
+    """Auto values win over the fetched ones — that is the point of asking for them."""
+    if not args.auto_level or auto_levels['min'] is None:
+        return
+    midi_params['rmsMin'] = auto_levels['min']
+    midi_params['rmsMax'] = auto_levels['max']
+
+
 def open_audio():
     while True:
         try:
             p = pyaudio.PyAudio()
-            selected_index = None
             inputs = []
             for i in range(p.get_device_count()):
                 info = p.get_device_info_by_index(i)
-                if info['maxInputChannels'] <= 0:
-                    continue
-                inputs.append((i, info['name']))
-                # Default is simply the first input-capable device, which on a pi
-                # is as likely to be an HDMI or dummy device returning silence as
-                # it is the microphone. --device picks by index or by name.
-                if args.device is not None:
-                    if args.device.isdigit():
-                        if i == int(args.device):
-                            selected_index = i
-                    elif args.device.lower() in info['name'].lower():
-                        if selected_index is None:
-                            selected_index = i
-                elif selected_index is None:
-                    selected_index = i
-            log.info("input devices: %s", ", ".join(f"[{i}] {n}" for i, n in inputs) or "none")
-            if selected_index is None and args.device and inputs:
-                # Named device absent — an interface not plugged in yet, say.
-                # Fall back rather than retry forever on a name that will not
-                # appear, so setting the name early is safe.
-                selected_index = inputs[0][0]
-                log.warning("no input device matched %r, falling back to [%d] %s",
-                            args.device, inputs[0][0], inputs[0][1])
+                if info['maxInputChannels'] > 0:
+                    inputs.append((i, info['name']))
+            log.info("input devices: %s",
+                     ", ".join(f"[{i}] {n} ({score_device(n):+d})" for i, n in inputs) or "none")
+            selected_index, why = pick_device(inputs, args.device)
             if selected_index is None:
                 raise RuntimeError("No input audio device found")
+            log.info("chose [%d] %s — %s", selected_index,
+                     dict(inputs)[selected_index], why)
             log.info(f"Opening audio on device {selected_index}: {p.get_device_info_by_index(selected_index)['name']}")
             # Interfaces with more than one input (the Scarlett Solo has two)
             # sometimes refuse a mono open outright. Fall back to the device's
@@ -193,6 +268,8 @@ def open_audio():
                                     input_device_index=selected_index, frames_per_buffer=256)
                     input_channels = channels
                     log.info("Audio stream opened, %d channel(s)", channels)
+                    if args.auto_level:
+                        calibrate_levels(stream)
                     return p, stream
                 except Exception as chan_err:
                     log.warning("open with %d channel(s) failed: %s", channels, chan_err)
@@ -207,15 +284,9 @@ def open_audio():
             log.info(f"Retrying audio in {RETRY_DELAY}s...")
             time.sleep(RETRY_DELAY)
 
-if args.list_devices:
-    list_devices()
-    sys.exit(0)
-
-p, stream = open_audio()
-
-# ---------------------------------------------------------------------------
-# Aubio pitch detection
-# ---------------------------------------------------------------------------
+# Defined before the first open_audio(): calibrate_levels() runs inside it and
+# needs the frame size, so leaving these below the call was a NameError waiting
+# for the first boot.
 samplerate = 44100
 win_s = 1024
 hop_s = 256
@@ -225,6 +296,16 @@ DB_SILENCE = -50.0
 
 pitch_o = pitch("yinfft", win_s, hop_s, samplerate)
 pitch_o.set_tolerance(tolerance)
+
+if args.list_devices:
+    list_devices()
+    sys.exit(0)
+
+p, stream = open_audio()
+
+# ---------------------------------------------------------------------------
+# Aubio pitch detection
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Output functions — ported from Raspi-Device/main.cpp
@@ -415,9 +496,14 @@ def get_current_note():
                 avg_pitch = 0.0
                 avg_db    = -96.0
 
+            # DB_SILENCE is a fixed floor that predates auto levelling; once the
+            # gate is derived from the room, that is the number to respect,
+            # otherwise a quiet chain is blocked by a constant nobody can reach
+            # from the UI.
+            gate = auto_levels['min'] if (args.auto_level and auto_levels['min'] is not None) else DB_SILENCE
             if args.meter:
                 pass  # measuring only, nothing goes to the fleet
-            elif avg_db > DB_SILENCE:
+            elif avg_db > gate:
                 log.debug(f"Pitch={avg_pitch:.1f}Hz  dB={avg_db:.1f}")
                 mode = midi_params['mode']
                 if mode == FREQUENCY_MODE:
@@ -429,6 +515,15 @@ def get_current_note():
                     with open("aubioAlgo.txt", "a") as f:
                         f.write(f"{avg_pitch:.2f},{avg_db:.2f}\n")
 
+            # The top of the range cannot be measured from an empty room, so it
+            # starts as an assumption and corrects itself upward the first time
+            # someone actually sings.
+            if (args.auto_level and auto_levels['max'] is not None
+                    and avg_db > auto_levels['max']):
+                auto_levels['max'] = avg_db
+                apply_auto_levels()
+                log.info("heard %.1f dB, raising the top of the range", avg_db)
+
             buffer_pitch.clear()
             buffer_rms.clear()
             last_output = now
@@ -439,7 +534,7 @@ def get_current_note():
             # a healthy one in the log
             log.info("loop stats: peak %.1f dB (gate %.1f, mode %s), backlog<=%.0f ms, "
                      "work<=%.1f ms (hop budget %.1f ms)",
-                     peak_db, max(DB_SILENCE, midi_params['rmsMin']), midi_params['mode'],
+                     peak_db, midi_params['rmsMin'], midi_params['mode'],
                      max_backlog_frames / samplerate * 1000.0, max_work_ms,
                      hop_s / samplerate * 1000.0)
             max_backlog_frames = 0

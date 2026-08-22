@@ -11,11 +11,10 @@ ExecStart=/home/julian/myenv/bin/python3 aubioAlgo.py
 Restart=always
 RestartSec=5
 Environment=JACK_NO_START_SERVER=1
-# Which input to listen on: an index, or any part of the device name.
-# Matching by name survives the card renumbering that a reboot or a
-# replugged interface causes. If the named device is absent it falls back
-# to the first input, so this is safe to set before the hardware arrives.
-Environment=SPARKLES_AUDIO_DEVICE=Scarlett
+# The input is chosen automatically: interfaces and USB microphones score
+# above the pi's own pseudo-devices, so plugging an interface in is enough.
+# SPARKLES_AUDIO_DEVICE=<index or name> overrides it, SPARKLES_AUTO_LEVEL=0
+# keeps the thresholds from the UI instead of deriving them from the room.
 StandardOutput=journal
 StandardError=journal
 
