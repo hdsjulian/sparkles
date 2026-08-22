@@ -11,6 +11,11 @@ ExecStart=/home/julian/myenv/bin/python3 aubioAlgo.py
 Restart=always
 RestartSec=5
 Environment=JACK_NO_START_SERVER=1
+# Which input to listen on: an index, or any part of the device name.
+# Matching by name survives the card renumbering that a reboot or a
+# replugged interface causes. If the named device is absent it falls back
+# to the first input, so this is safe to set before the hardware arrives.
+Environment=SPARKLES_AUDIO_DEVICE=Scarlett
 StandardOutput=journal
 StandardError=journal
 

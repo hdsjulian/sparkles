@@ -10,6 +10,7 @@ import math
 import argparse
 import time
 import logging
+import os
 import traceback
 import json
 import socket
@@ -26,9 +27,9 @@ parser.add_argument('--log', action='store_true', help='Enable logging to aubioA
 parser.add_argument('--random', action='store_true', help='Generate random pitch/RMS instead of USB mic')
 parser.add_argument('--debug', action='store_true', help='DEBUG log level (writes per-frame logs to disk — adds latency)')
 parser.add_argument('--list-devices', action='store_true', help='List audio input devices and exit')
-parser.add_argument('--device', default=None,
-                    help='Input device index, or part of its name — default is the first with an input channel, '
-                         'which on a pi is often not the microphone')
+parser.add_argument('--device', default=os.environ.get('SPARKLES_AUDIO_DEVICE'),
+                    help='Input device index, or part of its name (env: SPARKLES_AUDIO_DEVICE). Default is the '
+                         'first device with an input channel, which on a pi is often not the microphone')
 parser.add_argument('--meter', action='store_true',
                     help='Print level and pitch every 200ms regardless of the silence gate, and send nothing')
 args = parser.parse_args()
@@ -132,6 +133,9 @@ if not args.noserial:
 # ---------------------------------------------------------------------------
 # Audio setup
 # ---------------------------------------------------------------------------
+input_channels = 1   # set by open_audio; >1 means the read path deinterleaves
+
+
 def list_devices():
     p = pyaudio.PyAudio()
     print("input devices:")
@@ -167,15 +171,33 @@ def open_audio():
                 elif selected_index is None:
                     selected_index = i
             log.info("input devices: %s", ", ".join(f"[{i}] {n}" for i, n in inputs) or "none")
+            if selected_index is None and args.device and inputs:
+                # Named device absent — an interface not plugged in yet, say.
+                # Fall back rather than retry forever on a name that will not
+                # appear, so setting the name early is safe.
+                selected_index = inputs[0][0]
+                log.warning("no input device matched %r, falling back to [%d] %s",
+                            args.device, inputs[0][0], inputs[0][1])
             if selected_index is None:
-                raise RuntimeError(f"No input audio device matched {args.device!r}"
-                                   if args.device else "No input audio device found")
+                raise RuntimeError("No input audio device found")
             log.info(f"Opening audio on device {selected_index}: {p.get_device_info_by_index(selected_index)['name']}")
-            stream = p.open(format=pyaudio.paFloat32,
-                            channels=1, rate=44100, input=True,
-                            input_device_index=selected_index, frames_per_buffer=256)
-            log.info("Audio stream opened")
-            return p, stream
+            # Interfaces with more than one input (the Scarlett Solo has two)
+            # sometimes refuse a mono open outright. Fall back to the device's
+            # own channel count and take the first channel in the read path.
+            global input_channels
+            want = p.get_device_info_by_index(selected_index)['maxInputChannels']
+            for channels in (1, int(want)):
+                try:
+                    stream = p.open(format=pyaudio.paFloat32,
+                                    channels=channels, rate=44100, input=True,
+                                    input_device_index=selected_index, frames_per_buffer=256)
+                    input_channels = channels
+                    log.info("Audio stream opened, %d channel(s)", channels)
+                    return p, stream
+                except Exception as chan_err:
+                    log.warning("open with %d channel(s) failed: %s", channels, chan_err)
+                    if channels == int(want):
+                        raise
         except Exception as e:
             log.error(f"Audio open failed: {e}\n{traceback.format_exc()}")
             try:
@@ -361,6 +383,8 @@ def get_current_note():
                 continue
             work_t0   = time.perf_counter()
             samples   = np.frombuffer(data, dtype=aubio.float_type)
+            if input_channels > 1:
+                samples = samples[0::input_channels].copy()  # channel 1, contiguous for aubio
             pitch_val = pitch_o(samples)[0]
             rms       = np.sqrt(np.mean(samples ** 2))
             db        = 20 * np.log10(rms) if rms > 0 else -96.0
