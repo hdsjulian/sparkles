@@ -22,8 +22,12 @@
     'as loud as you will ever perform',
   ];
   let levelTest = { step: 0, phase: 'idle', remaining: 0, results: [],
-                    error: '', live: null, stale: true };
+                    error: '', live: null, stale: true, saved: null };
   let liveTimer = null;
+  // Bumped only when the test writes new thresholds, so the slider below can be
+  // re-keyed to show them. noUiSlider is built once at mount and ignores later
+  // prop changes, which is the other half of why saving looked like a no-op.
+  let rmsVersion = 0;
 
   async function pollLive() {
     try {
@@ -116,6 +120,10 @@
       const res = await setRmsThresholds(testMin.toFixed(1), testMax.toFixed(1));
       rmsMin = res.rmsMin;
       rmsMax = res.rmsMax;
+      rmsVersion += 1;
+      levelTest.saved = { rmsMin: res.rmsMin, rmsMax: res.rmsMax, at: new Date() };
+      // the page-level banner is ~200 lines of markup above this card, so it is
+      // off screen exactly when it is needed — confirm in place as well
       successMsg = `RMS range set to ${res.rmsMin} … ${res.rmsMax} dB and saved`;
       setTimeout(() => { successMsg = ''; }, 3000);
     } catch (e) {
@@ -444,6 +452,12 @@
     {#if levelTest.error}
       <div class="status-msg error">{levelTest.error}</div>
     {/if}
+    {#if levelTest.saved}
+      <div class="status-msg success">
+        Saved — gate {levelTest.saved.rmsMin} dB, top {levelTest.saved.rmsMax} dB.
+        Stored on the pi and picked up by the detector within 30 s.
+      </div>
+    {/if}
 
     {#if levelTest.results.length}
       <table class="level-table">
@@ -495,6 +509,8 @@
             Record step {levelTest.step + 1} of {TEST_STEPS}
           {/if}
         </button>
+      {:else if levelTest.saved}
+        <button class="btn btn-secondary" on:click={applyTest}>Set again</button>
       {:else}
         <button class="btn btn-primary" on:click={applyTest}>
           Set {testMin?.toFixed(1)} … {testMax?.toFixed(1)} dB
@@ -511,6 +527,7 @@
     <div class="slider-row">
       <span class="slider-val">{rmsMin} dB</span>
       <div class="slider-container">
+        {#key rmsVersion}
         <NoUiSlider
           bind:this={dbSlider}
           min={-120}
@@ -521,6 +538,7 @@
           tooltips={true}
           on:change={(e) => { rmsMin = e.detail[0]; rmsMax = e.detail[1]; }}
         />
+        {/key}
       </div>
       <span class="slider-val">{rmsMax} dB</span>
     </div>
