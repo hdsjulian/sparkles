@@ -1,11 +1,91 @@
 <script>
   import { onMount } from 'svelte';
-  import { getMidiParams, setMidiParams, getColors, setColors } from '$lib/api.js';
+  import { getMidiParams, setMidiParams, getColors, setColors, getAudioLevel, setRmsThresholds } from '$lib/api.js';
   import NoUiSlider from '$lib/components/NoUiSlider.svelte';
 
   let error = '';
   let successMsg = '';
   let loaded = false;
+
+  // ---- Five-step level test ----------------------------------------------
+  // aubio owns the audio device, so nothing else can open it. It reports what it
+  // hears to /audioLevel and this samples that — the browser never touches audio.
+  const TEST_STEPS = 5;
+  const STEP_SECONDS = 3;
+  let levelTest = { step: 0, recording: false, results: [], error: '', live: null, stale: true };
+  let liveTimer = null;
+
+  async function pollLive() {
+    try {
+      const l = await getAudioLevel();
+      levelTest.live = l.db;
+      levelTest.stale = l.stale;
+    } catch {
+      levelTest.stale = true;
+    }
+    levelTest = levelTest;
+  }
+
+  function startLiveMeter() {
+    if (liveTimer) return;
+    pollLive();
+    liveTimer = setInterval(pollLive, 400);
+  }
+
+  function stopLiveMeter() {
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = null;
+  }
+
+  async function recordStep() {
+    levelTest.error = '';
+    levelTest.recording = true;
+    levelTest = levelTest;
+    const samples = [];
+    const until = Date.now() + STEP_SECONDS * 1000;
+    while (Date.now() < until) {
+      try {
+        const l = await getAudioLevel();
+        // ignore the digital floor: silence would drag the average down and make
+        // a step look quieter than it was actually sung
+        if (!l.stale && typeof l.db === 'number' && l.db > -90) samples.push(l.db);
+      } catch { /* keep sampling, one dropped read does not spoil a step */ }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    levelTest.recording = false;
+    if (!samples.length) {
+      levelTest.error = 'Heard nothing — is aubio running and the input right?';
+      levelTest = levelTest;
+      return;
+    }
+    const avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+    levelTest.results = [...levelTest.results,
+      { step: levelTest.step + 1, db: avg, peak: Math.max(...samples), n: samples.length }];
+    levelTest.step += 1;
+    levelTest = levelTest;
+  }
+
+  function resetTest() {
+    levelTest = { step: 0, recording: false, results: [], error: '', live: levelTest.live, stale: levelTest.stale };
+  }
+
+  // quietest step sets the gate, loudest sets the top of the range
+  $: testMin = levelTest.results.length ? Math.min(...levelTest.results.map(r => r.db)) : null;
+  $: testMax = levelTest.results.length ? Math.max(...levelTest.results.map(r => r.db)) : null;
+
+  async function applyTest() {
+    levelTest.error = '';
+    try {
+      const res = await setRmsThresholds(testMin.toFixed(1), testMax.toFixed(1));
+      rmsMin = res.rmsMin;
+      rmsMax = res.rmsMax;
+      successMsg = `RMS range set to ${res.rmsMin} … ${res.rmsMax} dB and saved`;
+      setTimeout(() => { successMsg = ''; }, 3000);
+    } catch (e) {
+      levelTest.error = e.message;
+    }
+    levelTest = levelTest;
+  }
 
   // Param state
   let valMin = 0;
@@ -47,7 +127,11 @@
     { label: 'High Voice', min: 255, max: 1100 },
   ];
 
+  import { onDestroy } from 'svelte';
+  onDestroy(stopLiveMeter);
+
   onMount(async () => {
+    startLiveMeter();
     try {
       const p = await getMidiParams();
       valMin = p.valMin ?? 0;
@@ -301,6 +385,57 @@
 
   <!-- dB Range -->
   <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Sound Level Test</div>
+    <p class="hint">
+      Sing a sustained note at five steadily louder levels, three seconds each — from
+      barely audible to as loud as you will ever perform. The quietest step becomes the
+      gate, the loudest the top of the range. Saved on the pi, so it survives a reboot,
+      and it stops the detector from deriving its own thresholds from the room.
+    </p>
+
+    <div class="live-row">
+      <span class="muted">input</span>
+      {#if levelTest.stale}
+        <span class="live-bad">no signal — is aubio running?</span>
+      {:else}
+        <span class="live-db">{levelTest.live?.toFixed(1)} dB</span>
+        <span class="live-bar"><span class="live-fill"
+          style="width:{Math.max(0, Math.min(100, ((levelTest.live ?? -90) + 90) * 1.4))}%"></span></span>
+      {/if}
+    </div>
+
+    {#if levelTest.error}
+      <div class="status-msg error">{levelTest.error}</div>
+    {/if}
+
+    {#if levelTest.results.length}
+      <table class="level-table">
+        <thead><tr><th>step</th><th>average</th><th>peak</th></tr></thead>
+        <tbody>
+          {#each levelTest.results as r}
+            <tr><td>{r.step}</td><td>{r.db.toFixed(1)} dB</td><td>{r.peak.toFixed(1)} dB</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+
+    <div class="btn-row" style="margin-top:0.75rem;">
+      {#if levelTest.step < TEST_STEPS}
+        <button class="btn btn-primary" on:click={recordStep} disabled={levelTest.recording}>
+          {levelTest.recording ? `Recording ${STEP_SECONDS}s...` : `Record step ${levelTest.step + 1} of ${TEST_STEPS}`}
+        </button>
+      {:else}
+        <button class="btn btn-primary" on:click={applyTest}>
+          Set {testMin?.toFixed(1)} … {testMax?.toFixed(1)} dB
+        </button>
+      {/if}
+      {#if levelTest.results.length}
+        <button class="btn btn-ghost" on:click={resetTest} disabled={levelTest.recording}>Start over</button>
+      {/if}
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title">RMS dB Range</div>
     <div class="slider-row">
       <span class="slider-val">{rmsMin} dB</span>
@@ -370,6 +505,17 @@
 </div>
 
 <style>
+  .hint { font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.75rem; }
+  .muted { color: var(--color-text-muted); font-size: 0.8rem; }
+  .live-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem; }
+  .live-db { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 5rem; }
+  .live-bad { color: var(--color-low, #f44336); font-size: 0.85rem; }
+  .live-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .live-fill { display: block; height: 100%; background: var(--color-ok, #4fbf7a); transition: width 0.2s linear; }
+  .level-table { width: 100%; font-size: 0.85rem; border-collapse: collapse; }
+  .level-table th { text-align: left; color: var(--color-text-muted); font-weight: 500; padding: 0.2rem 0; }
+  .level-table td { padding: 0.15rem 0; font-variant-numeric: tabular-nums; }
+
   .mode-toggle {
     display: flex;
     gap: 0.5rem;

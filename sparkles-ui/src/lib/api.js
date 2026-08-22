@@ -234,6 +234,16 @@ export const commandTestCalibration = () =>
   fetch(`${BASE}/commandTestCalibration`).then(r => r.json());
 
 
+export const getAudioLevel = () =>
+  fetch(`${BASE}/audioLevel`).then(r => r.json());
+
+export const setRmsThresholds = (rmsMin, rmsMax) =>
+  fetch(`${BASE}/setRmsThresholds?rmsMin=${rmsMin}&rmsMax=${rmsMax}`).then(async r => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail ?? 'Could not store thresholds');
+    return body;
+  });
+
 export const getAppSettings = () =>
   fetch(`${BASE}/appSettings`).then(r => r.json());
 

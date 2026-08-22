@@ -48,6 +48,11 @@ MESH_HEAP_LOW = int(os.environ.get("SPARKLES_MESH_HEAP_LOW", "20000"))  # relay 
 # ---------------------------------------------------------------------------
 _DEFAULT_SETTINGS = {"resync_mode": "fast"}
 
+# Latest level reported by aubioAlgo, which owns the audio device — nothing
+# else can open it while it runs, so the level test is driven from what it
+# already measures rather than by opening a second stream.
+_audio_level = {"db": None, "pitch": 0.0, "ts": 0.0}
+
 def _load_settings() -> dict:
     try:
         with open(_SETTINGS_PATH) as f:
@@ -67,7 +72,8 @@ def _save_settings(data: dict):
 # compiled-in defaults, so every parameter set in the UI — mode included — was
 # quietly ignored and the pitch detector always ran in frequency mode.
 _PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png", "/karaoke",
-                 "/internal/keyboard_event", "/getMidiParams"}
+                 "/internal/keyboard_event", "/getMidiParams",
+                 "/internal/aubio_level"}
 # /keyboard/ is public so the karaoke page can list and play songs without login
 _PUBLIC_PREFIXES = ("/_app/", "/login", "/karaoke", "/keyboard/")
 
@@ -822,10 +828,76 @@ async def set_colors(
     return _ok()
 
 
+@app.post("/internal/aubio_level")
+async def aubio_level(request: Request):
+    """aubioAlgo reports what it is hearing, a few times a second."""
+    import time
+    body = await request.json()
+    _audio_level["db"] = body.get("db")
+    _audio_level["pitch"] = body.get("pitch", 0.0)
+    _audio_level["ts"] = time.time()
+    return _ok()
+
+
+@app.get("/audioLevel")
+async def audio_level():
+    """Live input level, or stale=true when aubio has gone quiet on us."""
+    import time
+    age = time.time() - _audio_level["ts"] if _audio_level["ts"] else None
+    return JSONResponse({
+        "db": _audio_level["db"],
+        "pitch": _audio_level["pitch"],
+        "age": age,
+        "stale": age is None or age > 3.0,
+    })
+
+
+@app.get("/setRmsThresholds")
+async def set_rms_thresholds(rmsMin: float = Query(...), rmsMax: float = Query(...)):
+    """Store measured thresholds and push them to the fleet.
+
+    Persisted here rather than on the master, which holds midi params in RAM and
+    would lose them on the next reboot. getMidiParams overlays them on the way
+    back out, so aubio picks them up on its next poll.
+    """
+    if rmsMax <= rmsMin:
+        raise HTTPException(400, detail="rmsMax must be above rmsMin")
+    settings = _load_settings()
+    settings["rmsMin"] = round(float(rmsMin), 2)
+    settings["rmsMax"] = round(float(rmsMax), 2)
+    settings["rmsCalibrated"] = True
+    _save_settings(settings)
+
+    # push to the master too, so the mesh agrees with what is stored. Needs the
+    # whole parameter set, so read the current one and change only these two.
+    try:
+        current = await _request({"cmd": "get_midi_params"}, "midi_params")
+        payload = dict(current) if isinstance(current, dict) else {}
+        payload.pop("event", None)
+        payload.update({"cmd": "set_midi_params", "minDb": settings["rmsMin"],
+                        "maxDb": settings["rmsMax"]})
+        _send(payload)
+    except Exception as exc:
+        logger.warning("stored thresholds but could not push to the master: %s", exc)
+
+    return JSONResponse({"status": True, "rmsMin": settings["rmsMin"],
+                         "rmsMax": settings["rmsMax"]})
+
+
 @app.get("/getMidiParams")
 @app.get("/commandGetMidiParams")
 async def get_midi_params():
-    return await _request({"cmd": "get_midi_params"}, "midi_params")
+    params = await _request({"cmd": "get_midi_params"}, "midi_params")
+    # Overlay the stored calibration. rmsCalibrated tells aubio to stop deriving
+    # thresholds from the room — otherwise it would overwrite the measurement
+    # within a second of it being set.
+    settings = _load_settings()
+    if settings.get("rmsCalibrated") and isinstance(params, dict):
+        params = dict(params)
+        params["rmsMin"] = settings.get("rmsMin", params.get("rmsMin"))
+        params["rmsMax"] = settings.get("rmsMax", params.get("rmsMax"))
+        params["rmsCalibrated"] = True
+    return params
 
 
 @app.get("/setMidiParams")

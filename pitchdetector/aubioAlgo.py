@@ -67,6 +67,7 @@ midi_params = {
     'rangeMin': 100, 'rangeMax': 1000,
     'rmsMin': -38.0, 'rmsMax': -20.0,
     'mode': FREQUENCY_MODE,
+    'rmsCalibrated': False,   # set by the level test in the web interface
 }
 
 # ---------------------------------------------------------------------------
@@ -108,12 +109,29 @@ def _fetch_midi_params():
         resp = urllib.request.urlopen(f"{args.api}/getMidiParams", timeout=3)
         data = json.loads(resp.read())
         midi_params.update({k: v for k, v in data.items() if k in midi_params})
+        midi_params['rmsCalibrated'] = bool(data.get('rmsCalibrated'))
         log.info(f"midi_params fetched: mode={midi_params.get('mode')} "
                  f"range={midi_params.get('rangeMin')}-{midi_params.get('rangeMax')} "
                  f"rms={midi_params.get('rmsMin'):.1f}..{midi_params.get('rmsMax'):.1f}")
     except Exception as e:
         log.warning(f"midi_params fetch failed: {e}")
     apply_auto_levels()   # a fetch would otherwise overwrite what the room told us
+
+def _report_level(db, pitch_val):
+    """Tell the API what we are hearing so the web level test can use it.
+
+    Nothing else can open the audio device while this process holds it, so the
+    browser cannot measure for itself — it reads what we already compute.
+    """
+    import urllib.request
+    try:
+        body = json.dumps({"db": round(float(db), 2), "pitch": round(float(pitch_val), 1)}).encode()
+        req = urllib.request.Request(f"{args.api}/internal/aubio_level", data=body,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=1).read()
+    except Exception:
+        pass   # best effort: the test is a convenience, never worth a stall here
+
 
 def _poll_midi_params():
     # Wait for FastAPI to be ready, then keep params fresh
@@ -232,7 +250,14 @@ def calibrate_levels(stream):
 
 
 def apply_auto_levels():
-    """Auto values win over the fetched ones — that is the point of asking for them."""
+    """Auto values win over the fetched ones — unless someone has measured.
+
+    rmsCalibrated comes from the level test in the web interface. A deliberate
+    measurement beats a guess from an empty room, and without this check the
+    calibration would be overwritten within a second of being set.
+    """
+    if midi_params.get('rmsCalibrated'):
+        return
     if not args.auto_level or auto_levels['min'] is None:
         return
     midi_params['rmsMin'] = auto_levels['min']
@@ -478,10 +503,12 @@ def get_current_note():
 
         # --meter: what the microphone is doing, ahead of every gate, so a level
         # too low to pass them is still visible
-        if args.meter and time.time() - last_meter >= 0.2:
+        if time.time() - last_meter >= 0.2:
             last_meter = time.time()
-            bar = "#" * max(0, min(40, int((db + 90) / 2)))
-            print(f"{db:7.1f} dB  {pitch_val:7.1f} Hz  {bar}", flush=True)
+            if args.meter:
+                bar = "#" * max(0, min(40, int((db + 90) / 2)))
+                print(f"{db:7.1f} dB  {pitch_val:7.1f} Hz  {bar}", flush=True)
+            threading.Thread(target=_report_level, args=(db, pitch_val), daemon=True).start()
 
         if pitch_val > 0:
             buffer_pitch.append(pitch_val)
