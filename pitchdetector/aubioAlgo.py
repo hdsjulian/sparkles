@@ -264,6 +264,32 @@ def apply_auto_levels():
     midi_params['rmsMax'] = auto_levels['max']
 
 
+def _sound_cards():
+    """Fingerprint of the sound hardware, so a plug or unplug is noticed.
+
+    Reading a small file every few seconds is nearly free, where re-enumerating
+    through portaudio is not — and it catches a device appearing, which is the
+    case a read error never will: a working stream throws nothing just because
+    something better got plugged in next to it.
+    """
+    try:
+        with open("/proc/asound/cards") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def reopen_audio(p, stream, why):
+    log.info("reopening audio: %s", why)
+    try:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+    except Exception:
+        pass
+    return open_audio()
+
+
 def open_audio():
     while True:
         try:
@@ -457,6 +483,9 @@ def get_current_note():
     last_stat          = start_time
     peak_db            = -96.0   # loudest frame since the last stats line
     last_meter         = 0.0
+    cards              = _sound_cards()   # hardware as it was when we opened
+    last_card_check    = 0.0
+    floor_since        = time.time()      # since when the input has been silent
 
     while True:
         if args.random:
@@ -479,13 +508,8 @@ def get_current_note():
                 data = stream.read(hop_s, exception_on_overflow=False)
             except Exception as e:
                 log.error(f"Microphone read failed: {e}\n{traceback.format_exc()}")
-                try:
-                    stream.stop_stream()
-                    stream.close()
-                    p.terminate()
-                except Exception:
-                    pass
-                p, stream = open_audio()
+                p, stream = reopen_audio(p, stream, "read failed")
+                cards, floor_since = _sound_cards(), time.time()
                 continue
             work_t0   = time.perf_counter()
             samples   = np.frombuffer(data, dtype=aubio.float_type)
@@ -500,6 +524,26 @@ def get_current_note():
 
         if db > peak_db:
             peak_db = db
+
+        # Something plugged in or pulled out: re-pick the input, which may now be
+        # a better one than the stream currently open.
+        if not args.random and time.time() - last_card_check > 3.0:
+            last_card_check = time.time()
+            now_cards = _sound_cards()
+            if now_cards != cards:
+                cards = now_cards
+                p, stream = reopen_audio(p, stream, "sound hardware changed")
+                floor_since = time.time()
+                continue
+
+        # A device can vanish without the read ever failing — it just returns
+        # silence for ever, which is indistinguishable from a dead microphone.
+        if db > -90.0:
+            floor_since = time.time()
+        elif not args.random and time.time() - floor_since > 30.0:
+            p, stream = reopen_audio(p, stream, "30s of digital silence")
+            cards, floor_since = _sound_cards(), time.time()
+            continue
 
         # --meter: what the microphone is doing, ahead of every gate, so a level
         # too low to pass them is still visible
