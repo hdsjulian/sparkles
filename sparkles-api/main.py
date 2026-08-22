@@ -927,6 +927,19 @@ async def set_midi_params(
         "mode": mode,
         "distance": distance, "distanceSwitch": distanceSwitch, "distanceMode": distanceMode,
     })
+    # Persist the thresholds here too, exactly as the level test does. Without
+    # this, getMidiParams keeps overlaying the stored calibration on the way out
+    # and a manual adjustment is overwritten the moment the page reloads or the
+    # detector polls — which also means the slider cannot be used to cope with a
+    # noisy room. Any deliberate setting counts as a calibration, however it was
+    # arrived at, and it survives a master reboot now rather than living in RAM.
+    settings = _load_settings()
+    if (settings.get("rmsMin") != minDb or settings.get("rmsMax") != maxDb
+            or not settings.get("rmsCalibrated")):
+        settings["rmsMin"] = round(float(minDb), 2)
+        settings["rmsMax"] = round(float(maxDb), 2)
+        settings["rmsCalibrated"] = True
+        _save_settings(settings)
     return _ok()
 
 
