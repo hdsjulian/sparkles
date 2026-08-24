@@ -194,34 +194,11 @@ void MessageHandler::handleReceive() {
                 }
             }
             else if (incomingData.messageType == MSG_UPDATE_VERSION) {
-                message_update_version updateVersionMessage = incomingData.payload.updateVersion;
-                if (wokeFromSleep) {
-                    // Getting back on the mesh comes first. An OTA here joins an
-                    // AP, drops ESP-NOW, and if the network is not there leaves
-                    // the radio hunting for it — right when the fleet is meant
-                    // to be coming up. Reboot the board to update it.
-                    ESP_LOGI("MSG", "Version update offered after a wake, ignoring");
-                }
-                else if (updateVersionMessage.version >= version && updateVersionMessage.version != version) {
-                    ledInstance->blink(esp_timer_get_time(), 100, 5, 200, 255, 127);
-                    // guard: vTaskDelete(NULL) would delete THIS task (the receive
-                    // handler), leaving the client deaf instead of updating
-                    if (announceTaskHandle != NULL) {
-                        vTaskDelete(announceTaskHandle);
-                        announceTaskHandle = NULL;
-                    }
-                    OTAHandler& ota = OTAHandler::getInstance();
-                    // use URL from message if provided, else fall back to compile-time define
-                    if (updateVersionMessage.otaUrl[0] != '\0') {
-                        ota.setup(updateVersionMessage.otaUrl);
-                    } else {
-                        ota.setup();
-                    }
-                    ota.performUpdate();
-                }
-                else {
-                    ESP_LOGI("MSG", "Received update version message with lower version, ignoring");
-                }
+                // Version mismatch no longer starts an update by itself. It made a
+                // board leave ESP-NOW to join an AP with no warning and nobody
+                // asking, and if that network was not up it stayed there hunting.
+                // Updates happen when they are asked for: CMD_OTA_UPDATE, or USB.
+                ESP_LOGI("MSG", "Version update offered, ignoring — OTA is on request only");
             }
 
             else if (incomingData.messageType == MSG_TIMER_QUERY) {
@@ -401,7 +378,6 @@ void MessageHandler::handleSleepWakeup(message_data incomingData) {
         xQueueReset(receiveQueue); // drop whatever queued up during the listen window
     }
 
-    wokeFromSleep = true;   // no automatic OTA from here until a reboot
     ledInstance->resetLedTask();
     ledInstance->blink(esp_timer_get_time(), 150, 2, 160, 255, 127);
     vTaskDelay(1000 / portTICK_PERIOD_MS);

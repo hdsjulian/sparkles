@@ -133,14 +133,20 @@ void MessageHandler::handleReceive() {
                 //ESP_LOGI("MSG", "Midi note: %d", animation->animationParams.midi.note);
                 //ESP_LOGI("MSG", "Midi velocity: %d", animation->animationParams.midi.velocity);
                 if (incomingData.payload.address.version != version) {
-                    ESP_LOGI("MSG", "Received address with lower version, ignoring. Version: %d, Current Version: %d", incomingData.payload.address.version, version);
-                    ESP_LOGI("MSG", "This version is %s vs other version is %s", version.toString().c_str(), incomingData.payload.address.version.toString().c_str());
-                    message_data updateVersionMessage = createUpdateVersionMessage(version);
-                    memcpy(updateVersionMessage.targetAddress, incomingData.payload.address.address, 6);
-                    xQueueSend(sendQueue, &updateVersionMessage, portMAX_DELAY);
-                    continue;
+                    // Note it and carry on. This used to answer with
+                    // MSG_UPDATE_VERSION and skip the announce entirely, so a
+                    // board on a different build was never synced — it was
+                    // expected to update itself instead. With that gone, refusing
+                    // to sync it would just strand it. Update deliberately, over
+                    // USB or the OTA command.
+                    ESP_LOGW("MSG", "Board %02x:%02x:%02x:%02x:%02x:%02x is on %s, master is %s — syncing anyway",
+                             incomingData.payload.address.address[0], incomingData.payload.address.address[1],
+                             incomingData.payload.address.address[2], incomingData.payload.address.address[3],
+                             incomingData.payload.address.address[4], incomingData.payload.address.address[5],
+                             incomingData.payload.address.version.toString().c_str(),
+                             version.toString().c_str());
                 }
-                else if (!isOTAUpdating) {
+                if (!isOTAUpdating) {
                     // If timerSyncHandle is running, ignore this message
                     if (timerSyncHandle != NULL && eTaskGetState(timerSyncHandle) != eDeleted) {
                         continue;
