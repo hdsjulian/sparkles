@@ -77,6 +77,13 @@ void setup()
   // - accuracy stopped mattering with chunked sleep: ±3% on a 5 min nap is
   //   seconds, and every rebroadcast carries a fresh duration anyway
   WiFi.mode(WIFI_STA);
+  // This board talks ESP-NOW and never needs to join an AP. Any credentials in
+  // NVS are left over from an OTA attempt — including the automatic one the
+  // master triggers on a version mismatch — and turnWifiOn()'s bare
+  // WiFi.begin() after a nap would spend the rest of the night hunting for
+  // them. Clear them, and never write any again.
+  WiFi.persistent(false);
+  WiFi.disconnect(false, true);   // eraseap
   WiFi.setSleep(false); // modem sleep adds RX latency and skews hardware RX timestamps
   ESP_LOGI("", "Setup1");
   // A warm ESP.restart() leaves the wifi driver part-way through teardown, so

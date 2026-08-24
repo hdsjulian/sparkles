@@ -18,6 +18,12 @@ void OTAHandler::setup(const char* url) {
 
 void OTAHandler::connectToWiFi() {
     ESP_LOGI("OTA", "Connecting to WiFi: %s", OTA_WIFI_SSID);
+    // Do not let this end up in NVS. arduino-esp32 persists credentials by
+    // default, and turnWifiOn() calls a bare WiFi.begin() after every nap, which
+    // means "reconnect to whatever is stored" — so one OTA attempt, including
+    // the automatic version-mismatch one that nobody asked for, leaves every
+    // wake hunting an AP that is not there, for ever.
+    WiFi.persistent(false);
     WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
     int retryCount = 0;
     while (WiFi.status() != WL_CONNECTED && retryCount < 20) {

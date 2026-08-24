@@ -130,6 +130,7 @@ void MessageHandler::handleReceive() {
                     WiFi.mode(WIFI_OFF);
                     delay(100);
                     WiFi.mode(WIFI_STA);
+                    WiFi.persistent(false);  // see Ota.cpp: never store the OTA network
                     if (strlen(OTA_WIFI_PASSWORD) > 0) {
                         WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
                     } else {
