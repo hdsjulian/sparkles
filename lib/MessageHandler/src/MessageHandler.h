@@ -185,6 +185,11 @@ public:
     int addPeer(uint8_t * address);
     bool addressAnnounced = false;
     volatile bool staggerAnnounce = false; // set by CMD_REANNOUNCE, consumed by the announce task
+    // Set once this board has come back from a nap. A version-triggered OTA is
+    // welcome at boot, but never after a wake: it takes the board off the mesh
+    // to join an AP at the exact moment it should be re-announcing and syncing.
+    // Cleared only by a reboot; the explicit OTA command is unaffected.
+    volatile bool wokeFromSleep = false;
     void sendAnimation(message_animation animationMessage, int addressId);
     //helpers
 
