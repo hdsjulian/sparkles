@@ -48,6 +48,9 @@ export const commandAnimationOff = () =>
 export const submitPositions = (boardId, xpos, ypos, zpos) =>
   fetch(`${BASE}/submitPositions?xpos=${xpos}&ypos=${ypos}&zpos=${zpos}&boardId=${boardId}`).then(r => r.json());
 
+export const commandResetChirp = () =>
+  fetch(`${BASE}/commandResetChirp`).then(r => r.json());
+
 export const commandResetClient = (boardId) =>
   fetch(`${BASE}/commandResetClient?boardId=${boardId}`).then(r => r.json());
 
@@ -252,3 +255,12 @@ export const setAppSettings = (body) =>
 
 export const commandTestSleepCycle = (sleepDurationS = 15, phaseDurationS = 60) =>
   new EventSource(`/commandTestSleepCycle?sleep_duration_s=${sleepDurationS}&phase_duration_s=${phaseDurationS}`);
+
+// ---- System health ----
+// One board at a time, three passes, streamed as it goes — the tally only
+// means something if the boards that stayed quiet are named.
+export const systemHealthCheck = ({ replyTimeout = 1.0, passes = 3 } = {}) =>
+  new EventSource(`${BASE}/systemHealth?replyTimeout=${replyTimeout}&passes=${passes}`);
+
+export const commandHealthPing = (boardId = -1) =>
+  fetch(`${BASE}/commandHealthPing?boardId=${boardId}`).then(r => r.json());

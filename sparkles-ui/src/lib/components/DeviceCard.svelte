@@ -1,7 +1,9 @@
 <script>
-  import { commandBlink, commandSync, submitPositions, removeDevice, commandResetClient } from '$lib/api.js';
+  import { commandBlink, commandSync, submitPositions, removeDevice, commandResetClient, commandHealthPing } from '$lib/api.js';
 
   export let device;
+  // last client_health reply for this board, undefined until it has answered one
+  export let health = undefined;
 
   // the master sends lowercase xpos/ypos, both in the address dump and in the
   // live update_board events — reading xPos left every card showing 0,0
@@ -75,6 +77,18 @@
     }
   }
 
+  async function handlePing() {
+    error = '';
+    successMsg = '';
+    try {
+      await commandHealthPing(device.boardId);
+      successMsg = 'Pinged';
+      setTimeout(() => { successMsg = ''; }, 2000);
+    } catch (e) {
+      error = `Ping failed: ${e.message}`;
+    }
+  }
+
   async function handleRemove() {
     error = '';
     if (!confirm(`Remove board #${device.boardId}? Boards after it will shift down one index. It re-adds itself the next time it announces.`)) return;
@@ -87,7 +101,32 @@
     }
   }
 
+  // esp_reset_reason() values, ESP_RST_* in esp_system.h — only the ones worth
+  // naming on a card; a panic or a brownout is the whole story
+  const resetReasons = {
+    0: 'unknown', 1: 'power-on', 2: 'external', 3: 'software', 4: 'panic',
+    5: 'watchdog (int)', 6: 'watchdog (task)', 7: 'watchdog', 8: 'deep sleep',
+    9: 'brownout', 10: 'sdio'
+  };
+
+  function formatUptime(s) {
+    if (s == null) return '—';
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+    return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
+  }
+
+  function formatHeap(bytes) {
+    if (bytes == null) return '—';
+    return `${(bytes / 1024).toFixed(0)}k`;
+  }
+
   $: bclass = batteryClass(device.batteryPercentage ?? 0);
+  // a board that had to be woken by its own watchdog or a panic is worth
+  // flagging even when everything else about it reads fine
+  $: badReset = health != null && [4, 5, 6, 7, 9].includes(health.resetReason);
+  $: heapClass = health == null ? '' : (health.freeHeap < 20000 ? 'low' : health.freeHeap < 40000 ? 'mid' : 'ok');
   // status is the string the master sends, `active` was never in the payload
   $: isActive = device.status === 'active' || device.active === true;
 </script>
@@ -117,6 +156,21 @@
     </div>
   </div>
 
+  {#if health}
+    <div class="health-block">
+      <div class="health-line">
+        <span class="health-item {heapClass}">{formatHeap(health.freeHeap)} free</span>
+        <span class="health-item">min {formatHeap(health.minFreeHeap)}</span>
+        <span class="health-item">up {formatUptime(health.uptimeS)}</span>
+        {#if health.rssi}<span class="health-item">{health.rssi} dBm</span>{/if}
+      </div>
+      <div class="health-line health-meta">
+        <span>v{health.version || '?'}</span>
+        <span class:warn={badReset}>reset: {resetReasons[health.resetReason] ?? health.resetReason}</span>
+      </div>
+    </div>
+  {/if}
+
   <div class="position-row">
     <div class="form-group pos-input">
       <label for="x-{device.boardId}">X</label>
@@ -142,6 +196,7 @@
   <div class="btn-row">
     <button class="btn btn-ghost btn-sm" on:click={handleBlink}>Blink</button>
     <button class="btn btn-ghost btn-sm" on:click={handleSync}>Sync</button>
+    <button class="btn btn-ghost btn-sm" on:click={handlePing}>Ping</button>
     <button class="btn btn-primary btn-sm" on:click={handleSubmitPosition}>Save Pos</button>
     <button class="btn btn-ghost btn-sm" on:click={handleReboot}>Reboot</button>
     <button class="btn btn-ghost btn-sm btn-danger" on:click={handleRemove}>Remove</button>
@@ -218,5 +273,34 @@
   .btn-danger {
     color: var(--color-low, #f44336);
     border-color: var(--color-low, #f44336);
+  }
+
+  .health-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .health-line {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+  }
+
+  .health-item.ok  { color: var(--color-ok); }
+  .health-item.mid { color: var(--color-mid); }
+  .health-item.low { color: var(--color-low, #f44336); }
+
+  .health-meta {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+  }
+
+  .health-meta .warn {
+    color: var(--color-mid);
   }
 </style>

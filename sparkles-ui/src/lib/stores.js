@@ -32,3 +32,23 @@ export const clientClap = writable(null);
 
 // Error from a remove_device/remove_all_devices rejection (e.g. sync in progress)
 export const deviceListError = writable('');
+
+// Map<boardId, healthObject> — last client_health reply per board, whether it
+// came from a full health check or a single manual ping
+export const deviceHealth = writable(new Map());
+
+// State of the running (or last) health check. pending holds the boards still
+// being retried, missing the ones that never answered.
+export const healthCheck = writable({
+  running: false,
+  total: 0,
+  pinged: 0,
+  responded: 0,
+  noResponse: 0,
+  pass: 0,
+  passes: 0,
+  current: null,
+  missing: [],
+  done: false,
+  error: ''
+});

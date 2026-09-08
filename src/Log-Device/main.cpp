@@ -43,6 +43,8 @@ static const char* msgTypeName(uint8_t t) {
         case MSG_COMMAND:            return "MSG_COMMAND";
         case MSG_MIDI_PARAMS:        return "MSG_MIDI_PARAMS";
         case MSG_DARKROOM_PARAMS:    return "MSG_DARKROOM_PARAMS";
+        case MSG_MIC_TEST:           return "MSG_MIC_TEST";
+        case MSG_HEALTH:             return "MSG_HEALTH";
         default:                     return "UNKNOWN";
     }
 }

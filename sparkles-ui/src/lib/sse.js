@@ -9,7 +9,8 @@ import {
   distanceStatus,
   positionStatus,
   clientClap,
-  deviceListError
+  deviceListError,
+  deviceHealth
 } from './stores.js';
 
 /**
@@ -123,6 +124,20 @@ export function setupSSE() {
   };
   es.addEventListener('client_clap', onClientClap);
   es.addEventListener('clientClap',  onClientClap);
+
+  // a health reply also arrives here as an update_board, so the card's battery
+  // refreshes on its own — this only keeps the extras the board sent with it
+  es.addEventListener('client_health', (e) => {
+    try {
+      const h = JSON.parse(e.data);
+      if (h.boardId == null) return;
+      deviceHealth.update(map => {
+        const next = new Map(map);
+        next.set(h.boardId, { ...h, receivedAt: Date.now() });
+        return next;
+      });
+    } catch (err) { console.warn('SSE client_health parse error:', err); }
+  });
 
   es.addEventListener('sync_status', (e) => { syncStatus.set(e.data); });
   es.addEventListener('syncStatus',  (e) => { syncStatus.set(e.data); });

@@ -258,6 +258,14 @@ void handleReceiveTask(void *) {
                     xTaskCreatePinnedToCore(chirpTask, "chirpTask", 8192, nullptr, 10, &chirpTaskHandle, 1);
                 }
                 break;
+            case CMD_RESET_SYSTEM:
+                // Was ignored entirely: the chirp device is not in the address
+                // list, so neither the fleet reboot nor a broadcast reset ever
+                // reached it — the only way to restart it was to pull the usb.
+                ESP_LOGI("CHIRP", "CMD_RESET_SYSTEM, restarting");
+                vTaskDelay(pdMS_TO_TICKS(200));
+                ESP.restart();
+                break;
             case CMD_CANCEL_CALIBRATION:
             case CMD_END_CALIBRATION:
                 if (chirpTaskHandle != nullptr) {

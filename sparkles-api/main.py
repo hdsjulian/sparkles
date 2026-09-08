@@ -1163,6 +1163,13 @@ async def command_shimmer(boardId: int = Query(default=-1)):
     return _ok()
 
 
+@app.get("/commandResetChirp")
+async def command_reset_chirp():
+    """Restart the chirp device."""
+    _send({"cmd": "reset_chirp"})
+    return _ok()
+
+
 @app.get("/commandResetClient")
 async def command_reset_client(boardId: int = Query(...)):
     """Restart one board."""
@@ -1175,6 +1182,164 @@ async def command_mic_test(boardId: int = Query(default=-1)):
     """Ask a board (or the whole fleet) what its microphone is producing."""
     _send({"cmd": "mic_test", "boardId": boardId})
     return _ok()
+
+
+@app.get("/commandHealthPing")
+async def command_health_ping(boardId: int = Query(default=-1)):
+    """Ask one board (or, with -1, the whole fleet) to report its vitals.
+
+    Replies arrive as client_health events on /events. For a counted sweep of
+    the fleet use /systemHealth, which asks one board at a time and knows which
+    ones never answered."""
+    _send({"cmd": "health_ping", "boardId": boardId})
+    return _ok()
+
+
+# ---------------------------------------------------------------------------
+# System health check — ask every board in turn, three passes
+# ---------------------------------------------------------------------------
+
+# A board answers in tens of milliseconds or it is not there. Waiting longer
+# only makes a sweep of a sleeping fleet take minutes.
+_HEALTH_REPLY_TIMEOUT_S = 1.0
+_HEALTH_PASSES = 3
+
+_health_running = False
+
+
+@app.get("/systemHealth")
+async def system_health(
+    request: Request,
+    replyTimeout: float = Query(default=_HEALTH_REPLY_TIMEOUT_S, ge=0.2, le=10.0),
+    passes: int = Query(default=_HEALTH_PASSES, ge=1, le=5),
+) -> StreamingResponse:
+    """Ping every known board individually and stream the tally as it comes in.
+
+    One board is asked at a time so silence is attributable: a board that never
+    answers is named, not averaged away. Boards that miss a pass are retried on
+    the next one, and only those — a board that already answered is never asked
+    again. The count after the last pass is the final one."""
+    global _health_running
+    _assert_connected()
+
+    # set here, not inside the generator: the generator does not start running
+    # until the response is being consumed, which is far too late to reject a
+    # second run that arrived in the meantime
+    if _health_running:
+        raise HTTPException(409, detail="A health check is already running")
+    _health_running = True
+
+    async def generator() -> AsyncGenerator[str, None]:
+        global _health_running
+
+        def emit(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {json.dumps({'event': event, **data})}\n\n"
+
+        try:
+            # the master owns the roster, so ask it rather than trusting
+            # whatever the browser happened to have on screen
+            roster = await bridge.request({"cmd": "get_address_list"}, "address_list", 5.0)
+            if roster is None:
+                yield emit("health_check_error", {"detail": "Master did not send its address list"})
+                return
+
+            boards = [a["id"] for a in roster.get("addresses", []) if a.get("id") is not None]
+            if not boards:
+                yield emit("health_check_done", {"total": 0, "pinged": 0, "pings": 0,
+                                                 "responded": 0, "noResponse": 0, "passes": passes,
+                                                 "respondedIds": [], "missingIds": []})
+                return
+
+            yield emit("health_check_start", {"total": len(boards), "passes": passes,
+                                              "replyTimeout": replyTimeout, "boardIds": boards})
+
+            # one subscription for the whole run: a reply that arrives after its
+            # own pass gave up still lands, and still counts
+            queue = bridge.subscribe()
+            healthy: dict[int, dict] = {}   # boardId -> its client_health frame
+            asked: set[int] = set()         # distinct boards pinged, retries don't inflate it
+            pings = 0                       # ping messages actually sent
+            try:
+                pending = list(boards)
+                for attempt in range(1, passes + 1):
+                    if not pending:
+                        break
+                    yield emit("health_pass_start", {"pass": attempt, "pending": len(pending),
+                                                     "boardIds": list(pending)})
+
+                    still_pending = []
+                    for board_id in pending:
+                        if await request.is_disconnected():
+                            yield emit("health_check_cancelled",
+                                       {"pinged": len(asked), "responded": len(healthy),
+                                        "noResponse": len(boards) - len(healthy)})
+                            return
+
+                        asked.add(board_id)
+                        pings += 1
+                        yield emit("health_pinging", {"boardId": board_id, "pass": attempt,
+                                                      "pinged": len(asked), "pings": pings})
+                        bridge.send({"cmd": "health_ping", "boardId": board_id})
+
+                        reply = await _await_health_reply(queue, board_id, replyTimeout, healthy)
+                        tally = {"pass": attempt, "pinged": len(asked),
+                                 "responded": len(healthy),
+                                 "noResponse": len(boards) - len(healthy)}
+                        if reply is None:
+                            still_pending.append(board_id)
+                            yield emit("health_no_reply", {"boardId": board_id, **tally})
+                        else:
+                            yield emit("health_board", {**reply, **tally})
+
+                    # a straggler from this pass may have answered while a later
+                    # board was being asked — don't retry a board already in
+                    pending = [b for b in still_pending if b not in healthy]
+                    yield emit("health_pass_done", {"pass": attempt, "pinged": len(asked),
+                                                    "responded": len(healthy),
+                                                    "noResponse": len(boards) - len(healthy),
+                                                    "retrying": len(pending)})
+
+                missing = [b for b in boards if b not in healthy]
+                yield emit("health_check_done", {"total": len(boards), "pinged": len(asked),
+                                                 "pings": pings, "responded": len(healthy),
+                                                 "noResponse": len(missing), "passes": passes,
+                                                 "respondedIds": sorted(healthy),
+                                                 "missingIds": missing})
+            finally:
+                bridge.unsubscribe(queue)
+        finally:
+            _health_running = False
+
+    return StreamingResponse(generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+async def _await_health_reply(queue: asyncio.Queue, board_id: int, timeout: float,
+                              healthy: dict[int, dict]) -> dict | None:
+    """Wait out one board's reply window, banking any other board's reply that
+    happens to arrive in it — a late answer from an earlier pass is still an
+    answer, and re-asking a board that already replied wastes a whole timeout."""
+    if board_id in healthy:
+        return healthy[board_id]
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return None
+        try:
+            frame = await asyncio.wait_for(queue.get(), timeout=remaining)
+        except asyncio.TimeoutError:
+            return None
+        if frame.get("event") != "client_health":
+            continue
+        replied = frame.get("boardId")
+        if replied is None:
+            continue
+        healthy[replied] = frame
+        if replied == board_id:
+            return frame
 
 
 @app.get("/commandHearth")

@@ -18,6 +18,7 @@
     resetSystem,
     resetClients,
     factoryReset,
+    commandResetChirp,
     commandAnimate,
     commandAnimationOff,
     getAppSettings,
@@ -361,6 +362,18 @@
       await resetClients();
       successMsg = 'Reboot-all-clients sent — boards return over the next ~30s';
       setTimeout(() => { successMsg = ''; }, 4000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
+  async function handleResetChirp() {
+    if (!confirm('Reboot the chirp device? It drops off the mesh for a few seconds and re-announces itself.')) return;
+    error = '';
+    try {
+      await commandResetChirp();
+      successMsg = 'Rebooting the chirp device';
+      setTimeout(() => { successMsg = ''; }, 2500);
     } catch (e) {
       error = e.message;
     }
@@ -717,7 +730,13 @@
         Test Mode: {testMode ? 'ON' : 'OFF'}
       </button>
       <button class="btn btn-ghost" on:click={handleReannounce}>Reannounce</button>
+      <button class="btn btn-ghost" on:click={handleResetChirp}>Reboot Chirp Device</button>
     </div>
+    <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.5rem;">
+      The chirp device is not in the address list, so neither the fleet reboot nor a
+      factory reset ever reaches it — this is the only way to restart it short of
+      unplugging it.
+    </p>
   </div>
 
   <!-- Animation -->

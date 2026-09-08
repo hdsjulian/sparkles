@@ -705,6 +705,13 @@ static void handleSerialCommand(const char* line) {
     }
     else if (strcmp(cmd, "reset_clients") == 0)          { msgHandler.broadcastResetClients(); }
     else if (strcmp(cmd, "reset_client") == 0)           { msgHandler.resetClient(doc["boardId"] | -1); }
+    else if (strcmp(cmd, "reset_chirp") == 0) {
+        // createCommandMessage(.., false) already addresses the chirp device
+        message_data m = msgHandler.createCommandMessage(CMD_RESET_SYSTEM, false);
+        msgHandler.pushToSendQueue(m);
+        JsonDocument r; r["event"] = "reset_chirp_ok";
+        serialSendDoc(r);
+    }
 
     else if (strcmp(cmd, "toggle_test_mode") == 0) {
         bool next = !msgHandler.getTestMode();
@@ -755,6 +762,15 @@ static void handleSerialCommand(const char* line) {
         // boardId -1 asks the whole fleet; replies arrive as mic_test events
         int boardId = doc["boardId"] | -1;
         message_data m = msgHandler.createCommandMessage(CMD_MIC_TEST, boardId < 0);
+        if (boardId >= 0) memcpy(m.targetAddress, msgHandler.getItemFromAddressList(boardId).address, 6);
+        msgHandler.pushToSendQueue(m);
+
+    } else if (strcmp(cmd, "health_ping") == 0) {
+        // one board per command: the pi asks, counts the answer or the silence,
+        // and decides for itself whether to ask again. boardId -1 asks everyone
+        // at once, which is quick but tells you nothing about who stayed quiet.
+        int boardId = doc["boardId"] | -1;
+        message_data m = msgHandler.createCommandMessage(CMD_HEALTH_PING, boardId < 0);
         if (boardId >= 0) memcpy(m.targetAddress, msgHandler.getItemFromAddressList(boardId).address, 6);
         msgHandler.pushToSendQueue(m);
 

@@ -27,6 +27,7 @@ Every command frame has at minimum `{"cmd": "<name>", ...params}`.
 | `get_midi_params` | — | request MIDI params |
 | `get_darkroom_params` | — | request darkroom params |
 | `get_system_info` | — | request system info |
+| `health_ping` | `boardId: int` | ask one board for its vitals (`-1` = whole fleet at once) |
 | `calibration_start` | — | start calibration |
 | `calibration_cancel` | — | cancel calibration |
 | `calibration_reset` | — | reset calibration |
@@ -65,6 +66,7 @@ Every event frame has `{"event": "<name>", ...data}`.
 | `midi_params` | `minVal, maxVal, ...` | MIDI params response |
 | `darkroom_params` | `strobeMin, strobeMax, ...` | darkroom params response |
 | `system_info` | `systemTime, sleepSet, sleepIn, sleepAtH, sleepAtM, sleepAtS, sleepDuration` | system info response |
+| `client_health` | `boardId, reportedId, batteryPercentage, freeHeap, minFreeHeap, uptimeS, rssi, resetReason, version` | one client's reply to `health_ping`. `rssi` is stamped by the master from the frame that carried it; a board that never answers sends nothing at all, so silence is the only signal that it is gone |
 | `test_mode` | `testMode: bool` | test mode toggled |
 | `logging` | `logging: bool` | logging toggled |
 | `ack` | `cmd: str, ok: bool, [msg: str]` | generic command acknowledgement |
