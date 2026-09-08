@@ -152,6 +152,36 @@ void MessageHandler::handleReceive() {
                 if (commandMessage.commandType == CMD_MIC_TEST) {
                     startMicTestTask();
                 }
+                if (commandMessage.commandType == CMD_HEALTH_PING) {
+                    // answered inline, not from a task: the master pings one
+                    // board at a time and counts the silence, so a reply that
+                    // waits on a scheduler is a reply that arrives too late.
+                    //
+                    // and answer whoever asked rather than hostAddress — a board
+                    // that has never been synced has not learned the master's
+                    // MAC yet, and those are exactly the boards this is for
+                    uint8_t replyTo[6];
+                    memcpy(replyTo, incomingData.senderAddress, 6);
+                    if (memcmp(replyTo, emptyAddress, 6) == 0) memcpy(replyTo, hostAddress, 6);
+                    message_data reply{};
+                    reply.messageType = MSG_HEALTH;
+                    memcpy(reply.targetAddress, replyTo, 6);
+                    WiFi.macAddress(reply.senderAddress);
+                    message_health& h = reply.payload.health;
+                    h.batteryPercentage = getBatteryPercentage();
+                    h.freeHeap    = (uint32_t)ESP.getFreeHeap();
+                    h.minFreeHeap = (uint32_t)ESP.getMinFreeHeap();
+                    h.uptimeS     = (uint32_t)(esp_timer_get_time() / 1000000ULL);
+                    h.addressId   = ledInstance->getCurrentPosition();
+                    h.resetReason = (uint8_t)esp_reset_reason();
+                    strncpy(h.version, VERSION, sizeof(h.version) - 1);
+                    h.version[sizeof(h.version) - 1] = '\0';
+                    addPeer(replyTo);
+                    esp_now_send(replyTo, (uint8_t*)&reply, ESPNOW_CLIENT_COMPAT_SIZE);
+                    removePeer(replyTo);
+                    ESP_LOGI("MSG", "CMD_HEALTH_PING answered: batt %.1f%% heap %u uptime %us",
+                             h.batteryPercentage, h.freeHeap, h.uptimeS);
+                }
                 if (commandMessage.commandType == CMD_REANNOUNCE) {
                     // The MAC stagger belongs in the announce task, not here.
                     // This is handleReceive, the client's only message loop —

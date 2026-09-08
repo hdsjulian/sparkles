@@ -151,6 +151,7 @@ static_assert(CHIRP_BURST_COUNT <= NUM_CLAPS, "one measurement slot per chirp of
 #define MSG_TIMER_RESPONSE 20
 #define MSG_SOUND_DEVICE 21 // clap/chirp device announce, master learns its address from this
 #define MSG_MIC_TEST 22 // client's reply to CMD_MIC_TEST, raw ADC statistics
+#define MSG_HEALTH 23 // client's reply to CMD_HEALTH_PING, its own vitals
 
 #if DEVICE_MODE == MASTER
 extern bool g_loggingEnabled;
@@ -188,6 +189,7 @@ extern MessageHandler& getMessageHandlerInstance();
 #define CMD_TEST_MODE_OFF     18
 #define CMD_SET_MAX_DISTANCE  19
 #define CMD_MIC_TEST          20
+#define CMD_HEALTH_PING       21
 
 
 
@@ -480,6 +482,26 @@ struct message_mic_test {
   message_mic_test() : minLevel(0), maxLevel(0), meanLevel(0), rms(0), samples(0) {}
 };
 
+// What one client knows about itself. Sent only when asked, one board at a
+// time, so a fleet check is a list of boards that answered and boards that
+// didn't — silence is the interesting half of the reading.
+struct message_health {
+  float    batteryPercentage;
+  uint32_t freeHeap;
+  uint32_t minFreeHeap;   // low water mark since boot, catches a slow leak
+  uint32_t uptimeS;       // short uptime after a long run means it rebooted
+  int32_t  addressId;
+  int8_t   rssi;          // stamped by the master from the frame that carried this
+  uint8_t  resetReason;   // esp_reset_reason() of the last boot
+  char     version[8];
+  message_health() : batteryPercentage(0.0f), freeHeap(0), minFreeHeap(0), uptimeS(0),
+                     addressId(-1), rssi(0), resetReason(0) { version[0] = '\0'; }
+};
+
+// the reply has to survive the 80-byte compat frame every client sends in
+static_assert(sizeof(message_health) <= ESPNOW_CLIENT_COMPAT_SIZE - 24,
+              "message_health must fit the 80-byte client frame");
+
 struct message_clap {
   unsigned long long clapTime;
   bool clapHappened;
@@ -541,6 +563,7 @@ union message_payload {
   struct message_sleep_wakeup   sleepWakeup;
   struct message_clap           clap;
   struct message_mic_test       micTest;
+  struct message_health         health;
   struct message_config_data    configData;
   struct message_update_version updateVersion;
   struct message_command        command;

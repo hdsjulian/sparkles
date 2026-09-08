@@ -326,6 +326,34 @@ void MessageHandler::handleReceive() {
                 }
             }
 
+            else if (incomingData.messageType == MSG_HEALTH) {
+                const message_health &h = incomingData.payload.health;
+                for (int i = 0; i < NUM_DEVICES; i++) {
+                    if (memcmp(addressList[i].address, incomingData.senderAddress, 6) != 0) continue;
+                    // answering at all is proof of life, so the board counts as
+                    // active again even if it had timed out into INACTIVE
+                    addressList[i].batteryPercentage = h.batteryPercentage;
+                    addressList[i].lastUpdateTime = millis();
+                    addressList[i].active = ACTIVE;
+                    JsonDocument doc;
+                    doc["event"]             = "client_health";
+                    doc["boardId"]           = i;
+                    doc["reportedId"]        = h.addressId;
+                    doc["batteryPercentage"] = h.batteryPercentage;
+                    doc["freeHeap"]          = h.freeHeap;
+                    doc["minFreeHeap"]       = h.minFreeHeap;
+                    doc["uptimeS"]           = h.uptimeS;
+                    doc["rssi"]              = h.rssi;
+                    doc["resetReason"]       = h.resetReason;
+                    doc["version"]           = h.version;
+                    String out; serializeJson(doc, out); Serial.println(out);
+                    // same board object the dashboard cards already listen for,
+                    // so a health reply refreshes the card without a second path
+                    serialEmitBoard(i, addressList[i]);
+                    break;
+                }
+            }
+
             else if (incomingData.messageType == MSG_SYSTEM_STATUS) {
             }
 
@@ -446,6 +474,17 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         incomingData[0],
         mac->src_addr[0], mac->src_addr[1], mac->src_addr[2],
         mac->src_addr[3], mac->src_addr[4], mac->src_addr[5]);
+
+    // A health reply carries what the client knows about itself; the link
+    // quality is only knowable here, from the frame that just arrived.
+    if (incomingData[0] == MSG_HEALTH && len <= (int)sizeof(message_data)) {
+        message_data localData;
+        memset(&localData, 0, sizeof(localData));
+        memcpy(&localData, incomingData, len);
+        if (mac->rx_ctrl) localData.payload.health.rssi = (int8_t)mac->rx_ctrl->rssi;
+        instance.pushToRecvQueue(mac, (uint8_t*)&localData, sizeof(message_data));
+        return;
+    }
 
     // If this is a MSG_GOT_TIMER, set msgReceiveTime to micros() before pushing to queue
     if ((incomingData[0] == MSG_GOT_TIMER || incomingData[0] == MSG_CLAP) && len >= (int)sizeof(message_data)) {
