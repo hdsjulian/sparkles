@@ -40,7 +40,9 @@ Every command frame has at minimum `{"cmd": "<name>", ...params}`.
 | `dist_cal_end` | — | end distance calibration |
 | `dist_cal_cancel` | — | cancel distance calibration |
 | `dist_cal_abort` | — | abort distance calibration |
-| `ota_update` | — | start OTA update |
+| `ota_update` | — | start OTA update. Send `set_ota_wifi` and `set_ota_url` first — they travel to the clients with the request |
+| `set_ota_url` | `url: str` | where the firmware image lives, i.e. this pi |
+| `set_ota_wifi` | `ssid: str, password: str` | the network clients should join for an OTA — the one the pi is currently on |
 | `toggle_test_mode` | — | toggle test mode |
 | `toggle_logging` | — | toggle serial logging |
 | `reannounce` | — | broadcast reannounce |

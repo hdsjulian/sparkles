@@ -691,6 +691,11 @@ static void handleSerialCommand(const char* line) {
         const char* url = doc["url"] | "";
         msgHandler.setOtaUrl(url);
     }
+    else if (strcmp(cmd, "set_ota_wifi") == 0) {
+        // the pi tells us which of its networks is up; we pass it on with every
+        // OTA request rather than storing it anywhere it could go stale
+        msgHandler.setOtaWifi(doc["ssid"] | "", doc["password"] | "");
+    }
     else if (strcmp(cmd, "reannounce") == 0)             { msgHandler.broadcastReannounce(); }
     else if (strcmp(cmd, "reset_system") == 0) {
         // A reset comes back awake. Otherwise a "sleep now" left in NVS resumes

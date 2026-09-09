@@ -41,6 +41,14 @@ _BAUD = 115200
 _MUSIC_SOCK = os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock")
 # a music gap longer than this means piano/mic activity is resuming after idle
 _IDLE_RESUME_SECONDS = int(os.environ.get("SPARKLES_IDLE_RESUME", "300"))
+# The two networks this pi is ever on — its own AP when WLIAN is out of range,
+# see setup/06_wifi.sh, which is what creates both profiles. A client leaving
+# ESP-NOW for an OTA has no way to know either one, so we hand them over.
+_OTA_NETWORKS = {
+    "WLIAN":    os.environ.get("SPARKLES_WLIAN_PSK", "WaldMoeveBowieCanyon"),
+    "Sparkles": os.environ.get("SPARKLES_AP_PSK", "SparklesAdmin"),
+}
+
 _TBEAM_PORT = os.environ.get("SPARKLES_TBEAM_PORT", "")
 _TBEAM_BAUD = int(os.environ.get("SPARKLES_TBEAM_BAUD", "38400"))
 
@@ -431,18 +439,86 @@ class SerialBridge:
     # Sending
     # ------------------------------------------------------------------
 
-    def _send_ota_url(self):
-        import socket as _socket
+    def _local_ip(self) -> str | None:
+        """This pi's address on whichever network is currently up.
+
+        The route trick is the reliable one when there is a route to the
+        internet. In AP fallback mode there is none — ipv4.method is shared, so
+        nothing forwards — and it raises. wlan0's own address is the answer
+        there, and it is the address clients will reach us on either way."""
         try:
-            s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
             s.close()
-            url = f"http://{ip}/firmware.bin"
+            return ip
+        except Exception:
+            pass
+        try:
+            out = subprocess.run(["ip", "-4", "-o", "addr", "show", "wlan0"],
+                                 capture_output=True, text=True, timeout=3).stdout
+            # "3: wlan0    inet 10.42.0.1/24 brd ... scope global ..."
+            for field in out.split():
+                if "/" in field and field.count(".") == 3:
+                    return field.split("/")[0]
+        except Exception as exc:
+            logger.warning("Could not read wlan0 address: %s", exc)
+        return None
+
+    def current_ssid(self) -> str | None:
+        """The SSID wlan0 is associated with, or the one it is serving in AP mode.
+
+        Both readable without privileges, unlike the passwords — which is why
+        those come from _OTA_NETWORKS rather than from NetworkManager."""
+        for args in (["iwgetid", "-r"],
+                     ["nmcli", "-t", "-f", "active,ssid", "dev", "wifi"]):
+            try:
+                out = subprocess.run(args, capture_output=True, text=True, timeout=3).stdout.strip()
+            except Exception:
+                continue
+            if not out:
+                continue
+            if args[0] == "iwgetid":
+                return out.splitlines()[0].strip()
+            for line in out.splitlines():
+                if line.startswith("yes:"):
+                    return line.split(":", 1)[1].strip()
+        return None
+
+    def ota_network(self) -> tuple[str | None, str | None, str | None]:
+        """(ssid, password, url) for an OTA right now, any of them None if unknown."""
+        ssid = self.current_ssid()
+        password = _OTA_NETWORKS.get(ssid) if ssid else None
+        ip = self._local_ip()
+        # nginx proxies :80 to uvicorn on :8080, so no port here
+        url = f"http://{ip}/firmware.bin" if ip else None
+        return ssid, password, url
+
+    def _send_ota_url(self):
+        """Tell the master where the firmware lives and which network to fetch it on.
+
+        Sent on every connect, and again just before an OTA — the pi can move
+        between WLIAN and its own AP while the master stays up, and a board sent
+        to the wrong network is a board that leaves the mesh and does not come
+        back."""
+        ssid, password, url = self.ota_network()
+
+        if url:
             self.send({"cmd": "set_ota_url", "url": url})
             logger.info("Sent OTA URL to master: %s", url)
-        except Exception as exc:
-            logger.warning("Could not detect Pi IP for OTA URL: %s", exc)
+        else:
+            logger.warning("Could not detect Pi IP — master keeps its previous OTA URL")
+
+        if ssid and password is not None:
+            self.send({"cmd": "set_ota_wifi", "ssid": ssid, "password": password})
+            logger.info("Sent OTA network to master: %s", ssid)
+        elif ssid:
+            # a network nobody put a password in for: sending the SSID with an
+            # empty one would send every board off to fail an association
+            logger.warning("On '%s', which has no known password — not sending an OTA network. "
+                           "Add it to _OTA_NETWORKS or set the env var for it.", ssid)
+        else:
+            logger.warning("Could not read the current SSID — not sending an OTA network")
 
     @property
     def is_connected(self) -> bool:

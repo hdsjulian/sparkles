@@ -1110,8 +1110,39 @@ async def command_abort_distance_calibration():
 
 @app.get("/commandOTAUpdate")
 async def command_ota_update():
-    _send({"cmd": "ota_update"})
-    return _ok()
+    """Send every active board off to fetch new firmware.
+
+    The network goes out first and is re-read here rather than trusted from
+    connect time: the pi moves between WLIAN and its own AP fallback while the
+    master stays up, and a board sent to a network that is not there leaves the
+    mesh and does not come back on its own."""
+    _assert_connected()
+    ssid, password, url = bridge.ota_network()
+
+    if not ssid:
+        raise HTTPException(503, detail="Could not read the Pi's current WiFi network — "
+                                        "nothing sent, no board has left the mesh")
+    if password is None:
+        raise HTTPException(503, detail=f"No password known for '{ssid}'. Nothing sent — sending "
+                                        f"boards to a network they cannot join would strand them.")
+    if not url:
+        raise HTTPException(503, detail="Could not detect the Pi's own IP, so the boards would "
+                                        "have no firmware URL to fetch. Nothing sent.")
+
+    bridge.send({"cmd": "set_ota_wifi", "ssid": ssid, "password": password})
+    bridge.send({"cmd": "set_ota_url", "url": url})
+    bridge.send({"cmd": "ota_update"})
+    logger.info("OTA started — network %s, url %s", ssid, url)
+    # the ssid and url are worth showing; the password is not
+    return JSONResponse({"status": True, "msg": f"OTA started on {ssid}", "ssid": ssid, "url": url})
+
+
+@app.get("/otaNetwork")
+async def ota_network():
+    """What an OTA would use right now, so the UI can show it before committing."""
+    ssid, password, url = bridge.ota_network()
+    return {"ssid": ssid, "url": url, "hasPassword": password is not None,
+            "ready": bool(ssid and password is not None and url)}
 
 
 @app.get("/toggleTestMode")

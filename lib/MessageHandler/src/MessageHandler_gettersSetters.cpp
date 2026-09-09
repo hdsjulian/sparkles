@@ -374,6 +374,16 @@ void MessageHandler::setOtaUrl(const char* url) {
     ESP_LOGI("OTA", "OTA URL set to: %s", _otaUrl);
 }
 
+void MessageHandler::setOtaWifi(const char* ssid, const char* password) {
+    strncpy(_otaSsid, ssid, sizeof(_otaSsid) - 1);
+    _otaSsid[sizeof(_otaSsid) - 1] = '\0';
+    strncpy(_otaPassword, password, sizeof(_otaPassword) - 1);
+    _otaPassword[sizeof(_otaPassword) - 1] = '\0';
+    // never log the password, the serial log is streamed to the dashboard
+    ESP_LOGI("OTA", "OTA network set to: %s (%s)", _otaSsid,
+             strlen(_otaPassword) > 0 ? "with password" : "open");
+}
+
 
 message_data MessageHandler::createCommandMessage(int commandType, bool isBroadcast ) {
     message_data commandMessage;

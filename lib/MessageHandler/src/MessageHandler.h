@@ -13,6 +13,10 @@ public:
     static constexpr uint8_t emptyAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t OTAUpdateAddress[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     char _otaUrl[64] = {};   // set via serial "set_ota_url" from Pi
+    // The network the pi is actually on, told to us over serial. Empty until it
+    // says so, in which case the client falls back to its compiled-in SSID.
+    char _otaSsid[33] = {};
+    char _otaPassword[64] = {};
     bool isOTAUpdating = false;
     bool testMode = false;
     bool nextOTAAddress = false;
@@ -144,6 +148,8 @@ public:
     static void runMicTestWrapper(void *pvParameters);
     void startOTAUpdateTask();
     void setOtaUrl(const char* url);
+    void setOtaWifi(const char* ssid, const char* password);
+    void runOtaUpdate(const char* ssid, const char* password, const char* url);
     void startCalculatePositionsTask();
     void startAnnounceAddressTask();
     void startClapSyncTask();

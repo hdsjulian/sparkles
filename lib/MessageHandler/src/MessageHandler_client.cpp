@@ -126,28 +126,9 @@ void MessageHandler::handleReceive() {
                     ESP_LOGI("MSG", "Max distance from center set to %.2f m", commandMessage.param);
                 }
                 if (commandMessage.commandType == CMD_OTA_UPDATE) {
-                    ESP_LOGI("MSG", "CMD_OTA_UPDATE received, connecting to %s", OTA_WIFI_SSID);
-                    WiFi.mode(WIFI_OFF);
-                    delay(100);
-                    WiFi.mode(WIFI_STA);
-                    WiFi.persistent(false);  // see Ota.cpp: never store the OTA network
-                    if (strlen(OTA_WIFI_PASSWORD) > 0) {
-                        WiFi.begin(OTA_WIFI_SSID, OTA_WIFI_PASSWORD);
-                    } else {
-                        WiFi.begin(OTA_WIFI_SSID);
-                    }
-                    int retries = 0;
-                    while (WiFi.status() != WL_CONNECTED && retries < 20) {
-                        delay(500);
-                        retries++;
-                    }
-                    if (WiFi.status() == WL_CONNECTED) {
-                        OTAHandler& ota = OTAHandler::getInstance();
-                        ota.setup();
-                        ota.performUpdate(); // reboots on success
-                    } else {
-                        ESP_LOGE("MSG", "CMD_OTA_UPDATE: WiFi failed, aborting");
-                    }
+                    // no network named, so this is the old command — compiled-in
+                    // credentials are all there is to go on
+                    runOtaUpdate(nullptr, nullptr, nullptr);
                 }
                 if (commandMessage.commandType == CMD_MIC_TEST) {
                     startMicTestTask();
@@ -231,6 +212,10 @@ void MessageHandler::handleReceive() {
                 ESP_LOGI("MSG", "Version update offered, ignoring — OTA is on request only");
             }
 
+            else if (incomingData.messageType == MSG_OTA_REQUEST) {
+                const message_ota_request& req = incomingData.payload.otaRequest;
+                runOtaUpdate(req.ssid, req.password, req.url);
+            }
             else if (incomingData.messageType == MSG_TIMER_QUERY) {
                 message_data reply{};
                 reply.messageType = MSG_TIMER_RESPONSE;
@@ -518,6 +503,50 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
 
 }
 
+
+// Leave the mesh, join an AP, fetch a firmware image, come back rebooted or not
+// at all. Empty ssid/url mean "use what was compiled in", which is what the
+// bare CMD_OTA_UPDATE still does — a master that has never been told a network
+// behaves exactly as it did before.
+void MessageHandler::runOtaUpdate(const char* ssid, const char* password, const char* url) {
+    const char* useSsid = (ssid && ssid[0]) ? ssid : OTA_WIFI_SSID;
+    const char* usePass = (ssid && ssid[0]) ? (password ? password : "") : OTA_WIFI_PASSWORD;
+
+    ESP_LOGI("OTA", "OTA requested, connecting to %s (%s)", useSsid,
+             (ssid && ssid[0]) ? "from master" : "compiled in");
+
+    WiFi.mode(WIFI_OFF);
+    delay(100);
+    WiFi.mode(WIFI_STA);
+    WiFi.persistent(false);  // see Ota.cpp: never store the OTA network
+    if (strlen(usePass) > 0) {
+        WiFi.begin(useSsid, usePass);
+    } else {
+        WiFi.begin(useSsid);
+    }
+    int retries = 0;
+    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+        delay(500);
+        retries++;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        ESP_LOGE("OTA", "Could not join %s, aborting the update", useSsid);
+        return;
+    }
+
+    ESP_LOGI("OTA", "Joined %s, IP %s", useSsid, WiFi.localIP().toString().c_str());
+    OTAHandler& ota = OTAHandler::getInstance();
+    // the url has to outlive this call: OTAHandler keeps the pointer rather
+    // than a copy, and the message it came from is a stack local
+    if (url && url[0]) {
+        strncpy(_otaUrl, url, sizeof(_otaUrl) - 1);
+        _otaUrl[sizeof(_otaUrl) - 1] = '\0';
+        ota.setup(_otaUrl);
+    } else {
+        ota.setup();
+    }
+    ota.performUpdate(); // reboots on success
+}
 
 void MessageHandler::announceAddressWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;

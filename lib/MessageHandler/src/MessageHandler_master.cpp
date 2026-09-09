@@ -566,17 +566,29 @@ void MessageHandler::runOTAUpdateTask() {
         if (item.active != ACTIVE) continue;
         if (memcmp(item.address, "\x00\x00\x00\x00\x00\x00", 6) == 0) continue;
 
+        // the network and the url travel with the request: a board has no way
+        // to know either one, and the firmware lives on the pi, whose address
+        // depends on which of its two networks is currently up
         message_data msg;
-        msg.messageType = MSG_COMMAND;
+        msg.messageType = MSG_OTA_REQUEST;
         memcpy(msg.targetAddress, item.address, 6);
         WiFi.macAddress(msg.senderAddress);
-        msg.payload.command.commandType = CMD_OTA_UPDATE;
+        message_ota_request& req = msg.payload.otaRequest;
+        strncpy(req.ssid,     _otaSsid,     sizeof(req.ssid) - 1);
+        strncpy(req.password, _otaPassword, sizeof(req.password) - 1);
+        strncpy(req.url,      _otaUrl,      sizeof(req.url) - 1);
+        req.ssid[sizeof(req.ssid) - 1] = '\0';
+        req.password[sizeof(req.password) - 1] = '\0';
+        req.url[sizeof(req.url) - 1] = '\0';
 
         addPeer(item.address);
-        esp_now_send(item.address, (uint8_t*)&msg, ESPNOW_CLIENT_COMPAT_SIZE);
+        // full frame, not the 80-byte compat size — the credentials do not fit
+        esp_now_send(item.address, (uint8_t*)&msg, sizeof(msg));
 
-        ESP_LOGI("OTA", "Sent OTA command to device %d (%d/%d)",
-                 item.id, ++sent, getNumDevices());
+        ESP_LOGI("OTA", "Sent OTA request to device %d (%d/%d) — network %s, url %s",
+                 item.id, ++sent, getNumDevices(),
+                 strlen(_otaSsid) > 0 ? _otaSsid : "(client default)",
+                 strlen(_otaUrl) > 0 ? _otaUrl : "(client default)");
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
     ESP_LOGI("OTA", "OTA commands sent to %d devices", sent);

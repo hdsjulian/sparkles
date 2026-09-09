@@ -14,6 +14,7 @@
     toggleLogging,
     toggleTestMode,
     commandOTAUpdate,
+    getOtaNetwork,
     reannounce,
     resetSystem,
     resetClients,
@@ -270,6 +271,7 @@
       const r = await fetch('/current-version');
       if (r.ok) currentVersion = (await r.json()).version;
     } catch (_) {}
+    refreshOtaNetwork();
   });
 
   async function handleCompile() {
@@ -322,12 +324,35 @@
     }
   }
 
+  // what the clients will actually be told to join, refreshed when the page
+  // loads and again right before an OTA — the Pi can move between WLIAN and its
+  // own AP fallback, and the boards have to be sent to whichever one is up
+  let otaNet = null;
+
+  async function refreshOtaNetwork() {
+    try {
+      otaNet = await getOtaNetwork();
+    } catch (_) {
+      otaNet = null;
+    }
+  }
+
   async function handleOTA() {
-    if (!confirm('Start OTA update? Devices will restart.')) return;
+    await refreshOtaNetwork();
+    if (otaNet && !otaNet.ready) {
+      error = otaNet.ssid
+        ? `No password known for "${otaNet.ssid}" — nothing sent. Boards would leave the mesh and fail to join.`
+        : 'Could not read the Pi\'s current WiFi network — nothing sent.';
+      return;
+    }
+    const where = otaNet?.ssid ? `join ${otaNet.ssid} and fetch ${otaNet.url}` : 'restart';
+    if (!confirm(`Start OTA update? Every active board will ${where}.`)) return;
     error = '';
     try {
-      await commandOTAUpdate();
-      successMsg = 'OTA update started';
+      const result = await commandOTAUpdate();
+      successMsg = result.ssid
+        ? `OTA update started on ${result.ssid}`
+        : 'OTA update started';
     } catch (e) {
       error = e.message;
     }
@@ -820,6 +845,21 @@
     {#if uploadProgress}
       <div class="status-msg success" style="margin-top:0.5rem;">{uploadProgress}</div>
     {/if}
+
+    {#if otaNet}
+      <div class="ota-net" class:not-ready={!otaNet.ready}>
+        {#if otaNet.ready}
+          Clients will join <strong>{otaNet.ssid}</strong> and fetch <code>{otaNet.url}</code>
+        {:else if otaNet.ssid && !otaNet.hasPassword}
+          On <strong>{otaNet.ssid}</strong>, which has no known password — an OTA is refused
+          rather than sending every board off to a network it cannot join.
+        {:else if !otaNet.ssid}
+          Could not read the Pi's current WiFi network — an OTA is refused.
+        {:else}
+          Could not detect the Pi's own IP, so there is no firmware URL to hand out.
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <!-- Danger Zone -->
@@ -835,6 +875,19 @@
 </div>
 
 <style>
+  .ota-net {
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .ota-net.not-ready {
+    color: var(--color-mid);
+  }
+
   .info-grid {
     display: flex;
     flex-wrap: wrap;

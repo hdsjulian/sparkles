@@ -133,7 +133,15 @@ export const toggleTestMode = (spacing = 1.0) =>
   fetch(`${BASE}/toggleTestMode?spacing=${spacing}`).then(r => r.json());
 
 export const commandOTAUpdate = () =>
-  fetch(`${BASE}/commandOTAUpdate`).then(r => r.json());
+  fetch(`${BASE}/commandOTAUpdate`).then(async r => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail ?? 'OTA could not be started');
+    return body;
+  });
+
+// which network and url an OTA would hand the clients right now
+export const getOtaNetwork = () =>
+  fetch(`${BASE}/otaNetwork`).then(r => r.json());
 
 export const reannounce = () =>
   fetch(`${BASE}/reannounce`).then(r => r.json());

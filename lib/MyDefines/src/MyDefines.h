@@ -152,6 +152,7 @@ static_assert(CHIRP_BURST_COUNT <= NUM_CLAPS, "one measurement slot per chirp of
 #define MSG_SOUND_DEVICE 21 // clap/chirp device announce, master learns its address from this
 #define MSG_MIC_TEST 22 // client's reply to CMD_MIC_TEST, raw ADC statistics
 #define MSG_HEALTH 23 // client's reply to CMD_HEALTH_PING, its own vitals
+#define MSG_OTA_REQUEST 24 // start an OTA, and the network + url to do it on
 
 #if DEVICE_MODE == MASTER
 extern bool g_loggingEnabled;
@@ -486,6 +487,19 @@ struct message_mic_test {
 // What one client knows about itself. Sent only when asked, one board at a
 // time, so a fleet check is a list of boards that answered and boards that
 // didn't — silence is the interesting half of the reading.
+// An OTA is the one time a client leaves ESP-NOW for a real AP, so it has to be
+// told which one — the pi is on WLIAN at home and its own Sparkles hotspot when
+// that is out of range, and the firmware it fetches lives on the pi either way.
+// Compiling the network in meant a board hunting for an SSID that was not up.
+// Too big for the 80-byte compat frame, so this one goes out full size; it fits
+// inside message_log, so sizeof(message_data) does not move.
+struct message_ota_request {
+  char ssid[33];      // 32 + NUL, the 802.11 maximum
+  char password[64];  // 63 + NUL, the WPA2 maximum
+  char url[80];
+  message_ota_request() { ssid[0] = '\0'; password[0] = '\0'; url[0] = '\0'; }
+};
+
 struct message_health {
   float    batteryPercentage;
   uint32_t freeHeap;
@@ -502,6 +516,7 @@ struct message_health {
 // the reply has to survive the 80-byte compat frame every client sends in
 static_assert(sizeof(message_health) <= ESPNOW_CLIENT_COMPAT_SIZE - 24,
               "message_health must fit the 80-byte client frame");
+
 
 struct message_clap {
   unsigned long long clapTime;
@@ -547,6 +562,12 @@ struct message_log {
   char text[180];
 };
 
+// message_log is what currently sets the size of the payload union. Staying
+// inside it keeps sizeof(message_data) — and so every frame already in flight —
+// exactly as it was.
+static_assert(sizeof(message_ota_request) <= sizeof(message_log),
+              "message_ota_request must not grow the payload union");
+
 struct message_timer_response {
   int64_t estimatedMasterTime;
   int     addressId;
@@ -565,6 +586,7 @@ union message_payload {
   struct message_clap           clap;
   struct message_mic_test       micTest;
   struct message_health         health;
+  struct message_ota_request    otaRequest;
   struct message_config_data    configData;
   struct message_update_version updateVersion;
   struct message_command        command;
@@ -584,6 +606,11 @@ union message_payload {
   ~message_payload() {
   }
 };
+
+// esp_now_send refuses anything larger, and MSG_LOG/MSG_OTA_REQUEST both go out
+// at full size — so this is the ceiling the payload union has to live under
+static_assert(sizeof(message_payload) + 24 <= 250,
+              "message_data must fit an ESP-NOW frame");
 
 struct message_data {
   uint8_t         messageType;
