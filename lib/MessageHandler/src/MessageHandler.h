@@ -253,6 +253,9 @@ private:
     // emitter's stamp for the chirp currently being recorded, in master time.
     // Stamped in onDataRecv: the clap task blocks the receive task while it records.
     volatile unsigned long long lastChirpEmission = 0;
+    // counts emitter announces actually received, so "no stamp" can be told
+    // apart from "stamp arrived and was rejected as implausible"
+    volatile uint32_t chirpAnnounceCount = 0;
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};

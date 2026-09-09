@@ -200,36 +200,58 @@ void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime)
 // announced with its own emission timestamp and index; the clients count the same
 // schedule off the same calibration broadcast and report one measurement per index.
 void playChirpBurst() {
-    // a cancelled burst leaves the channel enabled, and enable only works from
-    // READY — no ESP_ERROR_CHECK, being already stopped is the normal case
-    i2s_channel_disable(txChan);
-    TickType_t base = xTaskGetTickCount();
+    // One enable for the whole burst. Disabling between chirps stopped BCLK, so
+    // the PCM5102A's PLL re-locked ten times and each chirp played into a DAC
+    // that was still settling — audibly, the first chirps were the weakest and
+    // the burst got louder as it went, which is why shortening the lead-in made
+    // fewer chirps audible rather than more.
+    //
+    // Timing stays exact without any lead-in arithmetic: the peripheral consumes
+    // at precisely I2S_SAMPLE_RATE from the instant it is enabled, so frame k
+    // leaves at enable + k/I2S_SAMPLE_RATE. Counting frames as we write them
+    // gives every chirp its emission time by arithmetic, and the writes block in
+    // real time, so the burst paces itself sample-accurately instead of drifting
+    // against a tick scheduler.
+    static int16_t silence[512 * 2] = {0};
+    const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
+
+    i2s_channel_disable(txChan);                 // ensure READY
+    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the clock starts here and stays on
+    const long long enableTime = syncedTime();
+    uint64_t frames = 0;
+
+    auto writeSilence = [&](int n) {
+        while (n > 0) {
+            int chunk = (n < 512) ? n : 512;
+            size_t w = 0;
+            i2s_channel_write(txChan, silence, chunk * 2 * sizeof(int16_t), &w, portMAX_DELAY);
+            frames += chunk;
+            n -= chunk;
+        }
+    };
+
+    // let the PLL lock before the first chirp; after this the clock never stops
+    writeSilence(LEAD_IN_SAMPLES);
+
     for (int chirp = 0; chirp < CHIRP_BURST_COUNT; chirp++) {
-        // Enable starts the clock, and the peripheral consumes at exactly the
-        // sample rate from that instant — so the chirp, sitting LEAD_IN_SAMPLES
-        // into the buffer, leaves at enable + CHIRP_LEAD_IN_MS. The stamp is
-        // still arithmetic, not a guess; the silence in front of it is what
-        // lets the DAC's PLL lock before there is anything to hear.
-        ESP_ERROR_CHECK(i2s_channel_enable(txChan));
-        long long enableTime = syncedTime();
-        long long emitTime = enableTime + (long long)CHIRP_LEAD_IN_MS * 1000;
+        // frame `frames` is the first sample of this chirp, so it leaves the DAC
+        // at enable + frames/rate — announced before it is written, and the ring
+        // holds only ~33 ms, so the announce still precedes the sound
+        long long emitTime = enableTime +
+            (long long)((frames * 1000000ULL) / (uint64_t)I2S_SAMPLE_RATE);
         broadcastClapMessage(true, chirp, emitTime);
 
         size_t written = 0;
-        i2s_channel_write(txChan, chirpWithLeadIn, sizeof(chirpWithLeadIn),
-                          &written, portMAX_DELAY);
+        i2s_channel_write(txChan, chirpBuffer, sizeof(chirpBuffer), &written, portMAX_DELAY);
+        frames += CHIRP_SAMPLES;
 
-        vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));    // let the ring empty
-        ESP_ERROR_CHECK(i2s_channel_disable(txChan)); // back to READY
-        ESP_LOGI("CHIRP", "Chirp %d/%d, wrote %u of %u bytes (%d ms lead-in)",
-                 chirp + 1, CHIRP_BURST_COUNT, (unsigned)written,
-                 (unsigned)sizeof(chirpWithLeadIn), CHIRP_LEAD_IN_MS);
-
-        // absolute schedule off the base, an overrun can't push the rest of the burst along
-        TickType_t target = base + pdMS_TO_TICKS((chirp + 1) * CHIRP_BURST_PERIOD_MS);
-        int32_t wait = (int32_t)(target - xTaskGetTickCount());
-        if (wait > 0) vTaskDelay(wait);
+        writeSilence(framesPerPeriod - CHIRP_SAMPLES);   // pad out the period
+        ESP_LOGI("CHIRP", "Chirp %d/%d at +%llu ms", chirp + 1, CHIRP_BURST_COUNT,
+                 (unsigned long long)((frames - framesPerPeriod) * 1000ULL / I2S_SAMPLE_RATE));
     }
+
+    vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));
+    ESP_ERROR_CHECK(i2s_channel_disable(txChan));
     ESP_LOGI("CHIRP", "Burst done");
 }
 

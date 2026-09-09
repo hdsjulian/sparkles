@@ -270,7 +270,11 @@ void MessageHandler::runClapDeviceTimerSync() {
         t.addressId = -1;
         int txSlot = acquireTxSlot(clapDeviceAddress);
         TickType_t wake = xTaskGetTickCount();
-        for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
+        // TIMER_ARRAY_COUNT + 5 left no margin: the device needs 10 samples and
+        // only counts a packet whose predecessor was measured, so a couple of
+        // losses meant it never synced and its emission stamps stayed in its own
+        // uptime domain — off by the master's whole uptime.
+        for (int i = 0; i < TIMER_ARRAY_COUNT * 3; i++) {
             wake = xTaskGetTickCount();
             t.counter   = i;
             t.lastDelay = (txSlot >= 0) ? clampTxDelay(txSlots[txSlot].lastDelay) : 0;

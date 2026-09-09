@@ -472,6 +472,7 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
     // recording blocks the receive task for the whole window
     if (localData.messageType == MSG_CLAP && localData.payload.clap.clapHappened) {
         instance.lastChirpEmission = localData.payload.clap.clapTime;
+        instance.chirpAnnounceCount++;
     }
     if (localData.messageType == MSG_SLEEP_WAKEUP) {
         instance.lastSleepMsgDuration = localData.payload.sleepWakeup.duration;

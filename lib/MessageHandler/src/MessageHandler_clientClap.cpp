@@ -94,10 +94,13 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     // later than it; the margin only covers timer sync error.
     int minLag = 0;
     long long rawLag = 0;          // before clamping — the clamp hides how wrong a bad stamp is
+    long long staleOffsetUs = 0;   // set when a stamp arrived but could not belong to this window
+    long long emissionOffsetUs = 0;
     unsigned long long emission = lastChirpEmission;
     if (emission != 0) {
         long long emissionLocal = (long long)emission - ledInstance->getTimerOffset();
         long long offsetUs = emissionLocal - (long long)recordStart;
+        emissionOffsetUs = offsetUs;
         // Reject a stamp that cannot belong to this window: one from the previous
         // chirp, or any stamp at all from an emitter whose clock was never synced
         // (its syncedTime() is then raw uptime, out by seconds). Searching the
@@ -106,6 +109,7 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
         if (offsetUs < -(long long)CHIRP_BURST_PERIOD_MS * 1000 ||
             offsetUs > (long long)RECORD_MS * 1000) {
             emission = 0;
+            staleOffsetUs = offsetUs;   // remember why, for the log
         } else {
             rawLag = offsetUs / (long long)intervalUs - EMISSION_MARGIN;
             if (rawLag > 0) minLag = (rawLag < MAX_LAG) ? (int)rawLag : MAX_LAG;
@@ -146,10 +150,13 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     // rawLag is the whole story when minLag is pinned: a value just over MAX_LAG
     // means the emission is a little too late (schedule/lead-in), while one
     // orders of magnitude out means the emitter's clock is not synced at all.
-    ESP_LOGI("CLAP", "window: mic rms %d | loudest %d ms rms %d vs quiet %d (x%.1f) | emission %s minLag %d/%d | best %.3f gate %.3f",
+    ESP_LOGI("CLAP", "window: rms %d | loud %dms r%d/q%d (x%.0f) | annc %lu emission %s off %lldms minLag %d/%d | best %.3f gate %.3f",
              rawRms, loudBlk * 10, loudRms, quietRms,
              quietRms > 0 ? (float)loudRms / (float)quietRms : 0.0f,
-             (emission != 0) ? "ok" : "MISSING", minLag, MAX_LAG,
+             (unsigned long)chirpAnnounceCount,
+             (emission != 0) ? "ok" : (staleOffsetUs != 0 ? "STALE" : "NONE"),
+             (emission != 0 ? (long long)((emissionOffsetUs) / 1000) : staleOffsetUs / 1000),
+             minLag, MAX_LAG,
              bestCorr, gate);
 
     peakCorr = bestCorr;
