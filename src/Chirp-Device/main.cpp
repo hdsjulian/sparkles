@@ -199,83 +199,94 @@ void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime)
 // One calibration = CHIRP_BURST_COUNT chirps on a fixed schedule. Every chirp is
 // announced with its own emission timestamp and index; the clients count the same
 // schedule off the same calibration broadcast and report one measurement per index.
-void playChirpBurst() {
-    // One enable for the whole burst. Disabling between chirps stopped BCLK, so
-    // the PCM5102A's PLL re-locked ten times and each chirp played into a DAC
-    // that was still settling — audibly, the first chirps were the weakest and
-    // the burst got louder as it went, which is why shortening the lead-in made
-    // fewer chirps audible rather than more.
-    //
-    // Timing stays exact without any lead-in arithmetic: the peripheral consumes
-    // at precisely I2S_SAMPLE_RATE from the instant it is enabled, so frame k
-    // leaves at enable + k/I2S_SAMPLE_RATE. Counting frames as we write them
-    // gives every chirp its emission time by arithmetic, and the writes block in
-    // real time, so the burst paces itself sample-accurately instead of drifting
-    // against a tick scheduler.
-    static int16_t silence[512 * 2] = {0};
+// The I2S channel is enabled once, in setup(), and never disabled. The
+// PCM5102A soft-un-mutes and settles its charge pump when its clock starts, and
+// that takes seconds — so anything that stops BCLK costs the first few seconds
+// of audio. Disabling between chirps (1b08d21) made every chirp play into a
+// muting DAC; enabling once per burst only moved the problem, leaving the first
+// seven chirps of a ten-chirp burst inaudible. A clock that never stops is how
+// this worked before the burst change, and it is the only arrangement where
+// every chirp comes out at the same level.
+//
+// Timing is exact for free: the peripheral consumes at precisely
+// I2S_SAMPLE_RATE from the single enable, so frame k leaves at
+// enable + k/I2S_SAMPLE_RATE. audioFrames counts every frame ever written, so
+// any chirp's emission time is arithmetic on a counter that never resets.
+static const int PUMP_CHUNK_FRAMES = 441;                 // 10 ms at 44.1 kHz
+static int16_t pumpSilence[PUMP_CHUNK_FRAMES * 2] = {0};
+
+volatile uint64_t audioFrames = 0;      // frames written since the single enable
+long long audioEnableTime = 0;          // syncedTime() at that enable
+
+// a burst request, consumed by the pump
+volatile int      burstRemaining = 0;   // chirps still to emit
+volatile bool     burstAnnounce  = false;
+volatile uint8_t  burstNextIndex = 0;
+volatile uint64_t burstNextFrame = 0;   // frame at which the next chirp starts
+
+void requestChirps(int count, bool announce) {
     const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
+    // start far enough ahead that the pump has not already written past it
+    burstNextFrame = audioFrames + framesPerPeriod;
+    burstNextIndex = 0;
+    burstAnnounce  = announce;
+    burstRemaining = count;
+    (void)framesPerPeriod;
+}
 
+void audioPumpTask(void *) {
+    const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
     i2s_channel_disable(txChan);                 // ensure READY
-    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the clock starts here and stays on
-    const long long enableTime = syncedTime();
-    uint64_t frames = 0;
+    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the only enable, ever
+    audioEnableTime = syncedTime();
+    audioFrames = 0;
+    ESP_LOGI("CHIRP", "audio pump running, clock is up and stays up");
 
-    auto writeSilence = [&](int n) {
-        while (n > 0) {
-            int chunk = (n < 512) ? n : 512;
-            size_t w = 0;
-            i2s_channel_write(txChan, silence, chunk * 2 * sizeof(int16_t), &w, portMAX_DELAY);
-            frames += chunk;
-            n -= chunk;
+    while (true) {
+        size_t w = 0;
+        if (burstRemaining > 0 && audioFrames >= burstNextFrame) {
+            // this frame is the first sample of the chirp, so it leaves the DAC
+            // at enable + audioFrames/rate — announced just before it is queued
+            long long emitTime = audioEnableTime +
+                (long long)((audioFrames * 1000000ULL) / (uint64_t)I2S_SAMPLE_RATE);
+            uint8_t idx = burstNextIndex;
+            if (burstAnnounce) broadcastClapMessage(true, idx, emitTime);
+            i2s_channel_write(txChan, chirpBuffer, sizeof(chirpBuffer), &w, portMAX_DELAY);
+            audioFrames += CHIRP_SAMPLES;
+            burstNextIndex = idx + 1;
+            burstNextFrame = burstNextFrame + framesPerPeriod;
+            if (--burstRemaining == 0) ESP_LOGI("CHIRP", "Burst done");
+            ESP_LOGI("CHIRP", "Chirp %u at frame %llu (+%llu ms)", (unsigned)(idx + 1),
+                     (unsigned long long)(audioFrames - CHIRP_SAMPLES),
+                     (unsigned long long)((audioFrames - CHIRP_SAMPLES) * 1000ULL / I2S_SAMPLE_RATE));
+            continue;
         }
-    };
-
-    // let the PLL lock before the first chirp; after this the clock never stops
-    writeSilence(LEAD_IN_SAMPLES);
-
-    for (int chirp = 0; chirp < CHIRP_BURST_COUNT; chirp++) {
-        // frame `frames` is the first sample of this chirp, so it leaves the DAC
-        // at enable + frames/rate — announced before it is written, and the ring
-        // holds only ~33 ms, so the announce still precedes the sound
-        long long emitTime = enableTime +
-            (long long)((frames * 1000000ULL) / (uint64_t)I2S_SAMPLE_RATE);
-        broadcastClapMessage(true, chirp, emitTime);
-
-        size_t written = 0;
-        i2s_channel_write(txChan, chirpBuffer, sizeof(chirpBuffer), &written, portMAX_DELAY);
-        frames += CHIRP_SAMPLES;
-
-        writeSilence(framesPerPeriod - CHIRP_SAMPLES);   // pad out the period
-        ESP_LOGI("CHIRP", "Chirp %d/%d at +%llu ms", chirp + 1, CHIRP_BURST_COUNT,
-                 (unsigned long long)((frames - framesPerPeriod) * 1000ULL / I2S_SAMPLE_RATE));
+        // silence, but never past the start of the next chirp
+        int n = PUMP_CHUNK_FRAMES;
+        if (burstRemaining > 0) {
+            uint64_t until = burstNextFrame - audioFrames;
+            if (until < (uint64_t)n) n = (int)until;
+        }
+        if (n <= 0) n = 1;
+        i2s_channel_write(txChan, pumpSilence, n * 2 * sizeof(int16_t), &w, portMAX_DELAY);
+        audioFrames += n;
     }
+}
 
-    vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));
-    ESP_ERROR_CHECK(i2s_channel_disable(txChan));
-    ESP_LOGI("CHIRP", "Burst done");
+void playChirpBurst() {
+    requestChirps(CHIRP_BURST_COUNT, true);
 }
 
 // Just the sound. No timestamp, no MSG_CLAP, no slot — nothing downstream hears
 // about it, so it can be fired from anywhere at any time without touching a
 // calibration in progress. This is the one for listening to the chirp itself.
 void playSingleChirp() {
-    i2s_channel_disable(txChan);                 // ensure READY
-    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // clock starts here
-    size_t written = 0;
-    i2s_channel_write(txChan, chirpWithLeadIn, sizeof(chirpWithLeadIn),
-                      &written, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));
-    ESP_ERROR_CHECK(i2s_channel_disable(txChan));
-    ESP_LOGI("CHIRP", "Test chirp: %d ms lead-in, then %d steps x %d ms, %d Hz to %d Hz",
-             CHIRP_LEAD_IN_MS, CHIRP_STEPS, CHIRP_STEP_MS,
-             chirpFrequencies[0], chirpFrequencies[CHIRP_STEPS - 1]);
+    requestChirps(1, false);   // no timestamp, no MSG_CLAP — just the sound
+    ESP_LOGI("CHIRP", "Test chirp queued (%d steps x %d ms, %d Hz to %d Hz)",
+             CHIRP_STEPS, CHIRP_STEP_MS, chirpFrequencies[0],
+             chirpFrequencies[CHIRP_STEPS - 1]);
 }
 
-// Plain audible tones, streamed rather than preloaded so they can be any length.
-// Two things here are what buildChirp is missing: phase is accumulated across
-// samples instead of recomputed as 2*pi*f*t, so changing frequency cannot cause
-// a jump, and each tone gets a raised-cosine fade so it does not start or stop
-// on a step. That is the whole difference between a tone and a click.
 void playToneSequence(const int *freqs, int count, int msPer, int fadeMs) {
     i2s_channel_disable(txChan);                 // ensure READY
     ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // clock starts here
@@ -488,6 +499,7 @@ void handleReceiveTask(void *) {
                 break;
             case CMD_CANCEL_CALIBRATION:
             case CMD_END_CALIBRATION:
+                burstRemaining = 0;   // the burst is pump state, not a task
                 if (chirpTaskHandle != nullptr) {
                     vTaskDelete(chirpTaskHandle);
                     chirpTaskHandle = nullptr;
@@ -541,13 +553,16 @@ void setup() {
     addPeer(broadcastAddress);
 
     xTaskCreate(handleReceiveTask, "handleRecv", 4096, nullptr, 5, nullptr);
+    // owns the I2S channel for the lifetime of the board: the DAC un-mutes and
+    // settles over seconds when its clock starts, so the clock must never stop
+    xTaskCreatePinnedToCore(audioPumpTask, "audioPump", 4096, nullptr, 8, nullptr, 1);
 
     delay(500);
     announceAddress();
 
     ESP_LOGI("CHIRP", "Ready. My address %02x:%02x:%02x:%02x:%02x:%02x",
              myAddress[0], myAddress[1], myAddress[2], myAddress[3], myAddress[4], myAddress[5]);
-    ESP_LOGI("CHIRP", "BOOT or any serial char = test chirp; 't' = 1 kHz tone, 'b' = three tones");
+    ESP_LOGI("CHIRP", "BOOT or any serial char = one test chirp");
 }
 
 // Polls fast enough for a button to feel connected to the sound it makes, and
@@ -565,9 +580,9 @@ void loop() {
     while (Serial.available() > 0) {
         int c = Serial.read();
         if (c == '\n' || c == '\r') continue;
-        if      (c == 't') startTestTone();    // 1 kHz, 3 s — is the audio path alive
-        else if (c == 'b') startTestBeeps();   // three clean tones — is the DAC locked
-        else               startTestChirp("serial");
+        // 't'/'b' tone helpers are gone: the pump owns the channel, and the
+        // client's energy metric replaced what they were for
+        startTestChirp("serial");
         while (Serial.available() > 0) Serial.read();   // one per line, not per byte
     }
 
