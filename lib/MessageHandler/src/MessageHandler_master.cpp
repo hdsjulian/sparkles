@@ -187,7 +187,24 @@ void MessageHandler::handleReceive() {
             else if (incomingData.messageType == MSG_GOT_TIMER) {
                 // Chirp device sends MSG_GOT_TIMER but is not in addressList, remove peer and stop timer, skip addressList writes.
                 if (memcmp(incomingData.senderAddress, clapDeviceAddress, 6) == 0) {
-                    ESP_LOGI("MSG", "Got timer from chirp device, delay avg %d", incomingData.payload.gotTimer.delayAverage);
+                    // Don't just note that a sync happened — check it produced a
+                    // correct offset. MSG_GOT_TIMER carries perceivedTime, the
+                    // emitter's own idea of master time, so comparing it against
+                    // our actual clock catches an offset belonging to a previous
+                    // master generation. Acknowledging without checking let a
+                    // burst run with stamps a whole uptime out, which reads as
+                    // tens of metres and is discarded downstream.
+                    long long skew = (long long)esp_timer_get_time()
+                                   - (long long)incomingData.payload.gotTimer.perceivedTime;
+                    if (skew < 0) skew = -skew;
+                    if (skew < 50000) {           // 50 ms, generous for mesh latency
+                        clapDeviceSyncedAt = millis();
+                        LOG_I("MSG", "Emitter clock confirmed, skew %lld us, delay avg %d",
+                              skew, incomingData.payload.gotTimer.delayAverage);
+                    } else {
+                        LOG_I("MSG", "Emitter clock REJECTED, skew %lld us (%lld ms) — stale generation",
+                              skew, skew / 1000);
+                    }
                     removePeer(clapDeviceAddress);
                     setSettingTimer(false);
                     continue;
@@ -1035,7 +1052,19 @@ void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, 
             self->stopAnimationLoop();
         }
         self->runFastResyncAll();
-        self->runClapDeviceTimerSync();
+        // set the burst kind before any early exit, or a refusal reports itself
+        // under the wrong event name and the UI listening for it never hears
+        self->burstIsDistance = burst.isDistance;
+        if (!self->runClapDeviceTimerSync()) {
+            // Without a fresh confirmation the emitter's stamps could be a whole
+            // master generation out, which reads as tens of metres of flight and
+            // is silently discarded downstream. Say so instead of measuring it.
+            self->emitBurstStatus("failed", 0, 0,
+                "emitter clock not confirmed — its chirp timestamps would be meaningless");
+            if (animationWasRunning) self->resumeAnimationLoop();
+            self->distCalHandle = NULL;
+            vTaskDelete(NULL);
+        }
         self->beginBurst(burst.slot, burst.xPos, burst.yPos, burst.isDistance);
         message_data commandMessage = self->createCommandMessage(burst.commandType, true);
         self->pushToSendQueue(commandMessage);

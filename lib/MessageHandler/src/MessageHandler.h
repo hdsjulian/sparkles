@@ -173,7 +173,7 @@ public:
     void runTimerSync();
     void runTimerSyncAt(int index);
     void runFastResyncAll();
-    void runClapDeviceTimerSync();
+    bool runClapDeviceTimerSync();
     void startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance);
     int acquireTxSlot(const uint8_t *mac);
     void releaseTxSlot(int slot);
@@ -246,6 +246,10 @@ private:
     // for a small delay — the very value used to mean "never measured", so a
     // fast link made the chirp device's timer sync silently skip itself.
     bool clapDelayMeasured = false;
+    // millis() of the emitter's last confirmed clock sync. A burst whose emitter
+    // has not confirmed since the sync we just ran would stamp its chirps in a
+    // stale clock generation, so it is refused rather than measured.
+    volatile unsigned long clapDeviceSyncedAt = 0;
     // sleep listen-window stamps, written by onDataRecv (wifi task), read by handleSleepWakeup
     volatile unsigned long lastSleepMsgMillis = 0;
     volatile unsigned long long lastSleepMsgDuration = 0;

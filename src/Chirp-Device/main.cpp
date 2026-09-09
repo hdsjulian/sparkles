@@ -116,7 +116,14 @@ void handleTimer(const message_data &msg) {
         timeOffset = (sorted[TIMER_ARRAY_COUNT / 2 - 1] + sorted[TIMER_ARRAY_COUNT / 2]) / 2;
         ESP_LOGI("CHIRP", "Timer synced. Offset %lld, delay average %d", (long long)timeOffset, delayAverage);
 
-        if (!timerSynced) {
+        // Report every completed sync, not just the first. The master's clock is
+        // microseconds since its own boot, so a master reboot invalidates this
+        // offset entirely — and re-syncing needs ten correctly paired packets,
+        // which can silently fail. Reporting once meant the master could never
+        // tell a fresh offset from one belonging to a previous master
+        // generation, and a stale one puts every emission stamp out by the old
+        // master's whole uptime.
+        {
             timerSynced = true;
             message_data gotTimerMessage;
             gotTimerMessage.messageType = MSG_GOT_TIMER;

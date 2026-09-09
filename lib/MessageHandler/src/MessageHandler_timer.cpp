@@ -254,12 +254,13 @@ void MessageHandler::runClapSync() {
 
 
 
-void MessageHandler::runClapDeviceTimerSync() {
+bool MessageHandler::runClapDeviceTimerSync() {
     if (!clapDelayMeasured) {
         // Never completed a delay sync, so there is no timebase to refresh yet
-        ESP_LOGW("CLAP", "chirp device delay not measured yet, skipping timer sync");
-        return;
+        LOG_I("CLAP", "emitter delay not measured yet, cannot sync its clock");
+        return false;
     }
+    const unsigned long before = clapDeviceSyncedAt;
     ESP_LOGI("CLAP", "Starting chirp device timer sync");
     addPeer(clapDeviceAddress);
     {
@@ -288,7 +289,16 @@ void MessageHandler::runClapDeviceTimerSync() {
         releaseTxSlot(txSlot);
     }
     removePeer(clapDeviceAddress);
-    ESP_LOGI("CLAP", "Chirp device timer sync done");
+
+    // Wait for the emitter to confirm. It only confirms on a completed sync, so
+    // this distinguishes "offset refreshed against this master" from "packets
+    // went out and nothing came of it".
+    for (int i = 0; i < 40 && clapDeviceSyncedAt == before; i++) {
+        vTaskDelay(pdMS_TO_TICKS(25));
+    }
+    bool confirmed = (clapDeviceSyncedAt != before);
+    LOG_I("CLAP", "emitter clock sync %s", confirmed ? "confirmed" : "NOT CONFIRMED");
+    return confirmed;
 }
 
 void MessageHandler::runTimerSyncAt(int index) {
