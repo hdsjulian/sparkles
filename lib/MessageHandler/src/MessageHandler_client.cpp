@@ -449,7 +449,17 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         bool musicAnim = (localData.messageType == MSG_ANIMATION) &&
             (localData.payload.animation.animationType == MIDI ||
              localData.payload.animation.animationType == BACKGROUND_SHIMMER);
-        if (!musicAnim) {
+        // Skip the routine chatter as well. Serial.setTxTimeoutMs(0) drops bytes
+        // rather than blocking, so a line per timer packet, per animation and per
+        // sound-device announce fills the CDC buffer and silently discards the
+        // diagnostics that actually matter — the CLAP window reports vanished
+        // mid-line during exactly the burst they were meant to explain.
+        bool routine = musicAnim
+            || localData.messageType == MSG_TIMER
+            || localData.messageType == MSG_ANIMATION
+            || localData.messageType == MSG_SOUND_DEVICE
+            || localData.messageType == MSG_STATUS;
+        if (!routine) {
             ESP_LOGI("RX", "type=%d from %02x:%02x:%02x:%02x:%02x:%02x len=%d",
                      localData.messageType,
                      mac->src_addr[0], mac->src_addr[1], mac->src_addr[2],
