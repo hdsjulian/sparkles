@@ -204,6 +204,13 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
             }
         }
     }
+    {
+        int active = 0;
+        for (int i = 0; i < numAdresses; i++) {
+            if (messageHandlerInstance->getActiveStatus(i) == ACTIVE) active++;
+        }
+        LOG_I("SYNC", "sync finished: %d of %d board(s) active", active, numAdresses);
+    }
     if (numAdresses > 0) {
         messageHandlerInstance->resumeAnimationLoop();
     }
@@ -233,6 +240,7 @@ void MessageHandler::runClapSync() {
     removePeer(clapDeviceAddress);
     delayAverage /= 10;
     setClapDeviceDelay(delayAverage / 2);
+    clapDelayMeasured = true;   // even if it rounded to 0 — 0 is a valid delay
     ESP_LOGI("CLAP", "Clap device delay set to %d", getClapDeviceDelay());
 
     // Send MSG_TIMER to chirp device for clock offset sync.
@@ -247,8 +255,9 @@ void MessageHandler::runClapSync() {
 
 
 void MessageHandler::runClapDeviceTimerSync() {
-    if (getClapDeviceDelay() == 0) {
-        // Clap/chirp device never completed a delay sync, nothing to refresh
+    if (!clapDelayMeasured) {
+        // Never completed a delay sync, so there is no timebase to refresh yet
+        ESP_LOGW("CLAP", "chirp device delay not measured yet, skipping timer sync");
         return;
     }
     ESP_LOGI("CLAP", "Starting chirp device timer sync");
@@ -312,6 +321,17 @@ void MessageHandler::runTimerSync() {
     message_timer timerMessage;
     message_data messageData;
     messageData.messageType = MSG_TIMER;
+    {
+        int idx = getCurrentTimerIndex();
+        if (idx > -1) {
+            LOG_I("SYNC", "syncing board %d (%02x:%02x:%02x:%02x:%02x:%02x)", idx,
+                     addressList[idx].address[0], addressList[idx].address[1],
+                     addressList[idx].address[2], addressList[idx].address[3],
+                     addressList[idx].address[4], addressList[idx].address[5]);
+        } else {
+            LOG_I("SYNC", "syncing by broadcast (no target index)");
+        }
+    }
     setSettingTimer(true);
     setTimerCounter(0);
     setLastTimerCounter();
@@ -349,7 +369,8 @@ void MessageHandler::runTimerSync() {
             setUnavailable(getCurrentTimerIndex());
             removePeer(addressList[timerIndex].address);
             setSettingTimer(false);
-            ESP_LOGI("TIMER", "Setting unavailable. Last counter: %d, current counter: %d, index: %d", getLastTimerCounter(), getTimerCounter(), timerIndex);
+            LOG_I("SYNC", "board %d never answered — gave up after %d packets (last ack'd counter %d), marking unavailable",
+                     timerIndex, getTimerCounter(), getLastTimerCounter());
         }
 
         //ESP_LOGI("TIMER", "TIMER %d SENT AT %llu - exact difference %llu", timerMessage.counter, timerMessage.sendTime, timerMessage.sendTime-lastTick);

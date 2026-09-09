@@ -1080,12 +1080,22 @@ void setup()
         if (millis() - startTime > 3000) break;
     }
 
-    if (!LittleFS.begin()) {
+    // format on fail, as the client already does — the crash-reboots corrupted at
+    // least one board's filesystem, and limping on with lfs_started = false means
+    // the address list silently stops persisting across reboots
+    if (!LittleFS.begin(true)) {
         Serial.println("LittleFS mount failed");
         lfs_started = false;
     }
 
-    rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256);
+    // Default RC_SLOW, as on the client since 1922d04. 8MD256 runs the RTC slow
+    // clock at 31.25 kHz instead of ~136 kHz, and esptool resets these chips by
+    // driving the RTC watchdog — "Hard resetting with RTC WDT" — so its reset
+    // pulse was timed against a clock 4.4x faster than the one actually running.
+    // That is why the master, alone among the boards, would not come back after
+    // a flash and could not be driven into the bootloader at all, while the
+    // clients reset cleanly. The master never sleeps, so the slow clock bought
+    // it nothing to begin with.
     WiFi.mode(WIFI_STA);
     // A warm ESP.restart() leaves the wifi driver part-way through teardown, so
     // esp_now_init() can fail here where it succeeds on a cold boot. setup() used

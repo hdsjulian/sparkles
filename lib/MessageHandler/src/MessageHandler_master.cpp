@@ -163,18 +163,26 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_SOUND_DEVICE) {
                 // clap/chirp device announce, learn its address so either board works
-                if (memcmp(clapDeviceAddress, incomingData.senderAddress, 6) != 0) {
+                bool newDevice = memcmp(clapDeviceAddress, incomingData.senderAddress, 6) != 0;
+                if (newDevice) {
                     memcpy(clapDeviceAddress, incomingData.senderAddress, 6);
-                    setClapDeviceDelay(0); // measured delay belonged to the previous device
-                    ESP_LOGI("MSG", "Learned sound device address %02x:%02x:%02x:%02x:%02x:%02x",
-                             clapDeviceAddress[0], clapDeviceAddress[1], clapDeviceAddress[2],
-                             clapDeviceAddress[3], clapDeviceAddress[4], clapDeviceAddress[5]);
+                    setClapDeviceDelay(0);       // measured delay belonged to the previous device
+                    clapDelayMeasured = false;
+                    LOG_I("MSG", "Learned sound device address %02x:%02x:%02x:%02x:%02x:%02x",
+                          clapDeviceAddress[0], clapDeviceAddress[1], clapDeviceAddress[2],
+                          clapDeviceAddress[3], clapDeviceAddress[4], clapDeviceAddress[5]);
                 }
-                if (clapSyncHandle != NULL) {
-                    vTaskDelete(clapSyncHandle);
-                    clapSyncHandle = NULL;
+                // Only sync when there is something to learn. The chirp device now
+                // re-announces periodically so a rebooted master can rediscover it,
+                // and restarting the delay sync on every announce would kill the
+                // in-flight one each time, so it could never finish.
+                if (newDevice || !clapDelayMeasured) {
+                    if (clapSyncHandle != NULL) {
+                        vTaskDelete(clapSyncHandle);
+                        clapSyncHandle = NULL;
+                    }
+                    startClapSyncTask();
                 }
-                startClapSyncTask();
             }
             else if (incomingData.messageType == MSG_GOT_TIMER) {
                 // Chirp device sends MSG_GOT_TIMER but is not in addressList, remove peer and stop timer, skip addressList writes.
@@ -195,6 +203,9 @@ void MessageHandler::handleReceive() {
                 //vTaskDelete(timerSyncHandle);
                 removePeer(addressList[timerIndex].address);
                 //timerSyncHandle = NULL;
+                LOG_I("SYNC", "board %d answered the timer burst — offset %lld, delay avg %d",
+                         timerIndex, (long long)incomingData.payload.gotTimer.offset,
+                         incomingData.payload.gotTimer.delayAverage);
                 addressList[timerIndex].active = ACTIVE;
                 addressList[timerIndex].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
                 addressList[timerIndex].lastUpdateTime = millis();

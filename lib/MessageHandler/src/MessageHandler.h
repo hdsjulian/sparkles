@@ -241,6 +241,11 @@ private:
     static constexpr uint8_t broadcastAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     uint8_t hostAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     bool hostAddressLearned = false;
+    // Whether the sound device's TX delay has actually been measured. Cannot be
+    // inferred from clapDeviceDelay: that is delayAverage/2, which rounds to 0
+    // for a small delay — the very value used to mean "never measured", so a
+    // fast link made the chirp device's timer sync silently skip itself.
+    bool clapDelayMeasured = false;
     // sleep listen-window stamps, written by onDataRecv (wifi task), read by handleSleepWakeup
     volatile unsigned long lastSleepMsgMillis = 0;
     volatile unsigned long long lastSleepMsgDuration = 0;

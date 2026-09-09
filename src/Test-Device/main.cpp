@@ -58,7 +58,9 @@ void lightSleepMs(uint64_t us) {
 }
 
 void runXtalTest() {
-    rtc_clk_slow_src_set(RTC_SLOW_FREQ_8MD256);
+    // no 8MD256 here either: it runs the RTC slow clock at 31.25 kHz, and esptool
+    // hard-resets via the RTC watchdog, so the board will not come back after a
+    // flash. See 1922d04 (client) and the master.
     uint32_t cal = rtc_clk_cal(RTC_CAL_RTC_MUX, 1000);
     ESP_LOGI("CLK", "RC_FAST_D256 set — cal=%u (expect ~7700000 for ~68kHz; 0 = failed)", cal);
 
