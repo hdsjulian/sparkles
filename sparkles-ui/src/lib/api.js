@@ -208,6 +208,10 @@ export const commandResetCalibration = () =>
 export const commandEndCalibration = () =>
   fetch(`${BASE}/commandEndCalibration`).then(r => r.json());
 
+// one chirp, nothing measured or recorded — for hearing what it sounds like
+export const commandTestChirp = () =>
+  fetch(`${BASE}/commandTestChirp`).then(r => r.json());
+
 export const commandChirpAtPosition = (x, y) =>
   fetch(`${BASE}/commandChirpAtPosition?x=${x}&y=${y}`).then(r => r.json());
 

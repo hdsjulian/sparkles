@@ -1184,6 +1184,16 @@ async def command_mic_test(boardId: int = Query(default=-1)):
     return _ok()
 
 
+@app.get("/commandTestChirp")
+async def command_test_chirp():
+    """Play one chirp on the chirp device and nothing else.
+
+    No timestamps, no MSG_CLAP, no slot — so it cannot disturb a calibration or
+    leave a measurement behind. Purely for listening to the chirp."""
+    _send({"cmd": "test_chirp"})
+    return _ok("Test chirp sent")
+
+
 @app.get("/commandHealthPing")
 async def command_health_ping(boardId: int = Query(default=-1)):
     """Ask one board (or, with -1, the whole fleet) to report its vitals.

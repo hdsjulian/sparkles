@@ -765,6 +765,12 @@ static void handleSerialCommand(const char* line) {
         if (boardId >= 0) memcpy(m.targetAddress, msgHandler.getItemFromAddressList(boardId).address, 6);
         msgHandler.pushToSendQueue(m);
 
+    } else if (strcmp(cmd, "test_chirp") == 0) {
+        // straight to the sound device, no calibration state touched — this is
+        // for hearing the chirp, not for measuring anything with it
+        message_data m = msgHandler.createCommandMessage(CMD_TEST_CHIRP, false);
+        msgHandler.pushToSendQueue(m);
+
     } else if (strcmp(cmd, "health_ping") == 0) {
         // one board per command: the pi asks, counts the answer or the silence,
         // and decides for itself whether to ask again. boardId -1 asks everyone

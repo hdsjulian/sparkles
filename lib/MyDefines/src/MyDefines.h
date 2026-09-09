@@ -190,6 +190,7 @@ extern MessageHandler& getMessageHandlerInstance();
 #define CMD_SET_MAX_DISTANCE  19
 #define CMD_MIC_TEST          20
 #define CMD_HEALTH_PING       21
+#define CMD_TEST_CHIRP        22 // one chirp, no timestamps, no measurement — just the sound
 
 
 

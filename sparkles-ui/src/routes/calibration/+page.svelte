@@ -11,6 +11,7 @@
     commandContinueDistanceCalibration,
     commandAbortDistanceCalibration,
     commandChirpAtPosition,
+    commandTestChirp,
     commandTestCalibration,
     solveMap,
     clearMap
@@ -233,6 +234,23 @@
     }
   }
 
+  // ---- Test chirp ----
+  // Deliberately separate from everything below: it records nothing, so it is
+  // safe to press at any point, including mid-calibration.
+  let testChirpMsg = '';
+
+  async function testChirp() {
+    posError = '';
+    testChirpMsg = '';
+    try {
+      await commandTestChirp();
+      testChirpMsg = 'Chirp sent — one chirp, nothing recorded';
+      setTimeout(() => { testChirpMsg = ''; }, 3000);
+    } catch (e) {
+      posError = e.message;
+    }
+  }
+
   // ---- Chirp position calibration ----
   async function chirpHere() {
     posError = '';
@@ -444,6 +462,23 @@
         <button class="btn btn-ghost" on:click={() => { distState = 'idle'; distMsg = ''; }}>Reset</button>
       </div>
     {/if}
+  </div>
+
+  <!-- ======== Test chirp ======== -->
+  <div class="card" style="margin-bottom:1.25rem;">
+    <div class="card-title">Test Chirp</div>
+    <p class="state-hint">
+      Plays one chirp and nothing else — no timestamp, no measurement, no slot recorded.
+      Safe to press at any time, including in the middle of a calibration. You can also
+      press <strong>BOOT</strong> on the chirp device itself, or send any character to it
+      over serial, which needs neither the master nor this page.
+    </p>
+    {#if testChirpMsg}
+      <div class="status-msg success">{testChirpMsg}</div>
+    {/if}
+    <div class="btn-row">
+      <button class="btn btn-primary" on:click={testChirp}>🔊 Test Chirp</button>
+    </div>
   </div>
 
   <!-- ======== Chirp Position Calibration ======== -->

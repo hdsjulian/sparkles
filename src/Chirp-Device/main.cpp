@@ -2,7 +2,7 @@
 // On CMD_START/CONTINUE_DISTANCE_CALIBRATION it plays a burst of CHIRP_BURST_COUNT
 // chirps via I2S -> PCM5102A -> boombox line-in, announcing each one with MSG_CLAP
 // carrying its synced emission timestamp and its index in the burst.
-// I2S pins (PCM5102A): BCLK GPIO6, WS GPIO7, DOUT GPIO16
+// I2S pins (PCM5102A): BCLK GPIO38, WS GPIO39, DOUT GPIO40
 
 #include <Arduino.h>
 #include <MyDefines.h>
@@ -13,17 +13,38 @@
 #include <math.h>
 
 #define I2S_SAMPLE_RATE  44100
-#define I2S_BCLK_PIN     GPIO_NUM_6
-#define I2S_WS_PIN       GPIO_NUM_7
-#define I2S_DOUT_PIN     GPIO_NUM_16
+#define I2S_BCLK_PIN     GPIO_NUM_38
+#define I2S_WS_PIN       GPIO_NUM_39
+#define I2S_DOUT_PIN     GPIO_NUM_40
 
 #define SAMPLES_PER_STEP  (I2S_SAMPLE_RATE * CHIRP_STEP_MS / 1000)   // 132
 #define CHIRP_SAMPLES     (CHIRP_STEPS * SAMPLES_PER_STEP)            // 1056
 #define CHIRP_FRAMES      (CHIRP_SAMPLES * 2)                         // stereo
 #define CHIRP_AMPLITUDE   26000
+// Silence played before the chirp so the PCM5102A's PLL can lock onto BCLK
+// before there is anything to hear. The peripheral consumes at exactly the
+// sample rate from the moment it is enabled, so frame k leaves at
+// enable + k/I2S_SAMPLE_RATE — which means a lead-in of a known length costs
+// nothing in timing accuracy, it just moves the chirp to a later known frame.
+#define CHIRP_LEAD_IN_MS  100
+#define LEAD_IN_SAMPLES   (I2S_SAMPLE_RATE * CHIRP_LEAD_IN_MS / 1000)   // 4410
+#define LEAD_IN_INTS      (LEAD_IN_SAMPLES * 2)                         // stereo
+// i2s_channel_write returns once the last bytes are queued, not played, so up to
+// a full DMA ring — 6 x 240 frames, 33 ms — can still be unplayed. The chirp is
+// at the very end of the buffer, so disabling the channel any sooner than this
+// truncates its tail.
+#define CHIRP_DRAIN_MS    50
+// The devkit's BOOT button. A strapping pin at reset, an ordinary input after —
+// which is all the chirp needs to be testable with nothing but a usb cable, no
+// master, no mesh, no browser.
+#define TEST_CHIRP_BUTTON GPIO_NUM_0
 
 i2s_chan_handle_t txChan = nullptr;
 int16_t chirpBuffer[CHIRP_FRAMES];
+// lead-in silence and the chirp as one contiguous write: a gap between two
+// writes could underrun, and auto_clear would then insert its own zeros and
+// shift the chirp off the frame it was timestamped for
+int16_t chirpWithLeadIn[LEAD_IN_INTS + CHIRP_FRAMES];
 
 QueueHandle_t recvQueue;
 uint8_t myAddress[6];
@@ -33,6 +54,9 @@ volatile bool engaged = false; // master has contacted us, stop announcing
 bool hostLearned = false;
 
 void addPeer(const uint8_t *addr);
+void startTestChirp(const char *source);
+void startTestTone();
+void startTestBeeps();
 
 // Timer sync, same algorithm as the client handleTimer: each packet carries the
 // measured TX latency of the previous one (paired by counter), the burst's median wins.
@@ -108,6 +132,12 @@ void handleTimer(const message_data &msg) {
     }
 }
 
+// chirpBuffer preceded by CHIRP_LEAD_IN_MS of digital silence
+void buildChirpWithLeadIn() {
+    memset(chirpWithLeadIn, 0, LEAD_IN_INTS * sizeof(int16_t));
+    memcpy(chirpWithLeadIn + LEAD_IN_INTS, chirpBuffer, sizeof(chirpBuffer));
+}
+
 void buildChirp() {
     int out = 0;
     for (int step = 0; step < CHIRP_STEPS; step++) {
@@ -128,6 +158,11 @@ void i2sInit() {
 
     i2s_std_config_t stdCfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
+        // MSB (left-justified), not Philips: this board's PCM5102A has FMT tied
+        // high. Tested — Philips gives silence on it, MSB gives sound. So the
+        // format was never the reason the chirp sounds wrong; buildChirp is.
+        // MSB (left-justified): this board's PCM5102A has FMT tied high. Tested
+        // both ways — Philips is silent on it.
         .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
@@ -161,29 +196,30 @@ void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime)
 // announced with its own emission timestamp and index; the clients count the same
 // schedule off the same calibration broadcast and report one measurement per index.
 void playChirpBurst() {
-    // a cancelled burst leaves the channel enabled, and preload only works from
+    // a cancelled burst leaves the channel enabled, and enable only works from
     // READY — no ESP_ERROR_CHECK, being already stopped is the normal case
     i2s_channel_disable(txChan);
     TickType_t base = xTaskGetTickCount();
     for (int chirp = 0; chirp < CHIRP_BURST_COUNT; chirp++) {
-        // whole chirp fits the ring (4224 of 5760 bytes), so enabling starts it
-        size_t loaded = 0;
-        ESP_ERROR_CHECK(i2s_channel_preload_data(txChan, chirpBuffer, sizeof(chirpBuffer), &loaded));
-
-        long long emitTime = syncedTime();
+        // Enable starts the clock, and the peripheral consumes at exactly the
+        // sample rate from that instant — so the chirp, sitting LEAD_IN_SAMPLES
+        // into the buffer, leaves at enable + CHIRP_LEAD_IN_MS. The stamp is
+        // still arithmetic, not a guess; the silence in front of it is what
+        // lets the DAC's PLL lock before there is anything to hear.
         ESP_ERROR_CHECK(i2s_channel_enable(txChan));
+        long long enableTime = syncedTime();
+        long long emitTime = enableTime + (long long)CHIRP_LEAD_IN_MS * 1000;
         broadcastClapMessage(true, chirp, emitTime);
 
-        if (loaded < sizeof(chirpBuffer)) { // only if the ring is ever reconfigured smaller
-            size_t written = 0;
-            i2s_channel_write(txChan, (const uint8_t *)chirpBuffer + loaded,
-                              sizeof(chirpBuffer) - loaded, &written, portMAX_DELAY);
-        }
+        size_t written = 0;
+        i2s_channel_write(txChan, chirpWithLeadIn, sizeof(chirpWithLeadIn),
+                          &written, portMAX_DELAY);
 
-        vTaskDelay(pdMS_TO_TICKS(CHIRP_STEPS * CHIRP_STEP_MS + 10)); // let it drain
-        ESP_ERROR_CHECK(i2s_channel_disable(txChan));                // back to READY to preload again
-        ESP_LOGI("CHIRP", "Chirp %d/%d, preloaded %u of %u bytes",
-                 chirp + 1, CHIRP_BURST_COUNT, (unsigned)loaded, (unsigned)sizeof(chirpBuffer));
+        vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));    // let the ring empty
+        ESP_ERROR_CHECK(i2s_channel_disable(txChan)); // back to READY
+        ESP_LOGI("CHIRP", "Chirp %d/%d, wrote %u of %u bytes (%d ms lead-in)",
+                 chirp + 1, CHIRP_BURST_COUNT, (unsigned)written,
+                 (unsigned)sizeof(chirpWithLeadIn), CHIRP_LEAD_IN_MS);
 
         // absolute schedule off the base, an overrun can't push the rest of the burst along
         TickType_t target = base + pdMS_TO_TICKS((chirp + 1) * CHIRP_BURST_PERIOD_MS);
@@ -191,6 +227,82 @@ void playChirpBurst() {
         if (wait > 0) vTaskDelay(wait);
     }
     ESP_LOGI("CHIRP", "Burst done");
+}
+
+// Just the sound. No timestamp, no MSG_CLAP, no slot — nothing downstream hears
+// about it, so it can be fired from anywhere at any time without touching a
+// calibration in progress. This is the one for listening to the chirp itself.
+void playSingleChirp() {
+    i2s_channel_disable(txChan);                 // ensure READY
+    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // clock starts here
+    size_t written = 0;
+    i2s_channel_write(txChan, chirpWithLeadIn, sizeof(chirpWithLeadIn),
+                      &written, portMAX_DELAY);
+    vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));
+    ESP_ERROR_CHECK(i2s_channel_disable(txChan));
+    ESP_LOGI("CHIRP", "Test chirp: %d ms lead-in, then %d steps x %d ms, %d Hz to %d Hz",
+             CHIRP_LEAD_IN_MS, CHIRP_STEPS, CHIRP_STEP_MS,
+             chirpFrequencies[0], chirpFrequencies[CHIRP_STEPS - 1]);
+}
+
+// Plain audible tones, streamed rather than preloaded so they can be any length.
+// Two things here are what buildChirp is missing: phase is accumulated across
+// samples instead of recomputed as 2*pi*f*t, so changing frequency cannot cause
+// a jump, and each tone gets a raised-cosine fade so it does not start or stop
+// on a step. That is the whole difference between a tone and a click.
+void playToneSequence(const int *freqs, int count, int msPer, int fadeMs) {
+    i2s_channel_disable(txChan);                 // ensure READY
+    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // clock starts here
+    // same run-up the chirp gets, for the same reason: the DAC recovers its
+    // clock from BCLK and needs it running before there is anything to hear
+    {
+        size_t w = 0;
+        i2s_channel_write(txChan, chirpWithLeadIn, LEAD_IN_INTS * sizeof(int16_t),
+                          &w, portMAX_DELAY);
+    }
+
+    const int framesPerChunk = 256;
+    static int16_t chunk[framesPerChunk * 2];
+
+    for (int t = 0; t < count; t++) {
+        const int totalFrames = I2S_SAMPLE_RATE * msPer / 1000;
+        int fadeFrames = I2S_SAMPLE_RATE * fadeMs / 1000;
+        if (fadeFrames * 2 > totalFrames) fadeFrames = totalFrames / 2;
+
+        float phase = 0.0f;
+        const float inc = 2.0f * M_PI * (float)freqs[t] / (float)I2S_SAMPLE_RATE;
+        int done = 0;
+        while (done < totalFrames) {
+            int n = (totalFrames - done) < framesPerChunk ? (totalFrames - done) : framesPerChunk;
+            for (int i = 0; i < n; i++) {
+                const int idx = done + i;
+                float env = 1.0f;
+                if (fadeFrames > 0) {
+                    if (idx < fadeFrames) {
+                        env = 0.5f * (1.0f - cosf(M_PI * (float)idx / (float)fadeFrames));
+                    } else if (idx >= totalFrames - fadeFrames) {
+                        env = 0.5f * (1.0f - cosf(M_PI * (float)(totalFrames - 1 - idx) / (float)fadeFrames));
+                    }
+                }
+                int16_t v = (int16_t)(CHIRP_AMPLITUDE * env * sinf(phase));
+                phase += inc;
+                if (phase > 2.0f * M_PI) phase -= 2.0f * M_PI;
+                chunk[2 * i]     = v;
+                chunk[2 * i + 1] = v;
+            }
+            size_t written = 0;
+            i2s_channel_write(txChan, chunk, n * 2 * sizeof(int16_t), &written, portMAX_DELAY);
+            done += n;
+        }
+        ESP_LOGI("CHIRP", "  tone %d/%d: %d Hz for %d ms", t + 1, count, freqs[t], msPer);
+    }
+    vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));
+    i2s_channel_disable(txChan);
+}
+
+void playTestTone(int freqHz, int ms) {
+    playToneSequence(&freqHz, 1, ms, 5);
+    ESP_LOGI("CHIRP", "Test tone done: %d Hz for %d ms at amplitude %d", freqHz, ms, CHIRP_AMPLITUDE);
 }
 
 // Map the 32-bit hardware MAC-time RX stamp into the esp_timer domain. The smallest
@@ -230,6 +342,79 @@ void chirpTask(void *) {
     vTaskDelete(nullptr);
 }
 
+void testChirpTask(void *) {
+    playSingleChirp();
+    chirpTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void testToneTask(void *) {
+    ESP_LOGI("CHIRP", "Test tone: 1 kHz, 3 s — if this is silent, the audio path is at fault");
+    playTestTone(1000, 3000);
+    chirpTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+// Deliberately not the real chirp: this does not touch chirpFrequencies,
+// CHIRP_STEPS or CHIRP_STEP_MS, which the client's correlation template is built
+// from, so it cannot affect detection.
+void testBeepTask(void *) {
+    static const int beeps[3] = {440, 220, 660};
+    ESP_LOGI("CHIRP", "Beep boop beep: 440 / 220 / 660 Hz, 300 ms each");
+    playToneSequence(beeps, 3, 300, 5);
+    ESP_LOGI("CHIRP", "Beep sequence done");
+    chirpTaskHandle = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void startTestBeeps() {
+    if (chirpTaskHandle != nullptr) {
+        eTaskState st = eTaskGetState(chirpTaskHandle);
+        if (st != eDeleted && st != eInvalid) {
+            ESP_LOGW("CHIRP", "Busy, ignoring beep sequence");
+            return;
+        }
+        chirpTaskHandle = nullptr;
+    }
+    xTaskCreatePinnedToCore(testBeepTask, "testBeeps", 8192, nullptr, 10, &chirpTaskHandle, 1);
+}
+
+void startTestTone() {
+    if (chirpTaskHandle != nullptr) {
+        eTaskState st = eTaskGetState(chirpTaskHandle);
+        if (st != eDeleted && st != eInvalid) {
+            ESP_LOGW("CHIRP", "Busy, ignoring test tone");
+            return;
+        }
+        chirpTaskHandle = nullptr;
+    }
+    xTaskCreatePinnedToCore(testToneTask, "testTone", 8192, nullptr, 10, &chirpTaskHandle, 1);
+}
+
+// shares chirpTaskHandle with the burst on purpose: both drive the one I2S
+// channel, so a test chirp must not start on top of a calibration. A burst that
+// was killed mid-flight can leave the handle pointing at a task that no longer
+// exists, which would refuse every test chirp from then on — so check the task
+// really is alive rather than merely that the pointer is set.
+void startTestChirp(const char *source) {
+    if (chirpTaskHandle != nullptr) {
+        eTaskState state = eTaskGetState(chirpTaskHandle);
+        if (state != eDeleted && state != eInvalid) {
+            ESP_LOGW("CHIRP", "Busy chirping already, ignoring test chirp from %s", source);
+            return;
+        }
+        ESP_LOGW("CHIRP", "Clearing a stale chirp task handle");
+        chirpTaskHandle = nullptr;
+    }
+    ESP_LOGI("CHIRP", "Test chirp from %s", source);
+    BaseType_t r = xTaskCreatePinnedToCore(testChirpTask, "testChirp", 8192, nullptr,
+                                           10, &chirpTaskHandle, 1);
+    if (r != pdPASS) {
+        ESP_LOGE("CHIRP", "Could not start the chirp task (%d)", (int)r);
+        chirpTaskHandle = nullptr;
+    }
+}
+
 void handleReceiveTask(void *) {
     message_data msg;
     while (true) {
@@ -257,6 +442,9 @@ void handleReceiveTask(void *) {
                 if (chirpTaskHandle == nullptr) {
                     xTaskCreatePinnedToCore(chirpTask, "chirpTask", 8192, nullptr, 10, &chirpTaskHandle, 1);
                 }
+                break;
+            case CMD_TEST_CHIRP:
+                startTestChirp("master");
                 break;
             case CMD_RESET_SYSTEM:
                 // Was ignored entirely: the chirp device is not in the address
@@ -307,7 +495,10 @@ void setup() {
     WiFi.macAddress(myAddress);
 
     buildChirp();
+    buildChirpWithLeadIn();
     i2sInit();
+
+    pinMode(TEST_CHIRP_BUTTON, INPUT_PULLUP);
 
     recvQueue = xQueueCreate(8, sizeof(message_data));
 
@@ -324,13 +515,35 @@ void setup() {
 
     ESP_LOGI("CHIRP", "Ready. My address %02x:%02x:%02x:%02x:%02x:%02x",
              myAddress[0], myAddress[1], myAddress[2], myAddress[3], myAddress[4], myAddress[5]);
+    ESP_LOGI("CHIRP", "BOOT or any serial char = test chirp; 't' = 1 kHz tone, 'b' = three tones");
 }
 
+// Polls fast enough for a button to feel connected to the sound it makes, and
+// keeps the announce on its own clock rather than the loop's — before this the
+// loop slept for whole seconds at a time, which no button survives.
 void loop() {
-    if (!engaged) {
-        announceAddress();
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    } else {
-        vTaskDelay(pdMS_TO_TICKS(10000));
+    static unsigned long lastAnnounce = 0;
+    static bool wasPressed = false;
+
+    bool pressed = (digitalRead(TEST_CHIRP_BUTTON) == LOW);
+    if (pressed && !wasPressed) startTestChirp("BOOT button");
+    wasPressed = pressed;
+
+    // anything at all on serial chirps once; 'c' is just the shortest thing to type
+    while (Serial.available() > 0) {
+        int c = Serial.read();
+        if (c == '\n' || c == '\r') continue;
+        if      (c == 't') startTestTone();    // 1 kHz, 3 s — is the audio path alive
+        else if (c == 'b') startTestBeeps();   // three clean tones — is the DAC locked
+        else               startTestChirp("serial");
+        while (Serial.available() > 0) Serial.read();   // one per line, not per byte
     }
+
+    unsigned long interval = engaged ? 10000UL : 2000UL;
+    if (millis() - lastAnnounce >= interval) {
+        lastAnnounce = millis();
+        if (!engaged) announceAddress();
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(20));
 }
