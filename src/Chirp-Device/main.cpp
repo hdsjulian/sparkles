@@ -213,7 +213,23 @@ void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime)
 // enable + k/I2S_SAMPLE_RATE. audioFrames counts every frame ever written, so
 // any chirp's emission time is arithmetic on a counter that never resets.
 static const int PUMP_CHUNK_FRAMES = 441;                 // 10 ms at 44.1 kHz
-static int16_t pumpSilence[PUMP_CHUNK_FRAMES * 2] = {0};
+// Not zeros, and not a token 1 LSB either. The DAC needs ramp-up: after an idle
+// stretch the first chirps of a burst simply do not come out, which is why a
+// first burst gave 4 and a second burst 3 s later gave 10. Feeding true silence
+// lets it fall asleep between bursts; feeding +-1 LSB was not enough to hold it
+// awake (7-8 of 10). +-64 is -54 dBFS, and alternating every frame puts it at
+// half the sample rate — 22 kHz, above hearing — so it keeps the DAC fully awake
+// without being audible.
+#define PUMP_DITHER_LSB 64
+static int16_t pumpSilence[PUMP_CHUNK_FRAMES * 2];
+
+static void buildPumpDither() {
+    for (int i = 0; i < PUMP_CHUNK_FRAMES; i++) {
+        int16_t v = (i & 1) ? PUMP_DITHER_LSB : -PUMP_DITHER_LSB;
+        pumpSilence[2 * i]     = v;
+        pumpSilence[2 * i + 1] = v;
+    }
+}
 
 volatile uint64_t audioFrames = 0;      // frames written since the single enable
 long long audioEnableTime = 0;          // syncedTime() at that enable
@@ -236,6 +252,7 @@ void requestChirps(int count, bool announce) {
 
 void audioPumpTask(void *) {
     const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
+    buildPumpDither();
     i2s_channel_disable(txChan);                 // ensure READY
     ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the only enable, ever
     audioEnableTime = syncedTime();
@@ -553,6 +570,9 @@ void setup() {
     addPeer(broadcastAddress);
 
     xTaskCreate(handleReceiveTask, "handleRecv", 4096, nullptr, 5, nullptr);
+    // owns the I2S channel for the board's lifetime and keeps inaudible dither
+    // flowing, so the DAC never sleeps and never has to ramp up mid-burst
+    xTaskCreatePinnedToCore(audioPumpTask, "audioPump", 4096, nullptr, 8, nullptr, 1);
     // owns the I2S channel for the lifetime of the board: the DAC un-mutes and
     // settles over seconds when its clock starts, so the clock must never stop
     xTaskCreatePinnedToCore(audioPumpTask, "audioPump", 4096, nullptr, 8, nullptr, 1);
