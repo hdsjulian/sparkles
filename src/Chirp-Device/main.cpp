@@ -26,7 +26,11 @@
 // sample rate from the moment it is enabled, so frame k leaves at
 // enable + k/I2S_SAMPLE_RATE — which means a lead-in of a known length costs
 // nothing in timing accuracy, it just moves the chirp to a later known frame.
-#define CHIRP_LEAD_IN_MS  100
+// Long enough for the DAC's PLL to lock, short enough not to eat the client's
+// search window: the client records a fixed window from its own schedule, so
+// every millisecond of lead-in is a millisecond of detection range given up.
+// 100 ms cost half the range (67 m -> 33 m); 40 ms costs a fifth.
+#define CHIRP_LEAD_IN_MS  40
 #define LEAD_IN_SAMPLES   (I2S_SAMPLE_RATE * CHIRP_LEAD_IN_MS / 1000)   // 4410
 #define LEAD_IN_INTS      (LEAD_IN_SAMPLES * 2)                         // stereo
 // i2s_channel_write returns once the last bytes are queued, not played, so up to
@@ -163,7 +167,7 @@ void i2sInit() {
         // format was never the reason the chirp sounds wrong; buildChirp is.
         // MSB (left-justified): this board's PCM5102A has FMT tied high. Tested
         // both ways — Philips is silent on it.
-        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = I2S_BCLK_PIN,
@@ -443,6 +447,12 @@ void handleReceiveTask(void *) {
                     xTaskCreatePinnedToCore(chirpTask, "chirpTask", 8192, nullptr, 10, &chirpTaskHandle, 1);
                 }
                 break;
+            case CMD_REANNOUNCE:
+                // was unhandled, so a fleet-wide reannounce skipped the one
+                // device whose address the master cannot guess
+                ESP_LOGI("CHIRP", "CMD_REANNOUNCE, announcing again");
+                engaged = false;
+                break;
             case CMD_TEST_CHIRP:
                 startTestChirp("master");
                 break;
@@ -539,10 +549,17 @@ void loop() {
         while (Serial.available() > 0) Serial.read();   // one per line, not per byte
     }
 
+    // Announce even once engaged, just rarely. clapDeviceAddress on the master
+    // defaults to a hardcoded address that is not ours, and it only learns the
+    // real one from MSG_SOUND_DEVICE — so a device that fell silent after its
+    // first contact stayed invisible to every master that rebooted later. The
+    // calibration command is a broadcast, so it still chirped; only the unicast
+    // timer sync was lost, which left its emission timestamps unsynced and every
+    // client unable to place the chirp. Cheap insurance at 0.1 Hz.
     unsigned long interval = engaged ? 10000UL : 2000UL;
     if (millis() - lastAnnounce >= interval) {
         lastAnnounce = millis();
-        if (!engaged) announceAddress();
+        announceAddress();
     }
 
     vTaskDelay(pdMS_TO_TICKS(20));

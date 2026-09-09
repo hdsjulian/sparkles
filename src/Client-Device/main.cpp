@@ -53,6 +53,10 @@ void setup()
   Serial.setTxTimeoutMs(0); // non-blocking CDC writes — drop bytes rather than hang
   esp_log_level_set("*", ESP_LOG_INFO);
   esp_log_level_set("LED", ESP_LOG_NONE);
+  // One line per received frame is far too much during a timer burst or a chirp
+  // calibration: Serial.setTxTimeoutMs(0) means a full CDC buffer drops bytes,
+  // so the RX flood was discarding the CLAP diagnostics mid-line.
+  esp_log_level_set("RX", ESP_LOG_NONE);
   delay(100);
   ESP_LOGW("BOOT", "reset reason: %s (%d)", resetReasonName(esp_reset_reason()), (int)esp_reset_reason());
   // the wake path can't report its own death (USB still re-enumerating), so the

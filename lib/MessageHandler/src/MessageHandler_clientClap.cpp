@@ -12,7 +12,10 @@
 static const int   CHIRP_SAMPLE_RATE  = 10000;           // Hz
 static const int   SAMPLES_PER_STEP   = CHIRP_SAMPLE_RATE * CHIRP_STEP_MS / 1000; // 30
 static const int   CHIRP_SAMPLES      = CHIRP_STEPS * SAMPLES_PER_STEP;           // 240
-static const int   RECORD_MS          = 220;             // > round-trip for 30 m
+// Wide enough that the emitter's lead-in and the schedule skew between the two
+// boards come out of headroom rather than out of range. Must still leave the
+// correlation time to finish inside CHIRP_BURST_PERIOD_MS.
+static const int   RECORD_MS          = 300;
 static const int   RECORD_SAMPLES     = CHIRP_SAMPLE_RATE * RECORD_MS / 1000;     // 2200
 static const int   MAX_LAG            = RECORD_SAMPLES - CHIRP_SAMPLES;           // last window that fits
 static const float SOUND_SPEED        = 343.0f;          // m/s
@@ -48,17 +51,65 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
         nextSample += intervalUs;
     }
 
+    // What the microphone actually produced this window. A flat line means
+    // nothing reached the ADC, which no amount of correlation can rescue — and
+    // it is the difference between "the chirp never got here" and "the chirp
+    // got here and did not match".
+    int16_t rawLo = 32767, rawHi = -32768;
+    long long rawSum = 0, rawSumSq = 0;
+    for (int i = 0; i < RECORD_SAMPLES; i++) {
+        int16_t v = recBuf[i];
+        if (v < rawLo) rawLo = v;
+        if (v > rawHi) rawHi = v;
+        rawSum   += v;
+        rawSumSq += (long long)v * v;
+    }
+    long long rawMean = rawSum / RECORD_SAMPLES;
+    long long rawVar  = rawSumSq / RECORD_SAMPLES - rawMean * rawMean;
+    int rawRms = (rawVar > 0) ? (int)sqrtf((float)rawVar) : 0;
+
+    // Where in the window the energy actually is, independent of the template.
+    // A chirp is a burst: one 10 ms block much louder than the rest. If the
+    // loudest block barely beats the quietest, nothing arrived and the template
+    // is irrelevant; if it stands out clearly but correlation is still zero,
+    // the sound got here and simply does not match what we are looking for.
+    const int blk = 100;                       // 10 ms at 10 kHz
+    const int nblk = RECORD_SAMPLES / blk;     // 22
+    int loudBlk = 0, loudRms = 0, quietRms = 32767;
+    for (int b = 0; b < nblk; b++) {
+        long long e = 0;
+        for (int i = 0; i < blk; i++) {
+            int d = recBuf[b * blk + i] - (int)rawMean;
+            e += (long long)d * d;
+        }
+        int r = (int)sqrtf((float)(e / blk));
+        if (r > loudRms) { loudRms = r; loudBlk = b; }
+        if (r < quietRms) quietRms = r;
+    }
+
     // Sound cannot arrive before it was emitted. The emitter announces every chirp
     // with its own timestamp just before it plays, so the search starts there
     // instead of at a fixed skip — that skip was what made close boards invisible.
     // The stamp is taken before the DAC and amp, so the real arrival is always
     // later than it; the margin only covers timer sync error.
     int minLag = 0;
+    long long rawLag = 0;          // before clamping — the clamp hides how wrong a bad stamp is
     unsigned long long emission = lastChirpEmission;
     if (emission != 0) {
         long long emissionLocal = (long long)emission - ledInstance->getTimerOffset();
-        long long lag = (emissionLocal - (long long)recordStart) / (long long)intervalUs - EMISSION_MARGIN;
-        if (lag > 0) minLag = (lag < MAX_LAG) ? (int)lag : MAX_LAG;
+        long long offsetUs = emissionLocal - (long long)recordStart;
+        // Reject a stamp that cannot belong to this window: one from the previous
+        // chirp, or any stamp at all from an emitter whose clock was never synced
+        // (its syncedTime() is then raw uptime, out by seconds). Searching the
+        // whole window is the right fallback; trusting a wild stamp is not, since
+        // it pins minLag at MAX_LAG and searches exactly one lag.
+        if (offsetUs < -(long long)CHIRP_BURST_PERIOD_MS * 1000 ||
+            offsetUs > (long long)RECORD_MS * 1000) {
+            emission = 0;
+        } else {
+            rawLag = offsetUs / (long long)intervalUs - EMISSION_MARGIN;
+            if (rawLag > 0) minLag = (rawLag < MAX_LAG) ? (int)rawLag : MAX_LAG;
+        }
     }
 
     float bestCorr = 0;
@@ -86,6 +137,20 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     float variance = sumSq / lagCount - mean * mean;
     float sigma = (variance > 0) ? sqrtf(variance) : 0.0f;
     float gate = fmaxf(MIN_CORR_THRESHOLD, mean + NOISE_GATE_SIGMAS * sigma);
+
+    // Everything the accept/reject decision rests on, in one line:
+    //   rms ~0                  -> the mic heard nothing, look at the mic
+    //   emission=MISSING        -> the emitter's announce never arrived
+    //   minLag at MAX_LAG       -> the search window is empty, timing is off
+    //   best well under gate    -> sound arrived but did not match the template
+    // rawLag is the whole story when minLag is pinned: a value just over MAX_LAG
+    // means the emission is a little too late (schedule/lead-in), while one
+    // orders of magnitude out means the emitter's clock is not synced at all.
+    ESP_LOGI("CLAP", "window: mic rms %d | loudest %d ms rms %d vs quiet %d (x%.1f) | emission %s minLag %d/%d | best %.3f gate %.3f",
+             rawRms, loudBlk * 10, loudRms, quietRms,
+             quietRms > 0 ? (float)loudRms / (float)quietRms : 0.0f,
+             (emission != 0) ? "ok" : "MISSING", minLag, MAX_LAG,
+             bestCorr, gate);
 
     peakCorr = bestCorr;
     if (bestCorr < gate) return -1.0f;
@@ -134,7 +199,10 @@ void MessageHandler::runClapTask() {
         for (int chirp = 0; chirp < CHIRP_BURST_COUNT; chirp++) {
             unsigned long long recordStart = 0;
             float peakCorr = 0;
-            lastChirpEmission = 0; // this chirp's announce lands during its own window
+            // Deliberately not cleared. The emitter announces at enable, which is
+            // CHIRP_LEAD_IN_MS before the sound and can therefore land just
+            // *before* this window opens — clearing it here threw that stamp
+            // away and reported "emission MISSING", forcing a full-window search.
             float delaySamples = detectChirp(audioPin, chirpTmpl, tmplEnergy, recordStart, peakCorr);
 
             message_data clapMessage = createClapMessage(true);

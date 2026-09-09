@@ -257,6 +257,7 @@ void MessageHandler::handleTimer(message_data incomingData) {
     unsigned long long sinceLast = timerMessage.receiveTime - getLastReceiveTime();
     if (timerMessage.reset || sinceLast > 1000000ULL) {
         // new burst, drop stale state
+        ESP_LOGI("SYNC", "sent announce, syncing");
         sampleCount = 0;
         pendingValid = false;
         delayCounter = 0;
@@ -307,7 +308,8 @@ void MessageHandler::handleTimer(message_data incomingData) {
         gotTimerMessage.payload.gotTimer.batteryPercentage = getBatteryPercentage();
         gotTimerMessage.payload.gotTimer.offset = getTimeOffset();
         memcpy(gotTimerMessage.targetAddress, hostAddress, 6);
-        ESP_LOGI("MSG", "Timer set. Offset (burst median): %lld, delay average: %d", median, delayAverage);
+        ESP_LOGI("SYNC", "synced - board %d, offset %lld, delay avg %d",
+                 ledInstance->getCurrentPosition(), median, delayAverage);
         xQueueSend(sendQueue, &gotTimerMessage, portMAX_DELAY);
         setTimerSet(true);
         ledInstance->blink(esp_timer_get_time(), 300, 3, 100, 255, 127);
@@ -573,6 +575,10 @@ void MessageHandler::runAnnounceAddress() {
     WiFi.macAddress(messageData.payload.address.address);
     while (getAddressAnnounced() == false) {
         xQueueSend(sendQueue, &messageData, portMAX_DELAY);
+        // repeats once a second for as long as nobody answers, and stops the
+        // moment a timer burst arrives — so a board stuck here is a board the
+        // master is not hearing, or not replying to
+        ESP_LOGI("SYNC", "sent announce - nothing from master");
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
 }
