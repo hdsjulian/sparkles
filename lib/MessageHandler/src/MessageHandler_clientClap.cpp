@@ -339,11 +339,28 @@ void MessageHandler::startMicTestTask() {
 }
 
 void MessageHandler::startClapTask() {
+    // Two writers own this handle — the task clears it as it exits, and
+    // CMD_CANCEL_CALIBRATION deletes it — so it can hold a task that is already
+    // gone. vTaskDelete on that is undefined; check before touching it.
     if (clapTaskHandle != nullptr) {
-        vTaskDelete(clapTaskHandle);
+        eTaskState st = eTaskGetState(clapTaskHandle);
+        if (st != eDeleted && st != eInvalid) vTaskDelete(clapTaskHandle);
         clapTaskHandle = nullptr;
     }
-    xTaskCreatePinnedToCore(runClapTaskWrapper, "runClapTask", 10000, this, 20, &clapTaskHandle, 1);
+    // 10 KB of stack, and the result was discarded. A failed allocation left no
+    // task listening and nothing said so: the calibration command arrived, every
+    // chirp announcement arrived, and the board simply never opened a window —
+    // which reads downstream as "no board heard the chirps".
+    BaseType_t r = xTaskCreatePinnedToCore(runClapTaskWrapper, "runClapTask", 10000,
+                                           this, 20, &clapTaskHandle, 1);
+    if (r != pdPASS) {
+        clapTaskHandle = nullptr;
+        ESP_LOGE("CLAP", "could not start clap task (%d), free heap %u — not listening",
+                 (int)r, (unsigned)ESP.getFreeHeap());
+    } else {
+        ESP_LOGI("CLAP", "clap task started, chirpMode=%d, free heap %u",
+                 (int)getChirpMode(), (unsigned)ESP.getFreeHeap());
+    }
 }
 
 void MessageHandler::runClapTaskWrapper(void *pvParameters) {
