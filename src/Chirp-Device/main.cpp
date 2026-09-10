@@ -239,7 +239,16 @@ static void buildPumpDither() {
 }
 
 volatile uint64_t audioFrames = 0;      // frames written since the single enable
-long long audioEnableTime = 0;          // syncedTime() at that enable
+// The anchor is kept in LOCAL time, deliberately. It used to hold syncedTime()
+// sampled at the enable — which happens in setup(), before this device has ever
+// synced, so timeOffset was still 0 and the anchor was frozen in raw uptime. The
+// clock sync then corrected timeOffset, the master validated it to within 50 ms,
+// and none of that reached the stamp: every chirp went out timestamped with the
+// emitter's uptime. On a board up for four hours that reads as four hours of
+// flight time, which the client rejects as implausible and the master discards.
+// Storing the anchor locally and adding timeOffset at the point of use means any
+// later sync applies to every stamp from then on, retroactively and for free.
+long long audioEnableTimeLocal = 0;     // esp_timer at the enable, no offset
 
 // a burst request, consumed by the pump
 volatile int      burstRemaining = 0;   // chirps still to emit
@@ -262,7 +271,7 @@ void audioPumpTask(void *) {
     buildPumpDither();
     i2s_channel_disable(txChan);                 // ensure READY
     ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the only enable, ever
-    audioEnableTime = syncedTime();
+    audioEnableTimeLocal = esp_timer_get_time();
     audioFrames = 0;
     ESP_LOGI("CHIRP", "audio pump running, clock is up and stays up");
 
@@ -271,8 +280,10 @@ void audioPumpTask(void *) {
         if (burstRemaining > 0 && audioFrames >= burstNextFrame) {
             // this frame is the first sample of the chirp, so it leaves the DAC
             // at enable + audioFrames/rate — announced just before it is queued
-            long long emitTime = audioEnableTime +
-                (long long)((audioFrames * 1000000ULL) / (uint64_t)I2S_SAMPLE_RATE);
+            // local emission instant, converted with the offset as it stands now
+            long long emitTime = audioEnableTimeLocal +
+                (long long)((audioFrames * 1000000ULL) / (uint64_t)I2S_SAMPLE_RATE)
+                + timeOffset;
             uint8_t idx = burstNextIndex;
             if (burstAnnounce) broadcastClapMessage(true, idx, emitTime);
             i2s_channel_write(txChan, chirpBuffer, sizeof(chirpBuffer), &w, portMAX_DELAY);
