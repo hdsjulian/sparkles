@@ -546,7 +546,9 @@ void addPeer(const uint8_t *addr) {
 }
 
 // Broadcast so any master finds us, repeated from loop() until the master engages us
+uint32_t announceCount = 0;
 void announceAddress() {
+    announceCount++;
     message_data addressMessage;
     addressMessage.messageType = MSG_SOUND_DEVICE;
     memcpy(addressMessage.targetAddress, broadcastAddress, 6);
@@ -624,6 +626,13 @@ void loop() {
     if (millis() - lastAnnounce >= interval) {
         lastAnnounce = millis();
         announceAddress();
+        // Everything the emitter side of the clock handshake depends on. The
+        // master refuses a burst when it cannot confirm this clock, and with the
+        // device silent at idle there was no way to tell whether it was failing
+        // to announce, failing to be engaged, or failing to sync.
+        ESP_LOGI("CHIRP", "announces=%lu engaged=%d timerSynced=%d offset=%lld samples=%d delayAvg=%d",
+                 (unsigned long)announceCount, (int)engaged, (int)timerSynced,
+                 (long long)timeOffset, sampleCount, delayAverage);
     }
 
     vTaskDelay(pdMS_TO_TICKS(20));

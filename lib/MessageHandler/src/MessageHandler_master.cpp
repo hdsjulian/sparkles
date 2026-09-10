@@ -9,6 +9,10 @@
 // A chirp needs 200 ms to travel further than the client's record window reaches,
 // anything outside that is a bad correlation or a stale clock, not a distance
 static constexpr long long MAX_CHIRP_FLIGHT_US = 200000;
+// How far the emitter's idea of master time may be from ours before its chirp
+// timestamps are worthless. Mesh latency and the sync's own median are worth a
+// couple of ms; anything approaching a second is a stale clock generation.
+static constexpr long long EMITTER_SKEW_TOLERANCE_US = 50000;
 // how long after the last chirp the burst waits for the final client replies
 static constexpr int DIST_CAL_SETTLE_MS = 1500;
 // a tight cluster of measurements must not start rejecting its own members
@@ -168,6 +172,22 @@ void MessageHandler::handleReceive() {
                 }
             }
             else if (incomingData.messageType == MSG_SOUND_DEVICE) {
+                // Visible at CORE_DEBUG_LEVEL=0, unlike ESP_LOG: this is the only
+                // way the master learns the emitter's address, and when it silently
+                // stops happening every chirp burst is refused for an unconfirmed
+                // clock with nothing indicating why.
+                {
+                    JsonDocument d;
+                    d["event"] = "sound_device_seen";
+                    char mac[18];
+                    snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
+                             incomingData.senderAddress[0], incomingData.senderAddress[1],
+                             incomingData.senderAddress[2], incomingData.senderAddress[3],
+                             incomingData.senderAddress[4], incomingData.senderAddress[5]);
+                    d["address"] = mac;
+                    d["delayMeasured"] = clapDelayMeasured;
+                    String out; serializeJson(d, out); Serial.println(out);
+                }
                 // clap/chirp device announce, learn its address so either board works
                 bool newDevice = memcmp(clapDeviceAddress, incomingData.senderAddress, 6) != 0;
                 if (newDevice) {
@@ -203,13 +223,21 @@ void MessageHandler::handleReceive() {
                     long long skew = (long long)esp_timer_get_time()
                                    - (long long)incomingData.payload.gotTimer.perceivedTime;
                     if (skew < 0) skew = -skew;
-                    if (skew < 50000) {           // 50 ms, generous for mesh latency
-                        clapDeviceSyncedAt = millis();
-                        LOG_I("MSG", "Emitter clock confirmed, skew %lld us, delay avg %d",
-                              skew, incomingData.payload.gotTimer.delayAverage);
-                    } else {
-                        LOG_I("MSG", "Emitter clock REJECTED, skew %lld us (%lld ms) — stale generation",
-                              skew, skew / 1000);
+                    bool accepted = (skew < EMITTER_SKEW_TOLERANCE_US);
+                    if (accepted) clapDeviceSyncedAt = millis();
+                    // As a JSON event, not a log: the master runs at
+                    // CORE_DEBUG_LEVEL=0, so ESP_LOG says nothing and LOG_I only
+                    // goes over the mesh. Reporting the verdict without the
+                    // number it was based on is what made this opaque.
+                    {
+                        JsonDocument d;
+                        d["event"]    = "emitter_clock";
+                        d["skewUs"]   = (long long)skew;
+                        d["accepted"] = accepted;
+                        d["toleranceUs"] = (long long)EMITTER_SKEW_TOLERANCE_US;
+                        d["offset"]   = (long long)incomingData.payload.gotTimer.offset;
+                        d["delayAvg"] = incomingData.payload.gotTimer.delayAverage;
+                        String out; serializeJson(d, out); Serial.println(out);
                     }
                     removePeer(clapDeviceAddress);
                     setSettingTimer(false);
@@ -503,6 +531,12 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
             memcpy(instance.pendingAnnounceMac, mac->src_addr, 6);
             instance.pendingAnnounce = true;
         }
+        // The sound device announces as MSG_SOUND_DEVICE, not MSG_ADDRESS, so it
+        // was dropped here on every sweep — and with it the master's only way to
+        // learn the emitter's address. No address means no delay measurement, no
+        // clock sync, and a chirp burst refused for an unconfirmed clock, for
+        // ever. Let it through: the handler is cheap and it arrives every 2 s at
+        // worst, so it cannot disturb the sync it is passing through.
         if (incomingData[0] != MSG_GOT_TIMER) return;
         int syncIndex = instance.getCurrentTimerIndex();
         if (syncIndex < 0 || memcmp(mac->src_addr, instance.addressList[syncIndex].address, 6) != 0) return;
@@ -516,26 +550,28 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         mac->src_addr[0], mac->src_addr[1], mac->src_addr[2],
         mac->src_addr[3], mac->src_addr[4], mac->src_addr[5]);
 
-    // A health reply carries what the client knows about itself; the link
-    // quality is only knowable here, from the frame that just arrived.
-    if (incomingData[0] == MSG_HEALTH && len <= (int)sizeof(message_data)) {
-        message_data localData;
-        memset(&localData, 0, sizeof(localData));
-        memcpy(&localData, incomingData, len);
-        if (mac->rx_ctrl) localData.payload.health.rssi = (int8_t)mac->rx_ctrl->rssi;
-        instance.pushToRecvQueue(mac, (uint8_t*)&localData, sizeof(message_data));
-        return;
-    }
+    // Stamp the sender from the radio, for everything. senderAddress is only
+    // whatever the sender remembered to fill in, and several senders fill it
+    // from a cached MAC that can be all zeros — the sound device's announce and
+    // its MSG_GOT_TIMER both arrive that way. The master compared those zeros
+    // against clapDeviceAddress, never matched, and so never learned the
+    // emitter's address, never measured its delay, never confirmed its clock,
+    // and refused every chirp burst. src_addr cannot be wrong, and the client
+    // and chirp device already do exactly this on their own receive paths.
+    message_data localData;
+    memset(&localData, 0, sizeof(localData));
+    memcpy(&localData, incomingData, len);
+    memcpy(localData.senderAddress, mac->src_addr, 6);
 
-    // If this is a MSG_GOT_TIMER, set msgReceiveTime to micros() before pushing to queue
-    if ((incomingData[0] == MSG_GOT_TIMER || incomingData[0] == MSG_CLAP) && len >= (int)sizeof(message_data)) {
-        message_data localData;
-        memcpy(&localData, incomingData, sizeof(message_data));
+    // MSG_GOT_TIMER and MSG_CLAP carry timing that only the receiver can stamp
+    if (incomingData[0] == MSG_GOT_TIMER || incomingData[0] == MSG_CLAP) {
         localData.msgReceiveTime = now;
-        instance.pushToRecvQueue(mac, (uint8_t*)&localData, sizeof(message_data));
-    } else {
-        instance.pushToRecvQueue(mac, incomingData, len);
     }
+    // and the link quality of a health reply is likewise only knowable here
+    if (incomingData[0] == MSG_HEALTH && mac->rx_ctrl) {
+        localData.payload.health.rssi = (int8_t)mac->rx_ctrl->rssi;
+    }
+    instance.pushToRecvQueue(mac, (uint8_t*)&localData, sizeof(message_data));
 }
 
 
