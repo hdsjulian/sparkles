@@ -46,7 +46,16 @@ int MessageHandler::addPeer(uint8_t * address) {
     }
     peerInfo.channel = 0;  
     peerInfo.encrypt = false;
-    if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    esp_err_t err = esp_now_add_peer(&peerInfo);
+    if (err != ESP_OK) {
+        // Every caller ignores this return value, so a failure here made unicast
+        // silently stop working while broadcasts carried on — the master looks
+        // alive and busy and nothing it sends to a specific board arrives. The
+        // usual cause is a full peer table from peers leaked by syncs that were
+        // interrupted before their removePeer.
+        LOG_I("PEER", "esp_now_add_peer(%02x:%02x:%02x:%02x:%02x:%02x) failed: %d%s",
+              address[0], address[1], address[2], address[3], address[4], address[5],
+              (int)err, err == ESP_ERR_ESPNOW_FULL ? " (PEER TABLE FULL)" : "");
         return -1;
     }
     else {

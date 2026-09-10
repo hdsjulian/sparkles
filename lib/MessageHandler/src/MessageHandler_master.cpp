@@ -147,8 +147,14 @@ void MessageHandler::handleReceive() {
                              version.toString().c_str());
                 }
                 if (!isOTAUpdating) {
-                    // If timerSyncHandle is running, ignore this message
+                    // A sync is in flight, so this board cannot be synced right
+                    // now — but dropping the announce made it re-announce and
+                    // race for a gap. Queue it for the end of the current sync.
                     if (timerSyncHandle != NULL && eTaskGetState(timerSyncHandle) != eDeleted) {
+                        if (!pendingAnnounce) {
+                            memcpy(pendingAnnounceMac, incomingData.senderAddress, 6);
+                            pendingAnnounce = true;
+                        }
                         continue;
                     }
                     // Stop animation loop during sync so it doesn't interfere with lastDelay timing
@@ -490,6 +496,13 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
     bool syncActive = (instance.allTimerSyncHandle != NULL) ||
                       (instance.timerSyncHandle != NULL && eTaskGetState(instance.timerSyncHandle) != eDeleted);
     if (syncActive && instance.getNumDevices() > 0) {
+        // Remember an announce rather than losing it. Just the MAC here: the
+        // address-list lookup and the sync it triggers belong on a task, not in
+        // this callback.
+        if (incomingData[0] == MSG_ADDRESS && !instance.pendingAnnounce) {
+            memcpy(instance.pendingAnnounceMac, mac->src_addr, 6);
+            instance.pendingAnnounce = true;
+        }
         if (incomingData[0] != MSG_GOT_TIMER) return;
         int syncIndex = instance.getCurrentTimerIndex();
         if (syncIndex < 0 || memcmp(mac->src_addr, instance.addressList[syncIndex].address, 6) != 0) return;
@@ -586,6 +599,27 @@ void MessageHandler::runOTAUpdateTaskWrapper(void *pvParameters) {
     MessageHandler *messageHandlerInstance = (MessageHandler *)pvParameters;
     messageHandlerInstance->runOTAUpdateTask();
 }
+// Called when a sync finishes. A board that announced while we were busy gets
+// its turn now instead of having to shout again.
+void MessageHandler::servicePendingAnnounce() {
+    if (!pendingAnnounce) return;
+    uint8_t mac[6];
+    memcpy(mac, pendingAnnounceMac, 6);
+    pendingAnnounce = false;
+    if (memcmp(mac, emptyAddress, 6) == 0) return;
+    int index = addOrGetAddressId(mac);
+    if (index < 0) {
+        LOG_I("MSG", "pending announce from %02x:%02x:%02x:%02x:%02x:%02x has no slot",
+              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        return;
+    }
+    LOG_I("MSG", "servicing queued announce from board %d", index);
+    stopAnimationLoop();
+    setCurrentTimerIndex(index);
+    setAvailable(index);
+    startTimerSyncTask();
+}
+
 void MessageHandler::runOTAUpdateTask() {
     ESP_LOGI("OTA", "OTA update task started");
     int sent = 0;

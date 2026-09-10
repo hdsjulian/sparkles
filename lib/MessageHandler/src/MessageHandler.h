@@ -176,6 +176,7 @@ public:
     void runTimerSyncAt(int index);
     void runFastResyncAll();
     bool runClapDeviceTimerSync();
+    void servicePendingAnnounce();
     void startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance);
     int acquireTxSlot(const uint8_t *mac);
     void releaseTxSlot(int slot);
@@ -252,6 +253,13 @@ private:
     // has not confirmed since the sync we just ran would stamp its chirps in a
     // stale clock generation, so it is refused rather than measured.
     volatile unsigned long clapDeviceSyncedAt = 0;
+    // A board that announces while a sync is in flight used to have its announce
+    // thrown away, in two places, so it had to keep announcing and hope to land
+    // in a gap. With a failing sync taking two seconds per board the gaps are
+    // rare, which is why joining could take minutes. Remember the announce
+    // instead and service it the moment the current sync finishes.
+    volatile bool pendingAnnounce = false;
+    uint8_t pendingAnnounceMac[6] = {0};
     // sleep listen-window stamps, written by onDataRecv (wifi task), read by handleSleepWakeup
     volatile unsigned long lastSleepMsgMillis = 0;
     volatile unsigned long long lastSleepMsgDuration = 0;

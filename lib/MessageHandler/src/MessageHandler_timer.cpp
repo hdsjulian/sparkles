@@ -215,6 +215,7 @@ void MessageHandler::runAllTimerSyncWrapper(void *pvParameters) {
         messageHandlerInstance->resumeAnimationLoop();
     }
     messageHandlerInstance->allTimerSyncHandle = NULL;
+    messageHandlerInstance->servicePendingAnnounce();
     vTaskDelete(NULL);
 }
 
@@ -413,6 +414,9 @@ void MessageHandler::runTimerSync() {
         // handle could make every future "sync all" click silently misbehave.
         if (xTaskGetCurrentTaskHandle() == timerSyncHandle) {
             timerSyncHandle = NULL;
+            // clear the handle first: servicePendingAnnounce starts a new sync
+            // task and would otherwise see this one as still running
+            servicePendingAnnounce();
             vTaskDelete(NULL);
         }
     }
