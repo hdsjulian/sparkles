@@ -275,6 +275,18 @@ private:
     // enough to tell "the command never arrived" from "it arrived and was
     // ignored", which a silent client cannot otherwise distinguish.
     volatile uint16_t rxByType[32] = {0};
+    // Why timer samples get thrown away. The client needs TIMER_ARRAY_COUNT
+    // accepted samples to compute an offset, and all three tests below can fail
+    // silently — leaving it on a stale offset while the master marks it synced.
+    volatile uint16_t syncAccepted = 0;   // counted toward the 10 needed
+    volatile uint16_t syncGapRej   = 0;   // counter sequence broken
+    volatile uint16_t syncZeroRej  = 0;   // lastDelay == 0, no measurement from the master
+    volatile uint16_t syncSlowRej  = 0;   // lastDelay >= 6000, too slow to trust
+    volatile int      syncLastDelay = -1; // most recent value seen on the wire
+    volatile int      syncDelayMin = 999999;
+    volatile int      syncDelayMax = 0;
+    volatile uint32_t syncDelaySum = 0;
+    volatile uint16_t syncDelayN   = 0;
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};

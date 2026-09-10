@@ -248,10 +248,13 @@ bool MessageHandler::batteryTooLow() {
 }
 
 void MessageHandler::logRxCounts() {
-    ESP_LOGI("RXCNT", "timer=%u anim=%u cmd=%u status=%u clap=%u sound=%u health-pings-answered=%u",
+    ESP_LOGI("RXCNT", "timer=%u anim=%u cmd=%u clap=%u sound=%u | sync ok=%u gap=%u zeroDelay=%u slow=%u lastDelay=%d",
              rxByType[MSG_TIMER], rxByType[MSG_ANIMATION], rxByType[MSG_COMMAND],
-             rxByType[MSG_STATUS], rxByType[MSG_CLAP], rxByType[MSG_SOUND_DEVICE],
-             (unsigned)chirpAnnounceCount);
+             rxByType[MSG_CLAP], rxByType[MSG_SOUND_DEVICE],
+             syncAccepted, syncGapRej, syncZeroRej, syncSlowRej, syncLastDelay);
+    ESP_LOGI("RXCNT", "  txDelay us: min=%d max=%d mean=%lu n=%u (client rejects >= 6000)",
+             syncDelayN ? (int)syncDelayMin : -1, (int)syncDelayMax,
+             syncDelayN ? (unsigned long)(syncDelaySum / syncDelayN) : 0UL, syncDelayN);
 }
 
 void MessageHandler::handleTimer(message_data incomingData) {
@@ -283,6 +286,20 @@ void MessageHandler::handleTimer(message_data incomingData) {
         delayCounter = 0;
         delayAverage = 0;
     }
+
+    // tally why a sample is refused, so a sync that never completes can say why
+    syncLastDelay = timerMessage.lastDelay;
+    if (timerMessage.lastDelay > 0) {   // 0 means the master had no measurement
+        int d = timerMessage.lastDelay;
+        if (d < syncDelayMin) syncDelayMin = d;
+        if (d > syncDelayMax) syncDelayMax = d;
+        syncDelaySum += (uint32_t)d;
+        syncDelayN++;
+    }
+    if (pendingValid && timerMessage.counter != (uint16_t)(pendingCounter + 1)) syncGapRej++;
+    else if (timerMessage.lastDelay == 0)                                       syncZeroRej++;
+    else if (timerMessage.lastDelay >= 6000)                                    syncSlowRej++;
+    else if (pendingValid)                                                      syncAccepted++;
 
     if (pendingValid && timerMessage.counter == (uint16_t)(pendingCounter + 1)
         && timerMessage.lastDelay > 0 && timerMessage.lastDelay < 6000) {

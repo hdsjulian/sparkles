@@ -91,68 +91,31 @@ static uint16_t clampTxDelay(int delay) {
     return (delay > 0 && delay < 60000) ? (uint16_t)delay : 0;
 }
 
-// Fast resync, parallel pool of FAST_RESYNC_POOL workers, one per client
-#define FAST_RESYNC_POOL 5
-#define FAST_RESYNC_WAIT_MS 2000
-
-struct FastResyncArgs {
-    MessageHandler* self;
-    int index;
-};
-
-static void fastResyncWorker(void* pv) {
-    FastResyncArgs* a = (FastResyncArgs*)pv;
-    a->self->runTimerSyncAt(a->index);
-    delete a;
-    vTaskDelete(NULL);
-}
-
+// Serial resync, one board at a time.
+//
+// This was a pool of five parallel workers, and the parallelism was actively
+// harmful. Measured on a client, five concurrent workers doubled the mean TX
+// delay (2768 -> 5584 us) and pushed the maximum to 26 ms, so 43% of samples
+// exceeded the 6 ms a client is willing to trust, against 9% when syncing one
+// board at a time. That is not just slower to converge: the TX delay is the
+// correction applied to the offset, so contention biases the clock the sync
+// produces. Five radios' worth of traffic through one radio bought nothing.
+//
+// Going serial also removes the machinery that went with it — a worker task per
+// board, and a wait loop on eTaskGetState of handles whose tasks had already
+// deleted themselves, which could read freed memory and hang the caller for
+// ever. That hang is what left chirp bursts wedged and silent.
 void MessageHandler::runFastResyncAll() {
-    ESP_LOGI("TIMER", "Fast resync starting");
-
-    // count known clients
     int total = 0;
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(getItemFromAddressList(i).address, emptyAddress, 6) == 0) break;
         total++;
     }
-
-    // dispatch clients in batches of FAST_RESYNC_POOL
-    for (int i = 0; i < total; i += FAST_RESYNC_POOL) {
-        int batch = min(FAST_RESYNC_POOL, total - i);
-        TaskHandle_t handles[FAST_RESYNC_POOL] = {};
-        for (int j = 0; j < batch; j++) {
-            FastResyncArgs* args = new FastResyncArgs{this, i + j};
-            char name[16];
-            snprintf(name, sizeof(name), "frsync_%d", i + j);
-            xTaskCreatePinnedToCore(fastResyncWorker, name, 4096, args, 2, &handles[j], 1);
-        }
-        // Wait for the batch, but never for ever. A worker sends TIMER_ARRAY_COUNT
-        // + 5 packets at TIMER_FREQUENCY ms, so ~300 ms is the real cost and two
-        // seconds is already generous.
-        //
-        // This was unbounded, and eTaskGetState on the handle of a task that has
-        // deleted itself and been reclaimed by the idle task reads freed memory —
-        // so it can never report eDeleted and the loop spins for ever. That hung
-        // whatever called us, which is normally the chirp burst task: it never
-        // reached its first emitBurstStatus, so nothing was reported, and it
-        // never cleared distCalHandle, so every later burst was refused in
-        // silence. "No board heard the chirps" with no other symptom, until the
-        // master was rebooted.
-        for (int j = 0; j < batch; j++) {
-            if (!handles[j]) continue;
-            int waited = 0;
-            while (eTaskGetState(handles[j]) != eDeleted && waited < FAST_RESYNC_WAIT_MS) {
-                vTaskDelay(10 / portTICK_PERIOD_MS);
-                waited += 10;
-            }
-            if (waited >= FAST_RESYNC_WAIT_MS) {
-                LOG_I("TIMER", "fast resync worker %d did not report done, moving on", i + j);
-            }
-        }
+    LOG_I("TIMER", "resync starting, %d board(s), one at a time", total);
+    for (int i = 0; i < total; i++) {
+        runTimerSyncAt(i);
     }
-
-    ESP_LOGI("TIMER", "Fast resync done");
+    LOG_I("TIMER", "resync done");
 }
 
 void MessageHandler::startFastResyncTask() {
@@ -321,7 +284,13 @@ bool MessageHandler::runClapDeviceTimerSync() {
             t.reset     = (i == 0);
             t.sendTime  = esp_timer_get_time();
             memcpy(&timerData.payload.timer, &t, sizeof(t));
-            if (txSlot >= 0) txSlots[txSlot].sendTime = t.sendTime;
+            // Only open a new measurement once the previous one has been
+            // consumed. Overwriting sendTime with a callback still outstanding
+            // credited that callback to the newer send, which is where the
+            // impossible 66 us readings came from — far too fast for an ACKed
+            // unicast. A packet sent while one is pending carries the previous
+            // delay rather than inventing a new one.
+            if (txSlot >= 0 && txSlots[txSlot].sendTime == 0) txSlots[txSlot].sendTime = t.sendTime;
             esp_now_send(clapDeviceAddress, (uint8_t*)&timerData, ESPNOW_CLIENT_COMPAT_SIZE);
             vTaskDelayUntil(&wake, TIMER_FREQUENCY / portTICK_PERIOD_MS);
         }

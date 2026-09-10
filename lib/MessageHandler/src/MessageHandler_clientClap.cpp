@@ -150,14 +150,16 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     // rawLag is the whole story when minLag is pinned: a value just over MAX_LAG
     // means the emission is a little too late (schedule/lead-in), while one
     // orders of magnitude out means the emitter's clock is not synced at all.
-    ESP_LOGI("CLAP", "window: rms %d | loud %dms r%d/q%d (x%.0f) | annc %lu emission %s off %lldms minLag %d/%d | best %.3f gate %.3f",
-             rawRms, loudBlk * 10, loudRms, quietRms,
+    ESP_LOGI("CLAP", "win rms%d loud%dms x%.0f | annc%lu %s emit=%llums our=%lldms rec=%llums off=%lldms lag%d/%d best%.3f g%.3f",
+             rawRms, loudBlk * 10,
              quietRms > 0 ? (float)loudRms / (float)quietRms : 0.0f,
              (unsigned long)chirpAnnounceCount,
              (emission != 0) ? "ok" : (staleOffsetUs != 0 ? "STALE" : "NONE"),
-             (emission != 0 ? (long long)((emissionOffsetUs) / 1000) : staleOffsetUs / 1000),
-             minLag, MAX_LAG,
-             bestCorr, gate);
+             (unsigned long long)(lastChirpEmission / 1000),
+             (long long)(ledInstance->getTimerOffset() / 1000),
+             (unsigned long long)(recordStart / 1000),
+             (emission != 0 ? (long long)(emissionOffsetUs / 1000) : staleOffsetUs / 1000),
+             minLag, MAX_LAG, bestCorr, gate);
 
     peakCorr = bestCorr;
     if (bestCorr < gate) return -1.0f;
