@@ -27,22 +27,44 @@ void MessageHandler::startAllTimerSyncTask() {
         }
 }
 
+// A slot is only meaningful for the length of one sync — a few hundred ms — so
+// anything held far longer belongs to a task that was deleted between its
+// acquire and its release. There are only eight, and once they are all leaked
+// every sync sends lastDelay = 0, which every client and the emitter reject:
+// they need a measured delay to form a sample. So the whole fleet silently stops
+// being able to sync, keeps whatever offset it last had, and reports chirp
+// arrivals hundreds of seconds out. The old code logged "No free TX slot" via
+// ESP_LOGW, invisible at CORE_DEBUG_LEVEL=0, and carried on regardless.
+#define TX_SLOT_STALE_MS 10000
+
 int MessageHandler::acquireTxSlot(const uint8_t *mac) {
     int slot = -1;
+    int reclaimed = 0;
+    unsigned long nowMs = millis();
     portENTER_CRITICAL(&txSlotsMux);
+    for (int i = 0; i < TX_SLOT_COUNT; i++) {
+        if (txSlots[i].inUse && (nowMs - txSlots[i].acquiredAt) > TX_SLOT_STALE_MS) {
+            txSlots[i].inUse = false;   // its owner is long gone
+            reclaimed++;
+        }
+    }
     for (int i = 0; i < TX_SLOT_COUNT; i++) {
         if (!txSlots[i].inUse) {
             memcpy(txSlots[i].mac, mac, 6);
             txSlots[i].sendTime = 0;
             txSlots[i].lastDelay = 0;
             txSlots[i].inUse = true;
+            txSlots[i].acquiredAt = nowMs;
             slot = i;
             break;
         }
     }
     portEXIT_CRITICAL(&txSlotsMux);
+    if (reclaimed > 0) {
+        LOG_I("TIMER", "reclaimed %d stale TX slot(s)", reclaimed);
+    }
     if (slot < 0) {
-        ESP_LOGW("TIMER", "No free TX slot");
+        LOG_I("TIMER", "no free TX slot — this sync will send lastDelay 0 and be rejected");
     }
     return slot;
 }
@@ -329,7 +351,15 @@ void MessageHandler::runTimerSyncAt(int index) {
 
     int txSlot = acquireTxSlot(addressList[index].address);
     TickType_t lastWakeTime = xTaskGetTickCount();
-    for (int i = 0; i < TIMER_ARRAY_COUNT + 5; i++) {
+    // TIMER_ARRAY_COUNT + 5 left no margin. The client needs TIMER_ARRAY_COUNT
+    // samples and only counts a packet whose predecessor was measured, so any
+    // loss breaks the chain — measured at 9 of 15 arriving, which yields at most
+    // 8 samples and never completes. It then silently keeps its previous offset
+    // while this function marks it ACTIVE regardless, so the master believes a
+    // board is synced whose clock belongs to an earlier master generation. Its
+    // chirp detections then land hundreds of seconds out and read as tens of
+    // metres. Same margin the emitter's sync needed.
+    for (int i = 0; i < TIMER_ARRAY_COUNT * 3; i++) {
         lastWakeTime = xTaskGetTickCount();
         timerMessage.counter   = i;
         timerMessage.lastDelay = (txSlot >= 0) ? clampTxDelay(txSlots[txSlot].lastDelay) : 0;

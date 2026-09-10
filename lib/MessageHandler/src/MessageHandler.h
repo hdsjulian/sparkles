@@ -336,6 +336,7 @@ private:
         uint8_t mac[6] = {0};
         volatile unsigned long long sendTime = 0;
         volatile int lastDelay = 0;
+        unsigned long acquiredAt = 0;   // for reclaiming a slot a dead task still holds
     };
     tx_slot txSlots[TX_SLOT_COUNT];
     portMUX_TYPE txSlotsMux = portMUX_INITIALIZER_UNLOCKED;
