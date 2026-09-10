@@ -23,8 +23,7 @@ void MessageHandler::handleReceive() {
                 //handleTimer(incomingData);            
             if (incomingData.messageType == MSG_ANIMATION) {
                 
-                float batteryPercentage = getBatteryPercentage();
-                if (batteryPercentage < BATTERY_LOW_THRESHOLD) {
+                if (batteryTooLow()) {
                     message_data batteryLow;
                     //ESP_LOGI("MSG", "Battery low, percentage: %f", batteryPercentage);
                     /*
@@ -232,6 +231,27 @@ void MessageHandler::handleReceive() {
             }
         }
     }
+}
+
+// What has arrived, by type. Sync sends MSG_TIMER, blink sends MSG_ANIMATION and
+// commands come as MSG_COMMAND, so these three numbers separate "the master is
+// not sending it" from "it arrives and the client does nothing with it".
+// Zero is a failed measurement, not an empty battery: a board flat enough to
+// read 0% could not be powering its radio, receiving ESP-NOW and answering
+// pings. Treating it as low took a board dark permanently and silently — every
+// animation discarded, while pings kept working because they never consult the
+// battery. It presented as "this one board won't blink or sync", with nothing
+// anywhere saying why. Only gate on a reading we actually believe.
+bool MessageHandler::batteryTooLow() {
+    float pct = getBatteryPercentage();
+    return pct > 0.01f && pct < BATTERY_LOW_THRESHOLD;
+}
+
+void MessageHandler::logRxCounts() {
+    ESP_LOGI("RXCNT", "timer=%u anim=%u cmd=%u status=%u clap=%u sound=%u health-pings-answered=%u",
+             rxByType[MSG_TIMER], rxByType[MSG_ANIMATION], rxByType[MSG_COMMAND],
+             rxByType[MSG_STATUS], rxByType[MSG_CLAP], rxByType[MSG_SOUND_DEVICE],
+             (unsigned)chirpAnnounceCount);
 }
 
 void MessageHandler::handleTimer(message_data incomingData) {
@@ -466,6 +486,7 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
                      mac->src_addr[3], mac->src_addr[4], mac->src_addr[5], len);
         }
     }
+    if (localData.messageType < 32) instance.rxByType[localData.messageType]++;
     if (localData.messageType == MSG_TIMER) {
         // learn master MAC from the first MSG_TIMER we receive
         if (!instance.hostAddressLearned) {
@@ -490,7 +511,7 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
     } else if (instance.hostAddressLearned && memcmp(mac->src_addr, instance.hostAddress, 6) == 0) {
         instance.lastMasterMsgMillis = millis();
     }
-    if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() > BATTERY_LOW_THRESHOLD) {
+    if (localData.messageType == MSG_ANIMATION && !instance.batteryTooLow()) {
         if (localData.payload.animation.animationType == MIDI || localData.payload.animation.animationType == BACKGROUND_SHIMMER) {
             LedHandler& ledInstance = LedHandler::getInstance();
             if (localData.payload.animation.animationType == BACKGROUND_SHIMMER) {
@@ -508,7 +529,7 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
         }
 
     }
-    else if (localData.messageType == MSG_ANIMATION && instance.getBatteryPercentage() <= BATTERY_LOW_THRESHOLD) {
+    else if (localData.messageType == MSG_ANIMATION && instance.batteryTooLow()) {
     }
 
     instance.pushToRecvQueue(mac, (const uint8_t*)&localData, len);
@@ -641,8 +662,7 @@ void MessageHandler::runBatterySyncWrapper(void *pvParameters) {
 }
 void MessageHandler::runBatterySync() {
     while (true) {
-        float batteryPercentage = getBatteryPercentage();
-        if (batteryPercentage < BATTERY_LOW_THRESHOLD) {
+        if (batteryTooLow()) {
             if (getBatteryLow() == false) {
                 setBatteryLow(true);
                 ledInstance->turnOff();

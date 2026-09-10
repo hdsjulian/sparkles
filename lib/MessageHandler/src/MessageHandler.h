@@ -51,6 +51,8 @@ public:
     bool getSettingTimer();
     void setSettingClapSync(bool set);
     bool getSettingClapSync();
+    void logRxCounts();    // one line: what has actually arrived, by type
+    bool batteryTooLow();  // a *valid* low reading, not a failed measurement
     void setAddressAnnounced(bool set);
     bool getAddressAnnounced();
     client_address getItemFromAddressList(int index);
@@ -260,6 +262,11 @@ private:
     // counts emitter announces actually received, so "no stamp" can be told
     // apart from "stamp arrived and was rejected as implausible"
     volatile uint32_t chirpAnnounceCount = 0;
+    // Received frames by message type. A per-frame log floods the CDC buffer and
+    // drops whatever follows, so the counts are dumped periodically instead —
+    // enough to tell "the command never arrived" from "it arrived and was
+    // ignored", which a silent client cannot otherwise distinguish.
+    volatile uint16_t rxByType[32] = {0};
     uint8_t clapDeviceAddress[6] = {0x64, 0xe8, 0x33, 0x54, 0x3c, 0x24};
     uint8_t midiDeviceAddress[6] = {0xCC, 0x8D, 0xA2, 0xEC, 0xC6, 0x34};
     uint8_t raspiDeviceAddress[6] = {0x34, 0x85, 0x18, 0x8E, 0xF8, 0x50};

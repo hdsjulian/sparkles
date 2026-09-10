@@ -131,6 +131,7 @@ void loop()
     ESP_LOGI("", "Current Time %llu", micros());
     ESP_LOGI("", "Battery: %.2f%%", msgHandler.getBatteryPercentage());
     ESP_LOGI("", "Version: %s", VERSION);
+    msgHandler.logRxCounts();
 
 
   }
