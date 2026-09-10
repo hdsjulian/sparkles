@@ -38,39 +38,78 @@ String MessageHandler::stringAddress(const uint8_t * mac_addr, bool debug){
 }
 
 
-int MessageHandler::addPeer(uint8_t * address) {
-    memcpy(&peerInfo.peer_addr, address, 6);
+// The peer table holds ESP_NOW_MAX_TOTAL_PEER_NUM (20) entries and the fleet can
+// be far larger, so peers are added and removed around each send. That makes the
+// table shared mutable state across every task that sends, and it had no
+// accounting at all: 17 add sites against 12 remove sites, several removes
+// happening in a different task than the add (the MSG_GOT_TIMER handler removes
+// what runTimerSync added), and tasks getting vTaskDelete'd between the two.
+// Every such kill leaked a slot permanently. Once full, esp_now_add_peer fails,
+// unicast stops dead while broadcast carries on, and the master looks perfectly
+// healthy while nothing it sends to a specific board arrives.
+static SemaphoreHandle_t peerMutex = nullptr;
 
-    if (esp_now_get_peer(peerInfo.peer_addr, &peerInfo) == ESP_OK) {
-        return 0;
+static void ensurePeerMutex() {
+    if (peerMutex == nullptr) peerMutex = xSemaphoreCreateMutex();
+}
+
+// Drop every peer except broadcast. Recovery of last resort: a leaked slot is
+// never reclaimed otherwise, and the alternative is silent, permanent failure.
+static void prunePeersLocked() {
+    uint8_t macs[ESP_NOW_MAX_TOTAL_PEER_NUM][6];
+    int n = 0;
+    esp_now_peer_info_t p;
+    bool first = true;
+    while (n < ESP_NOW_MAX_TOTAL_PEER_NUM && esp_now_fetch_peer(first, &p) == ESP_OK) {
+        first = false;
+        if (memcmp(p.peer_addr, broadcastAddress, 6) != 0) {
+            memcpy(macs[n++], p.peer_addr, 6);
+        }
     }
-    peerInfo.channel = 0;  
-    peerInfo.encrypt = false;
-    esp_err_t err = esp_now_add_peer(&peerInfo);
-    if (err != ESP_OK) {
-        // Every caller ignores this return value, so a failure here made unicast
-        // silently stop working while broadcasts carried on — the master looks
-        // alive and busy and nothing it sends to a specific board arrives. The
-        // usual cause is a full peer table from peers leaked by syncs that were
-        // interrupted before their removePeer.
-        LOG_I("PEER", "esp_now_add_peer(%02x:%02x:%02x:%02x:%02x:%02x) failed: %d%s",
-              address[0], address[1], address[2], address[3], address[4], address[5],
-              (int)err, err == ESP_ERR_ESPNOW_FULL ? " (PEER TABLE FULL)" : "");
-        return -1;
+    for (int i = 0; i < n; i++) esp_now_del_peer(macs[i]);
+    LOG_I("PEER", "peer table was full, pruned %d stale peer(s)", n);
+}
+
+int MessageHandler::addPeer(uint8_t * address) {
+    ensurePeerMutex();
+    if (peerMutex && xSemaphoreTake(peerMutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+        return -1;   // never block a send path indefinitely on the peer table
     }
-    else {
-        return 1;
+    int result = -1;
+    // local, not the shared peerInfo member: two tasks calling this concurrently
+    // raced on that member, so one could add a peer for the other's address
+    esp_now_peer_info_t info = {};
+    memcpy(info.peer_addr, address, 6);
+    if (esp_now_get_peer(info.peer_addr, &info) == ESP_OK) {
+        result = 0;                       // already present, nothing to do
+    } else {
+        info.channel = 0;
+        info.encrypt = false;
+        esp_err_t err = esp_now_add_peer(&info);
+        if (err == ESP_ERR_ESPNOW_FULL) {
+            prunePeersLocked();
+            err = esp_now_add_peer(&info);
+        }
+        if (err != ESP_OK) {
+            LOG_I("PEER", "add %02x:%02x:%02x:%02x:%02x:%02x failed: %d",
+                  address[0], address[1], address[2], address[3], address[4], address[5], (int)err);
+            result = -1;
+        } else {
+            result = 1;
+        }
     }
-    
+    if (peerMutex) xSemaphoreGive(peerMutex);
+    return result;
 }
 
 void MessageHandler::removePeer(uint8_t address[6]) {
-    if (!esp_now_is_peer_exist(address)) {
-        return;
-    }
-    if (esp_now_del_peer(address) != ESP_OK) {
-    }
-    return;
+    // never remove the broadcast peer: it is added once at setup and everything
+    // latency-sensitive broadcasts through it
+    if (memcmp(address, broadcastAddress, 6) == 0) return;
+    ensurePeerMutex();
+    if (peerMutex && xSemaphoreTake(peerMutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
+    if (esp_now_is_peer_exist(address)) esp_now_del_peer(address);
+    if (peerMutex) xSemaphoreGive(peerMutex);
 }
 
 unsigned long long MessageHandler::timeDiffAbs(unsigned long long a, unsigned long long b) {
