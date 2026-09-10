@@ -71,6 +71,7 @@ static uint16_t clampTxDelay(int delay) {
 
 // Fast resync, parallel pool of FAST_RESYNC_POOL workers, one per client
 #define FAST_RESYNC_POOL 5
+#define FAST_RESYNC_WAIT_MS 2000
 
 struct FastResyncArgs {
     MessageHandler* self;
@@ -104,12 +105,27 @@ void MessageHandler::runFastResyncAll() {
             snprintf(name, sizeof(name), "frsync_%d", i + j);
             xTaskCreatePinnedToCore(fastResyncWorker, name, 4096, args, 2, &handles[j], 1);
         }
-        // wait for batch to finish before starting next
+        // Wait for the batch, but never for ever. A worker sends TIMER_ARRAY_COUNT
+        // + 5 packets at TIMER_FREQUENCY ms, so ~300 ms is the real cost and two
+        // seconds is already generous.
+        //
+        // This was unbounded, and eTaskGetState on the handle of a task that has
+        // deleted itself and been reclaimed by the idle task reads freed memory —
+        // so it can never report eDeleted and the loop spins for ever. That hung
+        // whatever called us, which is normally the chirp burst task: it never
+        // reached its first emitBurstStatus, so nothing was reported, and it
+        // never cleared distCalHandle, so every later burst was refused in
+        // silence. "No board heard the chirps" with no other symptom, until the
+        // master was rebooted.
         for (int j = 0; j < batch; j++) {
-            if (handles[j]) {
-                while (eTaskGetState(handles[j]) != eDeleted) {
-                    vTaskDelay(10 / portTICK_PERIOD_MS);
-                }
+            if (!handles[j]) continue;
+            int waited = 0;
+            while (eTaskGetState(handles[j]) != eDeleted && waited < FAST_RESYNC_WAIT_MS) {
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                waited += 10;
+            }
+            if (waited >= FAST_RESYNC_WAIT_MS) {
+                LOG_I("TIMER", "fast resync worker %d did not report done, moving on", i + j);
             }
         }
     }

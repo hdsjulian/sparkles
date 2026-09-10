@@ -835,8 +835,18 @@ void MessageHandler::endCalibration() {
 }
 
 void MessageHandler::abortDistanceCalibration() {
-    ESP_LOGI("MSG", "Aborting distance calibration, resetting all data");
+    LOG_I("MSG", "Aborting distance calibration, resetting all data");
     burstActive = false;
+    // Abort left distCalHandle set, so a burst task that was killed or wedged
+    // blocked every later burst for good — and the refusal was silent, so there
+    // was no way to tell and no way back short of rebooting the master. Abort is
+    // the recovery path, so it has to actually clear it.
+    if (distCalHandle != NULL) {
+        TaskHandle_t h = distCalHandle;
+        distCalHandle = NULL;
+        if (eTaskGetState(h) != eDeleted) vTaskDelete(h);
+        LOG_I("MSG", "cleared a stuck chirp burst task");
+    }
     memset(chirpEmissions, 0, sizeof(chirpEmissions));
     clearClapMeasurements();
     message_data cancelMsg = createCommandMessage(CMD_CANCEL_CALIBRATION, true);
@@ -1072,7 +1082,14 @@ struct ChirpBurstArgs { MessageHandler* self; int commandType; int slot; float x
 // counted off by the emitter and the clients themselves, then the average.
 void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance) {
     if (distCalHandle != NULL) {
-        ESP_LOGW("MSG", "Chirp burst already running, ignoring");
+        // Silent before: ESP_LOGW is compiled out at CORE_DEBUG_LEVEL=0 and no
+        // event was emitted, so a stuck handle refused every future burst with
+        // no trace anywhere — the UI just kept reporting that no board heard
+        // the chirps, which was true and entirely uninformative.
+        LOG_I("MSG", "Chirp burst refused: a previous one never finished");
+        burstIsDistance = isDistance;
+        emitBurstStatus("failed", 0, 0,
+            "a chirp burst is already running, or a previous one never finished — abort it and retry");
         return;
     }
     auto* args = new ChirpBurstArgs{this, commandType, slot, xPos, yPos, isDistance};
