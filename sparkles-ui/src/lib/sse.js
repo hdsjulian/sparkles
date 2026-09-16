@@ -10,7 +10,8 @@ import {
   positionStatus,
   clientClap,
   deviceListError,
-  deviceHealth
+  deviceHealth,
+  brainStatus
 } from './stores.js';
 
 /**
@@ -137,6 +138,11 @@ export function setupSSE() {
         return next;
       });
     } catch (err) { console.warn('SSE client_health parse error:', err); }
+  });
+
+  es.addEventListener('brain_status', (e) => {
+    try { brainStatus.set(JSON.parse(e.data)); }
+    catch (err) { console.warn('SSE brain_status parse error:', err); }
   });
 
   es.addEventListener('sync_status', (e) => { syncStatus.set(e.data); });

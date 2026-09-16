@@ -52,3 +52,7 @@ export const healthCheck = writable({
   done: false,
   error: ''
 });
+
+// Last brain_status frame from the Muse test rig
+// { settle, value, phase, session, contact, bpm, battery }
+export const brainStatus = writable(null);

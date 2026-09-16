@@ -276,3 +276,16 @@ export const systemHealthCheck = ({ replyTimeout = 1.0, passes = 3 } = {}) =>
 
 export const commandHealthPing = (boardId = -1) =>
   fetch(`${BASE}/commandHealthPing?boardId=${boardId}`).then(r => r.json());
+
+// ---- Muse headband (test rig) ----
+// settling score → brightness on every lamp, no positions involved
+export const brainStart = (params = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return fetch(`${BASE}/brain/start${qs ? '?' + qs : ''}`, { method: 'POST' }).then(r => r.json());
+};
+
+export const brainStop = () =>
+  fetch(`${BASE}/brain/stop`, { method: 'POST' }).then(r => r.json());
+
+export const getBrainStatus = () =>
+  fetch(`${BASE}/brain/status`).then(r => r.json());

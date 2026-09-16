@@ -8,3 +8,8 @@ passlib[argon2]>=1.7.4
 python-multipart>=0.0.9
 pyyaml>=6.0
 meshtastic>=2.7.0
+# Muse headband (muse.py / muse_bridge.py). On the pi prefer the apt numpy —
+# `sudo apt install python3-numpy` — the venv is --system-site-packages so it
+# is picked up, and pip building numpy on a pi is slow.
+bleak>=0.22.0
+numpy>=1.24.0

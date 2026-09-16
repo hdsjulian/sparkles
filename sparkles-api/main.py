@@ -9,8 +9,12 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import shutil
+import signal
 import subprocess
+import sys
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -1628,6 +1632,127 @@ async def keyboard_event(request: Request):
         _playback.update(playing=False)
     bridge._dispatch(body)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Muse headband → lamps (test rig)
+# ---------------------------------------------------------------------------
+
+_MUSE_DIR = os.path.dirname(os.path.abspath(__file__))
+# proc is the shell running `muse.py | muse_bridge.py`, so it owns two children
+# and has to be killed by process group, not pid.
+_brain = {"proc": None, "task": None, "status": {}, "started": 0.0}
+
+
+def _brain_running() -> bool:
+    p = _brain["proc"]
+    return bool(p and p.returncode is None)
+
+
+async def _brain_pump(proc):
+    """Fan muse_bridge's status lines out on /events so the page can watch the
+    score climb. stderr is left attached to ours, so the two scripts' logs land
+    in `journalctl -u sparkles` where you want them when this misbehaves."""
+    try:
+        async for raw in proc.stdout:
+            try:
+                frame = json.loads(raw.decode(errors="replace").strip())
+            except ValueError:
+                continue
+            _brain["status"] = frame
+            bridge._dispatch(frame)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning("brain pump ended: %s", exc)
+    finally:
+        bridge._dispatch({"event": "brain_status", "phase": "stopped", "settle": 0.0})
+
+
+@app.post("/brain/start")
+async def brain_start(
+    ppg: bool = Query(default=True),
+    anchor: float = Query(default=40.0, ge=5.0, le=300.0),
+    rise: float = Query(default=120.0, ge=5.0, le=1800.0),
+    fall: float = Query(default=40.0, ge=5.0, le=1800.0),
+    maxValue: int = Query(default=200, ge=1, le=255),
+):
+    """Start the Muse test rig: settling score → brightness on every lamp.
+
+    No positions, no distance — one broadcast, whatever is powered on lights up.
+    """
+    if _brain_running():
+        raise HTTPException(409, detail="brain test already running")
+
+    muse = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--json",
+            "--anchor", str(anchor), "--rise", str(rise), "--fall", str(fall)]
+    if ppg:
+        muse.append("--ppg")
+    bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
+                  "--status", "--max-value", str(maxValue)]
+    cmd = "%s | %s" % (" ".join(shlex.quote(a) for a in muse),
+                       " ".join(shlex.quote(a) for a in bridge_cmd))
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            cmd, stdout=asyncio.subprocess.PIPE, start_new_session=True)
+    except Exception as exc:
+        raise HTTPException(500, detail=f"could not start muse: {exc}")
+
+    _brain.update(proc=proc, started=time.monotonic(),
+                  status={"event": "brain_status", "phase": "waiting", "settle": 0.0})
+    _brain["task"] = asyncio.create_task(_brain_pump(proc))
+    logger.info("brain test started: %s", cmd)
+    return _ok("brain test started")
+
+
+def _brain_lamps_off():
+    """Best effort — killing the process must not depend on the master being up,
+    or an unplugged serial cable leaves a Muse process with no way to stop it."""
+    try:
+        _send({"cmd": "animation_off"})
+    except Exception as exc:
+        logger.warning("could not turn lamps off after brain stop: %s", exc)
+
+
+@app.post("/brain/stop")
+async def brain_stop():
+    proc = _brain["proc"]
+    if not _brain_running():
+        _brain_lamps_off()
+        return _ok("not running")
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if _brain["task"]:
+        _brain["task"].cancel()
+    _brain.update(proc=None, task=None, status={})
+    # SIGTERM doesn't give muse_bridge a chance to tidy up, and shimmer is an
+    # endless animation the idle loop will otherwise wait out forever.
+    _brain_lamps_off()
+    logger.info("brain test stopped")
+    return _ok("brain test stopped")
+
+
+@app.get("/brain/status")
+async def brain_status():
+    running = _brain_running()
+    return {
+        "running": running,
+        "uptime": round(time.monotonic() - _brain["started"], 1) if running else 0.0,
+        "settle": _brain["status"].get("settle", 0.0),
+        "value": _brain["status"].get("value", 0),
+        "phase": _brain["status"].get("phase", "stopped" if not running else "waiting"),
+        "session": _brain["status"].get("session", 0.0),
+        "contact": _brain["status"].get("contact", 0),
+        "bpm": _brain["status"].get("bpm"),
+        "battery": _brain["status"].get("battery"),
+    }
 
 
 _build_dir = os.path.join(os.path.dirname(__file__), "..", "sparkles-ui", "build")

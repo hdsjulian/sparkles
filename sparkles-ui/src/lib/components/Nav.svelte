@@ -15,6 +15,7 @@
     { href: '/animations',  label: 'Animations',   icon: '✨', roles: ['admin', 'user'] },
     { href: '/midi',        label: 'MIDI',         icon: '🎵', roles: ['admin', 'user'] },
     { href: '/darkroom',    label: 'Darkroom',     icon: '🌑', roles: ['admin', 'user'] },
+    { href: '/brain',       label: 'Brain (test)', icon: '🧠', roles: ['admin'] },
     { href: '/calibration', label: 'Calibration',  icon: '📐', roles: ['admin'] },
     { href: '/log',         label: 'Serial Log',   icon: '📋', roles: ['admin'] },
     { href: '/timertest',   label: 'Timer Test',   icon: '⏱',  roles: ['admin'] },
