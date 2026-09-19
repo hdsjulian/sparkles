@@ -99,8 +99,24 @@ async def _serial_status_broadcaster():
 
 
 @asynccontextmanager
+def _brain_sweep_strays():
+    """Kill any muse pipeline left over from a previous run of this service.
+
+    brain_start spawns into its own process group so one stop can take the
+    whole pipeline down — but that also means a service restart orphans it
+    rather than killing it. The orphan keeps the headband connected forever,
+    and the new instance knows nothing about it, so the next session sits at
+    "waiting for the headband" against a headband that is very much in use."""
+    for name in ("muse.py", "muse_bridge.py"):
+        try:
+            subprocess.run(["pkill", "-f", os.path.join(_MUSE_DIR, name)], timeout=5)
+        except Exception as exc:
+            logger.debug("stray sweep for %s: %s", name, exc)
+
+
 async def lifespan(app: FastAPI):
     auth.bootstrap()
+    _brain_sweep_strays()
     loop = asyncio.get_event_loop()
     bridge._port = SERIAL_PORT
     try:
@@ -113,6 +129,14 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_mesh_event_watcher())
     asyncio.create_task(_map_measurement_collector())
     yield
+    # Take the pipeline with us: systemd sends SIGTERM here, and without this
+    # the headband stays held by a process nothing is tracking any more.
+    if _brain_running():
+        logger.info("stopping brain test before shutdown")
+        try:
+            os.killpg(os.getpgid(_brain["proc"].pid), signal.SIGTERM)
+        except Exception as exc:
+            logger.warning("could not stop brain test: %s", exc)
     bridge.stop()
 
 
