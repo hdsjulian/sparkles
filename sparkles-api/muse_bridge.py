@@ -184,6 +184,14 @@ def main():
                     "bpm":     s.get("bpm"),
                     "battery": s.get("battery"),
                 }), flush=True)
+            elif args.diag and (now - s.get("_seen", 0.0)) > 2.0:
+                # Say so rather than reprinting the last good frame forever --
+                # stale numbers presented as live is worse than no numbers.
+                gap = now - s["_seen"] if s.get("_seen") else 0.0
+                print(f"lamp {frame['value']:3d}/255  NO DATA for {gap:4.1f}s  "
+                      f"(last: contact {s.get('contact', 0)}/4, "
+                      f"link {s.get('link', 0.0):.1f}s, drops {s.get('drops', 0)})",
+                      file=sys.stderr, flush=True)
             elif args.diag:
                 # stderr on purpose: stdout is the lamp stream when piped, and
                 # muse.py logs here too, so one terminal shows the whole chain.
