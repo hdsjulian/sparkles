@@ -209,6 +209,14 @@ def main():
                       f"pps {s.get('pps', 0):5.1f}  "
                       f"bpm {s.get('bpm') or 0:3.0f}  bat {s.get('battery') or 0:3.0f}%  "
                       f"| {ch}", file=sys.stderr, flush=True)
+                sc = s.get("scores") or {}
+                if sc:
+                    ev = s.get("evidence")
+                    print("      evidence " + ("--" if ev is None else f"{ev:.2f}")
+                          + f" (need >{s.get('bias', 0.6):.2f})   "
+                          + "  ".join(f"{k} {'--' if v is None else format(v, '.2f')}"
+                                      for k, v in sc.items()),
+                          file=sys.stderr, flush=True)
             else:
                 log.info("settle %.2f → value %3d   phase %-8s contact %s/4",
                          settle, frame["value"], s.get("phase", "waiting"),

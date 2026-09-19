@@ -101,7 +101,7 @@ ALPHA_INFLUENCE = 0.3   # how far the fakeable channels can move the score
 # arrived. Above 0.5 so the score is not a ratchet: drifting back to your
 # arrival state has to let the light recede, or the room stays lit for someone
 # who settled once and then went back to fidgeting.
-EVIDENCE_BIAS = 0.6
+EVIDENCE_BIAS = 0.6      # overridden by --bias in main
 
 
 def _uuid(short: int) -> str:
@@ -139,6 +139,9 @@ parser.add_argument("--rise",     type=float, default=120.0,
                     help="Seconds of perfect evidence to go from 0 to full settle")
 parser.add_argument("--fall",     type=float, default=40.0,
                     help="Seconds to fall back to 0 when the visitor tenses up")
+parser.add_argument("--bias",     type=float, default=0.6,
+                    help="Evidence needed to hold the level, where 0.5 is exactly "
+                         "how they arrived (default 0.6 — lower is easier to earn)")
 parser.add_argument("--flat-uv",  type=float, default=FLAT_UV,
                     help=f"Below this 2-44Hz amplitude an electrode counts as "
                          f"detached (default {FLAT_UV})")
@@ -151,6 +154,7 @@ parser.add_argument("--no-reconnect", action="store_true",
 args = parser.parse_args()
 
 PRESET = args.preset or ("p50" if args.ppg else "p21")
+EVIDENCE_BIAS = args.bias
 FLAT_UV = args.flat_uv
 RAILED_UV = args.railed_uv
 
@@ -349,7 +353,8 @@ class Settle:
         scored = {n: b.score(ch.get(n)) for n, b in self.base.items()}
         honest = [scored[n] for n in ("still", "emg", "bpm") if scored[n] is not None]
         if not honest:
-            return {"settle": self.level, "session": elapsed, "phase": "live"}
+            return {"settle": self.level, "session": elapsed, "phase": "live",
+                    "evidence": None, "scores": {}}
 
         # Geometric mean, not a sum: a visitor sitting perfectly still with a
         # clenched jaw should not be able to average their way to a lit room.
@@ -367,7 +372,10 @@ class Settle:
         drift = max(-1.0, min(1.0, drift))
         self.level += drift * dt / (args.rise if drift >= 0 else args.fall)
         self.level = max(0.0, min(1.0, self.level))
-        return {"settle": self.level, "session": elapsed, "phase": "live"}
+        return {"settle": self.level, "session": elapsed, "phase": "live",
+                "evidence": evidence,
+                "scores": {k: (None if v is None else round(v, 3))
+                           for k, v in scored.items()}}
 
 
 def _band_powers(x: np.ndarray) -> dict:
@@ -634,6 +642,9 @@ class Muse:
             "drops": self.drops,
             "channels": {ch: (None if a is None else round(a, 1))
                          for ch, a in amps.items()},
+            "evidence": (None if st.get("evidence") is None
+                         else round(st["evidence"], 3)),
+            "scores": st.get("scores", {}),
         }
         if bpm:
             out["bpm"] = round(bpm, 1)
