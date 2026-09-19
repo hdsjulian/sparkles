@@ -63,6 +63,8 @@ PPG_FS = 64.0           # PPG sample rate
 ACC_FS = 52.0           # accelerometer sample rate
 RETRY_DELAY = 3.0
 KEEPALIVE = 5.0         # must beat the headband's ~7.5s control-idle timeout
+CONNECT_TIMEOUT = 20.0  # BlueZ can sit in Connect() long past bleak's own timeout
+SETUP_TIMEOUT = 20.0    # subscribing to seven characteristics, one at a time
 
 EEG_LSB      = 0.48828125   # µV per count, 12 bits over a 2 mVpp range
 ACCEL_SCALE  = 0.0000610352 # g per count
@@ -618,54 +620,66 @@ async def _keepalive(client):
             return          # link is already gone; the session loop handles it
 
 
+async def _subscribe_and_start(client, muse):
+    # Control first, like muse-lsl: the replies to v1/s start coming back
+    # as soon as they are asked for.
+    await client.start_notify(CONTROL, muse.on_control)
+    for ch, uuid in EEG_CHANS.items():
+        await client.start_notify(uuid, muse.on_eeg(ch))
+    await client.start_notify(ACCEL, muse.on_accel)
+    await client.start_notify(TELEMETRY, muse.on_telemetry)
+    if args.ppg:
+        await client.start_notify(PPG_IR, muse.on_ppg)
+
+    await client.write_gatt_char(CONTROL, _cmd("v1"), response=False)
+    await client.write_gatt_char(CONTROL, _cmd(PRESET), response=False)
+    await client.write_gatt_char(CONTROL, _cmd("s"), response=False)
+    await client.write_gatt_char(CONTROL, _cmd("d"), response=False)
+
+
 async def run_session(device, muse):
     dropped = asyncio.Event()
     started = time.monotonic()
     muse.drop_stale_signal()
 
-    async with BleakClient(device, disconnected_callback=lambda _c: dropped.set()) as client:
-        log.info("connected to %s", device.address)
+    client = BleakClient(device, disconnected_callback=lambda _c: dropped.set(),
+                         timeout=CONNECT_TIMEOUT)
+    # Every step is bounded. BlueZ will happily block forever on a stale link,
+    # and hanging with nothing in the log is the worst way for this to fail —
+    # far better to give up, say so, and scan again.
+    log.info("connecting to %s…", device.address)
+    await asyncio.wait_for(client.connect(), timeout=CONNECT_TIMEOUT)
+    log.info("connected to %s", device.address)
 
-        # Control first, like muse-lsl: the replies to v1/s start coming back
-        # as soon as they are asked for.
-        await client.start_notify(CONTROL, muse.on_control)
-        for ch, uuid in EEG_CHANS.items():
-            await client.start_notify(uuid, muse.on_eeg(ch))
-        await client.start_notify(ACCEL, muse.on_accel)
-        await client.start_notify(TELEMETRY, muse.on_telemetry)
-        if args.ppg:
-            await client.start_notify(PPG_IR, muse.on_ppg)
-
-        await client.write_gatt_char(CONTROL, _cmd("v1"), response=False)
-        await client.write_gatt_char(CONTROL, _cmd(PRESET), response=False)
-        await client.write_gatt_char(CONTROL, _cmd("s"), response=False)
-        await client.write_gatt_char(CONTROL, _cmd("d"), response=False)
+    alive = None
+    try:
+        await asyncio.wait_for(_subscribe_and_start(client, muse), timeout=SETUP_TIMEOUT)
         log.info("streaming (preset %s) — ctrl-c to stop", PRESET)
 
         meters = None if args.json else Meters()
         period = 1.0 / args.rate
         next_at = time.monotonic()
         alive = asyncio.create_task(_keepalive(client))
-        try:
-            while not dropped.is_set():
-                next_at += period
-                await asyncio.sleep(max(0.0, next_at - time.monotonic()))
-                s = muse.sample()
-                if s is None:
-                    continue
-                if meters:
-                    meters.draw(s)
-                else:
-                    print(json.dumps(s), flush=True)
-        finally:
+        while not dropped.is_set():
+            next_at += period
+            await asyncio.sleep(max(0.0, next_at - time.monotonic()))
+            s = muse.sample()
+            if s is None:
+                continue
+            if meters:
+                meters.draw(s)
+            else:
+                print(json.dumps(s), flush=True)
+    finally:
+        if alive:
             alive.cancel()
+        for coro in (client.write_gatt_char(CONTROL, _cmd("h"), response=False),
+                     client.disconnect()):
             try:
-                await client.write_gatt_char(CONTROL, _cmd("h"), response=False)
+                await asyncio.wait_for(coro, timeout=5.0)
             except Exception:
                 pass
 
-    # The duration is the diagnostic: the same number every time is something
-    # hanging up on us, a scattered one is the radio link failing.
     log.warning("headband disconnected after %.1fs", time.monotonic() - started)
 
 
