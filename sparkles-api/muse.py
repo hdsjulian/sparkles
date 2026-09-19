@@ -44,8 +44,10 @@ import asyncio
 import json
 import logging
 import math
+import queue
 import struct
 import sys
+import threading
 import time
 from collections import deque
 
@@ -57,6 +59,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger("muse")
+writer = None          # set in main(); stdout never written from the event loop
 
 EEG_FS = 256.0          # EEG sample rate, fixed by the headband
 PPG_FS = 64.0           # PPG sample rate
@@ -194,6 +197,50 @@ class AutoRange:
         self.hi = mid + (self.hi - mid) * self.decay
         span = self.hi - self.lo
         return 0.5 if span < 1e-9 else min(1.0, max(0.0, (x - self.lo) / span))
+
+
+class FrameWriter:
+    """stdout, written from its own thread.
+
+    print() from inside the event loop looks harmless until the reader is slow:
+    the pipe fills, the write blocks, and it takes the whole loop down with it —
+    no BLE notifications serviced, no keepalive sent. That showed up as the
+    packet rate collapsing to 0 and then bursting to 112/s (above the headband's
+    physical maximum) when the pipe finally drained, with the link timing out
+    because we had stopped talking. Frames are cheap and continuous, so dropping
+    a few beats stalling the radio."""
+
+    def __init__(self):
+        self.q = queue.Queue(maxsize=32)
+        self.dropped = 0
+        threading.Thread(target=self._run, daemon=True, name="stdout").start()
+
+    def _run(self):
+        while True:
+            line = self.q.get()
+            try:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+            except Exception:
+                return
+
+    def write(self, line: str):
+        try:
+            self.q.put_nowait(line)
+        except queue.Full:
+            self.dropped += 1
+
+
+async def _loop_lag_watch():
+    """The same loop services BLE notifications, so a stall here is a stall
+    there. Measure it rather than infer it from the packet rate."""
+    while True:
+        t = time.monotonic()
+        await asyncio.sleep(0.1)
+        lag = time.monotonic() - t - 0.1
+        if lag > 0.4:
+            log.warning("event loop stalled %.2fs — BLE notifications were not "
+                        "serviced during that time", lag)
 
 
 class Baseline:
@@ -754,7 +801,7 @@ async def run_session(device, muse):
             if meters:
                 meters.draw(s)
             else:
-                print(json.dumps(s), flush=True)
+                writer.write(json.dumps(s) + "\n")
     finally:
         if alive:
             alive.cancel()
@@ -772,6 +819,8 @@ async def run_session(device, muse):
 
 
 async def main():
+    global writer
+    writer = FrameWriter()
     if args.scan:
         devices = await scan_report()
         if args.json:
@@ -781,6 +830,7 @@ async def main():
                 print(f"{d['address']}  {d['name']}  {d['rssi']} dBm")
         return
 
+    asyncio.create_task(_loop_lag_watch())
     # One Muse for the whole run. A reconnect must not wipe the visitor's
     # baselines — losing the link for three seconds is not a new person, and
     # rebuilding this per session meant the anchor window could never finish.
