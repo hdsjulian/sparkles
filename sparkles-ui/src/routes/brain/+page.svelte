@@ -100,8 +100,11 @@
   <div class="headband">
     {#if scanning}
       <span class="dim">scanning…</span>
+    {:else if running && phase === 'waiting'}
+      <span class="dim">connecting… (scan takes ~8s, then it subscribes)</span>
     {:else if running}
-      <span class="dim">headband held by this session</span>
+      <span class="found">● connected</span>
+      <span class="dim">contact {contact}/4</span>
     {:else if headband?.error}
       <span class="bad">scan failed: {headband.error}</span>
     {:else if headband?.devices?.length}
