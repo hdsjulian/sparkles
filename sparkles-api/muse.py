@@ -589,6 +589,7 @@ async def _keepalive(client):
 async def run_session(device):
     muse = Muse()
     dropped = asyncio.Event()
+    started = time.monotonic()
 
     async with BleakClient(device, disconnected_callback=lambda _c: dropped.set()) as client:
         log.info("connected to %s", device.address)
@@ -631,7 +632,9 @@ async def run_session(device):
             except Exception:
                 pass
 
-    log.warning("headband disconnected")
+    # The duration is the diagnostic: the same number every time is something
+    # hanging up on us, a scattered one is the radio link failing.
+    log.warning("headband disconnected after %.1fs", time.monotonic() - started)
 
 
 async def main():
