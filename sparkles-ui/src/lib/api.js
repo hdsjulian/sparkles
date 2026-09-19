@@ -289,3 +289,7 @@ export const brainStop = () =>
 
 export const getBrainStatus = () =>
   fetch(`${BASE}/brain/status`).then(r => r.json());
+
+// is the headband on and in range? skipped while a session holds the link
+export const getBrainDevices = () =>
+  fetch(`${BASE}/brain/devices`).then(r => r.json());

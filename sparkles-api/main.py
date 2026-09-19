@@ -1739,6 +1739,45 @@ async def brain_stop():
     return _ok("brain test stopped")
 
 
+@app.get("/brain/devices")
+async def brain_devices(timeout: float = Query(default=5.0, ge=1.0, le=15.0)):
+    """Is the headband on and reachable right now?
+
+    A BLE scan disturbs an active connection, so while the test is running we
+    report what that session already knows instead of scanning over the top
+    of it. Note an empty list is ambiguous: a Muse that is already connected
+    to something stops advertising, so "not found" means off OR taken.
+    """
+    if _brain_running():
+        st = _brain["status"]
+        return {"scanned": False, "running": True, "devices": [],
+                "contact": st.get("contact", 0), "phase": st.get("phase", "waiting")}
+
+    cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--scan", "--json"]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout + 15)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        raise HTTPException(504, detail="bluetooth scan timed out")
+    except Exception as exc:
+        raise HTTPException(500, detail=f"could not scan: {exc}")
+
+    lines = [l for l in out.decode(errors="replace").splitlines() if l.strip()]
+    if not lines:
+        detail = err.decode(errors="replace").strip()[-300:] or "no output from scan"
+        raise HTTPException(502, detail=detail)
+    try:
+        devices = json.loads(lines[-1])
+    except ValueError:
+        raise HTTPException(502, detail=f"unexpected scan output: {lines[-1][:200]}")
+    return {"scanned": True, "running": False, "devices": devices}
+
+
 @app.get("/brain/status")
 async def brain_status():
     running = _brain_running()

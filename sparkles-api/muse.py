@@ -577,6 +577,20 @@ class Meters:
         self.lines = len(rows)
 
 
+async def scan_report(timeout: float = 5.0):
+    """Every Muse in range, with signal strength. RSSI is the point: the drops
+    look like a marginal link, and a number beats guessing. Roughly, -60 is
+    comfortable, -80 is where a steady EEG stream starts to struggle."""
+    found = await BleakScanner.discover(timeout=timeout, return_adv=True)
+    out = []
+    for device, adv in found.values():
+        if device.name and device.name.lower().startswith("muse"):
+            out.append({"address": device.address, "name": device.name,
+                        "rssi": getattr(adv, "rssi", None)})
+    return sorted(out, key=lambda d: d["rssi"] if d["rssi"] is not None else -999,
+                  reverse=True)
+
+
 async def find_muse(address: str = None):
     """Returns BLEDevice objects, never bare addresses.
 
@@ -657,8 +671,12 @@ async def run_session(device, muse):
 
 async def main():
     if args.scan:
-        for d in await find_muse():
-            print(f"{d.address}  {d.name}")
+        devices = await scan_report()
+        if args.json:
+            print(json.dumps(devices), flush=True)
+        else:
+            for d in devices:
+                print(f"{d['address']}  {d['name']}  {d['rssi']} dBm")
         return
 
     # One Muse for the whole run. A reconnect must not wipe the visitor's

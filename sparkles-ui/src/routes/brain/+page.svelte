@@ -1,12 +1,14 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { brainStart, brainStop, getBrainStatus } from '$lib/api.js';
+  import { brainStart, brainStop, getBrainStatus, getBrainDevices } from '$lib/api.js';
   import { brainStatus } from '$lib/stores.js';
 
   let error = '';
   let running = false;
   let busy = false;
   let poll;
+  let headband = null;      // last scan result
+  let scanning = false;
 
   // knobs worth reaching for while bringing this up on a lamp or two
   let anchor = 40;
@@ -22,7 +24,7 @@
 
   const phaseText = {
     waiting: 'waiting for the headband',
-    anchor:  'learning their baseline — lamps stay dark',
+    anchor:  'learning your baseline — lamps stay dark',
     live:    'listening',
     stopped: 'not running',
   };
@@ -33,6 +35,17 @@
       running = st.running;
       if (st.running) brainStatus.set(st);
     } catch { /* the page is useful even if a poll misses */ }
+  }
+
+  async function scan() {
+    scanning = true;
+    try {
+      headband = await getBrainDevices();
+    } catch (e) {
+      headband = { error: e.message };
+    } finally {
+      scanning = false;
+    }
   }
 
   async function start() {
@@ -51,11 +64,16 @@
       await brainStop();
       running = false;
       brainStatus.set(null);
+      scan();                 // confirm the headband let go of the link
     } catch (e) { error = e.message; }
     finally { busy = false; }
   }
 
-  onMount(() => { refresh(); poll = setInterval(refresh, 3000); });
+  onMount(() => {
+    refresh();
+    scan();
+    poll = setInterval(refresh, 3000);
+  });
   onDestroy(() => clearInterval(poll));
 </script>
 
@@ -77,6 +95,25 @@
       <button class="start" on:click={start} disabled={busy}>Start</button>
     {/if}
     <span class="phase" class:live={phase === 'live'}>{phaseText[phase] ?? phase}</span>
+  </div>
+
+  <div class="headband">
+    {#if scanning}
+      <span class="dim">scanning…</span>
+    {:else if running}
+      <span class="dim">headband held by this session</span>
+    {:else if headband?.error}
+      <span class="bad">scan failed: {headband.error}</span>
+    {:else if headband?.devices?.length}
+      {#each headband.devices as d}
+        <span class="found">● {d.name}</span>
+        <span class="dim">{d.rssi} dBm{d.rssi > -70 ? '' : d.rssi > -80 ? ' (weak)' : ' (very weak)'}</span>
+      {/each}
+    {:else if headband}
+      <span class="bad">● no headband found</span>
+      <span class="dim">switched off, or already connected to a phone</span>
+    {/if}
+    <button class="link" on:click={scan} disabled={scanning || running}>rescan</button>
   </div>
 
   <div class="meter">
@@ -119,6 +156,17 @@
   .start { background: #2d7d46; }
   .stop  { background: #9b3030; }
   .phase { color: #888; }
+  .headband {
+    display: flex; align-items: center; gap: 0.6rem;
+    margin-bottom: 0.8rem; font-size: 0.9rem;
+  }
+  .headband .found { color: #7ec699; }
+  .headband .bad { color: #d98080; }
+  .headband .dim { color: #777; }
+  button.link {
+    background: none; border: none; color: #6b9bd1;
+    text-decoration: underline; cursor: pointer; padding: 0; font-size: 0.85rem;
+  }
   .phase.live { color: #7ec699; }
   .meter {
     height: 28px; background: #111; border: 1px solid #333;
