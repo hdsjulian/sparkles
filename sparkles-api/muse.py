@@ -233,6 +233,7 @@ class Settle:
     mechanism: the only way to win is to be patient."""
 
     def __init__(self):
+        self.last_t = None      # deliberately not cleared by reset()
         self.reset()
 
     def reset(self):
@@ -249,6 +250,15 @@ class Settle:
         }
 
     def update(self, now: float, dt: float, live: bool, ch: dict) -> dict:
+        # A gap in calls means the link was down. A few seconds of that is a
+        # dropped connection, not a new person — only a long one starts over.
+        gap = None if self.last_t is None else now - self.last_t
+        self.last_t = now
+        if gap is not None and gap > SESSION_DROP and self.t0 is not None:
+            log.info("no data for %.0fs — starting a fresh visitor", gap)
+            self.reset()
+            self.last_t = now
+
         if not live:
             # Headband off or slipping. Bleed the level away, and once they have
             # really gone, forget them so the next visitor starts clean.
@@ -406,6 +416,14 @@ class Muse:
         if np.abs(centred).max() > BLINK_UV:
             self.blink_until = now + BLINK_HOLD
             self.blink_pending = True
+
+    def drop_stale_signal(self):
+        """Called on reconnect. The samples either side of an outage are not
+        continuous, so throw them away — but the visitor's session carries on."""
+        for buf in self.eeg.values():
+            buf.clear()
+        self.ppg.clear()
+        self.acc_mag.clear()
 
     def _emg(self):
         """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
@@ -586,10 +604,10 @@ async def _keepalive(client):
             return          # link is already gone; the session loop handles it
 
 
-async def run_session(device):
-    muse = Muse()
+async def run_session(device, muse):
     dropped = asyncio.Event()
     started = time.monotonic()
+    muse.drop_stale_signal()
 
     async with BleakClient(device, disconnected_callback=lambda _c: dropped.set()) as client:
         log.info("connected to %s", device.address)
@@ -643,6 +661,10 @@ async def main():
             print(f"{d.address}  {d.name}")
         return
 
+    # One Muse for the whole run. A reconnect must not wipe the visitor's
+    # baselines — losing the link for three seconds is not a new person, and
+    # rebuilding this per session meant the anchor window could never finish.
+    muse = Muse()
     while True:
         try:
             # Rescan every attempt: a BLEDevice from a previous pass is stale
@@ -654,7 +676,7 @@ async def main():
                 continue
             device = found[0]
             log.info("found %s (%s)", device.name, device.address)
-            await run_session(device)
+            await run_session(device, muse)
         except asyncio.CancelledError:
             raise
         except Exception as e:
