@@ -363,6 +363,13 @@ class Muse:
         self.acc_mag = deque(maxlen=int(ACC_FS * 12))
         self.settle = Settle()
         self.last_update = None
+        # A healthy link delivers ~85 eeg packets/s (4 channels, 21.3 each).
+        # Watching that number is how a stall shows itself before the link dies.
+        self.packets = 0
+        self.pkt_mark = time.monotonic()
+        self.pkt_rate = 0.0
+        self.link_since = None
+        self.drops = 0
         self.accel = (0.0, 0.0, 1.0)
         self.battery = None
         self.bands = None                      # smoothed relative powers
@@ -382,6 +389,7 @@ class Muse:
             if len(data) < 20:
                 return
             samples = _unpack_eeg(bytes(data))
+            self.packets += 1
             buf.extend(samples)
             if channel in FRONTAL:
                 self._check_blink(samples)
@@ -543,6 +551,12 @@ class Muse:
         now = time.monotonic()
         dt = 0.0 if self.last_update is None else min(now - self.last_update, 1.0)
         self.last_update = now
+
+        elapsed = now - self.pkt_mark
+        if elapsed >= 1.0:
+            self.pkt_rate = self.packets / elapsed
+            self.packets = 0
+            self.pkt_mark = now
         st = self.settle.update(now, dt, len(good) >= SETTLE_CONTACT, {
             "still": self._stillness(),
             "emg":   self._emg(),
@@ -564,6 +578,9 @@ class Muse:
             "roll": round(roll, 1),
             "blink": blink,
             "contact": len(good),
+            "pps": round(self.pkt_rate, 1),
+            "link": round(now - self.link_since, 1) if self.link_since else 0.0,
+            "drops": self.drops,
             "channels": {ch: (None if a is None else round(a, 1))
                          for ch, a in amps.items()},
         }
@@ -690,6 +707,7 @@ async def run_session(device, muse):
     log.info("connecting to %s…", device.address)
     await asyncio.wait_for(client.connect(), timeout=CONNECT_TIMEOUT)
     log.info("connected to %s", device.address)
+    muse.link_since = time.monotonic()
 
     alive = None
     try:
@@ -720,7 +738,10 @@ async def run_session(device, muse):
             except Exception:
                 pass
 
-    log.warning("headband disconnected after %.1fs", time.monotonic() - started)
+    muse.drops += 1
+    muse.link_since = None
+    log.warning("headband disconnected after %.1fs (drop #%d this run)",
+                time.monotonic() - started, muse.drops)
 
 
 async def main():

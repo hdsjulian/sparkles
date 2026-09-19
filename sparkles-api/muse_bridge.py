@@ -16,9 +16,19 @@ and nothing in the running system needs changing.
 The whole mapping is one line — brightness = settle — on purpose. If a lamp is
 dark you know the score is low, not that some animation curve ate it.
 
-Run:
-    python muse.py --json --ppg | python muse_bridge.py
-    python muse.py --json | python muse_bridge.py --dry-run     # print, don't send
+Run by hand, lamps live and everything on screen (stdout carries the lamp
+stream, both scripts log to stderr, so one terminal shows the whole chain):
+
+    python muse.py --json --preset p21 | python muse_bridge.py --diag
+
+    lamp   0/255  settle 0.00  anchor  contact 4/4  link  62.3s  drops 0
+      pps  85.1  bpm  61  bat  58%  | TP9 44  AF7 51  AF8 39  TP10 47
+
+pps is the one to watch: a healthy link delivers ~85 eeg packets/s, and a stall
+shows up there before the connection actually dies. Other modes:
+
+    python muse.py --json --ppg | python muse_bridge.py           # quiet
+    python muse.py --json | python muse_bridge.py --dry-run       # no lamps
 
 Ctrl-c sends animation_off so the idle animation loop takes the lamps back —
 BACKGROUND_SHIMMER is endless, and the loop will otherwise wait it out forever.
@@ -54,6 +64,9 @@ parser.add_argument("--max-value",  type=int, default=200,
                     help="Brightness at settle 1 (default 200)")
 parser.add_argument("--smooth",     type=float, default=0.6,
                     help="Seconds to catch up to a change in settle")
+parser.add_argument("--diag",       action="store_true",
+                    help="Print a full diagnostic line per second on STDERR, while "
+                         "still driving the lamps — for running this by hand")
 parser.add_argument("--status",     action="store_true",
                     help="Print one status JSON line per second on stdout (FastAPI reads these)")
 parser.add_argument("--dry-run",    action="store_true",
@@ -171,6 +184,20 @@ def main():
                     "bpm":     s.get("bpm"),
                     "battery": s.get("battery"),
                 }), flush=True)
+            elif args.diag:
+                # stderr on purpose: stdout is the lamp stream when piped, and
+                # muse.py logs here too, so one terminal shows the whole chain.
+                ch = "  ".join(
+                    f"{name} {'--' if uv is None else format(uv, '.0f')}"
+                    for name, uv in (s.get("channels") or {}).items())
+                link = s.get("link", 0.0)
+                print(f"lamp {frame['value']:3d}/255  settle {settle:.2f}  "
+                      f"{s.get('phase', 'waiting'):<7} "
+                      f"contact {s.get('contact', 0)}/4  "
+                      f"link {link:5.1f}s  drops {s.get('drops', 0)}  "
+                      f"pps {s.get('pps', 0):5.1f}  "
+                      f"bpm {s.get('bpm') or 0:3.0f}  bat {s.get('battery') or 0:3.0f}%  "
+                      f"| {ch}", file=sys.stderr, flush=True)
             else:
                 log.info("settle %.2f → value %3d   phase %-8s contact %s/4",
                          settle, frame["value"], s.get("phase", "waiting"),
