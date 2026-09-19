@@ -62,6 +62,7 @@ EEG_FS = 256.0          # EEG sample rate, fixed by the headband
 PPG_FS = 64.0           # PPG sample rate
 ACC_FS = 52.0           # accelerometer sample rate
 RETRY_DELAY = 3.0
+KEEPALIVE = 8.0         # the headband drops a link that looks idle on control
 
 EEG_LSB      = 0.48828125   # µV per count, 12 bits over a 2 mVpp range
 ACCEL_SCALE  = 0.0000610352 # g per count
@@ -544,19 +545,39 @@ class Meters:
         self.lines = len(rows)
 
 
-async def find_muse():
+async def find_muse(address: str = None):
+    """Returns BLEDevice objects, never bare addresses.
+
+    Handing BleakClient an address string makes the BlueZ backend go and resolve
+    it to a dbus path of its own accord, and the Muse only advertises in bursts —
+    by the time it looks, the cache has gone cold and you get "Device with
+    address ... was not found" despite the scan having just seen it."""
     log.info("scanning for a Muse…")
+    if address:
+        device = await BleakScanner.find_device_by_address(address, timeout=8.0)
+        return [device] if device else []
     devices = await BleakScanner.discover(timeout=8.0)
-    found = [d for d in devices if d.name and d.name.lower().startswith("muse")]
-    return found
+    return [d for d in devices if d.name and d.name.lower().startswith("muse")]
 
 
-async def run_session(address: str):
+async def _keepalive(client):
+    """Poke the control characteristic periodically. Streaming notifications on
+    their own do not count as activity — the headband hangs up on a control
+    channel that has gone quiet, which reads as random disconnects."""
+    while True:
+        await asyncio.sleep(KEEPALIVE)
+        try:
+            await client.write_gatt_char(CONTROL, _cmd("k"), response=False)
+        except Exception:
+            return          # link is already gone; the session loop handles it
+
+
+async def run_session(device):
     muse = Muse()
     dropped = asyncio.Event()
 
-    async with BleakClient(address, disconnected_callback=lambda _c: dropped.set()) as client:
-        log.info("connected to %s", address)
+    async with BleakClient(device, disconnected_callback=lambda _c: dropped.set()) as client:
+        log.info("connected to %s", device.address)
 
         for ch, uuid in EEG_CHANS.items():
             await client.start_notify(uuid, muse.on_eeg(ch))
@@ -574,6 +595,7 @@ async def run_session(address: str):
         meters = None if args.json else Meters()
         period = 1.0 / args.rate
         next_at = time.monotonic()
+        alive = asyncio.create_task(_keepalive(client))
         try:
             while not dropped.is_set():
                 next_at += period
@@ -586,6 +608,7 @@ async def run_session(address: str):
                 else:
                     print(json.dumps(s), flush=True)
         finally:
+            alive.cancel()
             try:
                 await client.write_gatt_char(CONTROL, _cmd("h"), response=False)
             except Exception:
@@ -600,25 +623,24 @@ async def main():
             print(f"{d.address}  {d.name}")
         return
 
-    address = args.address
     while True:
         try:
-            if address is None:
-                found = await find_muse()
-                if not found:
-                    log.warning("no Muse found — is it on and out of the phone app?")
-                    await asyncio.sleep(RETRY_DELAY)
-                    continue
-                address = found[0].address
-                log.info("found %s (%s)", found[0].name, address)
-            await run_session(address)
+            # Rescan every attempt: a BLEDevice from a previous pass is stale
+            # once the link drops, and the headband has usually moved on anyway.
+            found = await find_muse(args.address)
+            if not found:
+                log.warning("no Muse found — is it on and out of the phone app?")
+                await asyncio.sleep(RETRY_DELAY)
+                continue
+            device = found[0]
+            log.info("found %s (%s)", device.name, device.address)
+            await run_session(device)
         except asyncio.CancelledError:
             raise
         except Exception as e:
             log.error("session failed: %s", e)
         if args.no_reconnect:
             return
-        address = args.address          # rescan unless pinned to an address
         await asyncio.sleep(RETRY_DELAY)
 
 
