@@ -1813,6 +1813,8 @@ async def brain_status():
         "phase": _brain["status"].get("phase", "stopped" if not running else "waiting"),
         "session": _brain["status"].get("session", 0.0),
         "contact": _brain["status"].get("contact", 0),
+        "connected": _brain["status"].get("connected", False),
+        "channels": _brain["status"].get("channels", {}),
         "bpm": _brain["status"].get("bpm"),
         "battery": _brain["status"].get("battery"),
     }

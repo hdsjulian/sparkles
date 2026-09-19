@@ -109,6 +109,7 @@ def _reader():
             continue
         with state_lock:
             state.update(msg)
+            state["_seen"] = time.monotonic()
     running = False
 
 
@@ -158,6 +159,10 @@ def main():
             if args.status:
                 print(json.dumps({
                     "event":   "brain_status",
+                    # connected is not the same as usable: frames can be
+                    # arriving from a headband that is barely touching skin.
+                    "connected": (now - s.get("_seen", 0.0)) < 3.0,
+                    "channels": s.get("channels", {}),
                     "settle":  round(settle, 4),
                     "value":   frame["value"],
                     "phase":   s.get("phase", "waiting"),

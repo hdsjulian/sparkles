@@ -21,6 +21,12 @@
   $: settle = s.settle ?? 0;
   $: phase = running ? (s.phase ?? 'waiting') : 'stopped';
   $: contact = s.contact ?? 0;
+  $: connected = s.connected ?? false;
+  $: channels = s.channels ?? {};
+  $: statusText = !running ? 'not running'
+    : !connected ? 'connecting…'
+    : contact < 2 ? `connected, but only ${contact}/4 electrodes — adjust the fit`
+    : (phaseText[phase] ?? phase);
 
   const phaseText = {
     waiting: 'waiting for the headband',
@@ -94,17 +100,22 @@
     {:else}
       <button class="start" on:click={start} disabled={busy}>Start</button>
     {/if}
-    <span class="phase" class:live={phase === 'live'}>{phaseText[phase] ?? phase}</span>
+    <span class="phase" class:live={phase === 'live' && contact >= 2}
+          class:warn={connected && contact < 2}>{statusText}</span>
   </div>
 
   <div class="headband">
     {#if scanning}
       <span class="dim">scanning…</span>
-    {:else if running && phase === 'waiting'}
+    {:else if running && !connected}
       <span class="dim">connecting… (scan takes ~8s, then it subscribes)</span>
     {:else if running}
       <span class="found">● connected</span>
-      <span class="dim">contact {contact}/4</span>
+      {#each Object.entries(channels) as [ch, uv]}
+        <span class:bad={uv === null || uv < 5 || uv > 900} class="dim">
+          {ch} {uv === null ? '?' : Math.round(uv)}µV
+        </span>
+      {/each}
     {:else if headband?.error}
       <span class="bad">scan failed: {headband.error}</span>
     {:else if headband?.devices?.length}
@@ -171,6 +182,7 @@
     text-decoration: underline; cursor: pointer; padding: 0; font-size: 0.85rem;
   }
   .phase.live { color: #7ec699; }
+  .phase.warn { color: #d9a441; }
   .meter {
     height: 28px; background: #111; border: 1px solid #333;
     border-radius: 4px; overflow: hidden;

@@ -70,8 +70,11 @@ EEG_LSB      = 0.48828125   # µV per count, 12 bits over a 2 mVpp range
 ACCEL_SCALE  = 0.0000610352 # g per count
 GYRO_SCALE   = 0.0074768    # deg/s per count
 
-FLAT_UV    = 2.0    # below this peak-to-peak the electrode isn't touching skin
-RAILED_UV  = 800.0  # above it we're picking up mains hum or a railed amp
+# Contact thresholds, on the 2-44Hz amplitude (see channel_amplitude). These
+# are starting guesses, not measurements — tune them with --flat-uv/--railed-uv
+# against what your own headband actually reports.
+FLAT_UV    = 5.0    # below this the electrode isn't on skin
+RAILED_UV  = 900.0  # above it something is very wrong with the contact
 BLINK_UV   = 110.0  # frontal excursion that counts as a blink
 BLINK_HOLD = 0.30   # refractory, seconds
 
@@ -133,6 +136,11 @@ parser.add_argument("--rise",     type=float, default=120.0,
                     help="Seconds of perfect evidence to go from 0 to full settle")
 parser.add_argument("--fall",     type=float, default=40.0,
                     help="Seconds to fall back to 0 when the visitor tenses up")
+parser.add_argument("--flat-uv",  type=float, default=FLAT_UV,
+                    help=f"Below this 2-44Hz amplitude an electrode counts as "
+                         f"detached (default {FLAT_UV})")
+parser.add_argument("--railed-uv", type=float, default=RAILED_UV,
+                    help=f"Above this it counts as bad contact (default {RAILED_UV})")
 parser.add_argument("--preset",   default=None,
                     help="Override the headband preset (default p50 with --ppg, else p21)")
 parser.add_argument("--no-reconnect", action="store_true",
@@ -140,6 +148,8 @@ parser.add_argument("--no-reconnect", action="store_true",
 args = parser.parse_args()
 
 PRESET = args.preset or ("p50" if args.ppg else "p21")
+FLAT_UV = args.flat_uv
+RAILED_UV = args.railed_uv
 
 
 def _cmd(text: str) -> bytes:
@@ -453,16 +463,37 @@ class Muse:
             return None
         return float(np.std(np.asarray(self.acc_mag)))
 
-    def _contact(self):
-        """Channels whose peak-to-peak looks like skin rather than air."""
-        good = []
+    def channel_amplitude(self):
+        """Per-channel peak-to-peak in microvolts, measured on 1-44Hz content.
+
+        Raw peak-to-peak was the wrong measure: a freshly placed electrode
+        drifts hundreds of microvolts below 1Hz, so a perfectly good channel
+        sailed past the railed threshold and was written off as detached.
+        Band-limiting drops that drift and the mains hum with it."""
+        need = int(EEG_FS * args.window)
+        out = {}
         for ch, buf in self.eeg.items():
-            if len(buf) < 32:
+            if len(buf) < need:
+                out[ch] = None
                 continue
-            x = np.asarray(buf)
-            if FLAT_UV < (x.max() - x.min()) < RAILED_UV:
-                good.append(ch)
-        return good
+            x = np.asarray(buf, dtype=float)[-need:]
+            # Detrend before filtering. A 2s window only resolves 0.5Hz, so a
+            # slow wander leaks straight through a 1Hz cutoff; fitting it out
+            # first is what actually removes it.
+            idx = np.arange(len(x))
+            x = x - np.polyval(np.polyfit(idx, x, 2), idx)
+            spectrum = np.fft.rfft(x)
+            freqs = np.fft.rfftfreq(len(x), 1.0 / EEG_FS)
+            spectrum[(freqs < 2.0) | (freqs >= 44.0)] = 0
+            band = np.fft.irfft(spectrum, n=len(x))
+            out[ch] = float(band.max() - band.min())
+        return out
+
+    def _contact(self, amps=None):
+        """Channels whose in-band amplitude looks like skin rather than air."""
+        amps = self.channel_amplitude() if amps is None else amps
+        return [ch for ch, a in amps.items()
+                if a is not None and FLAT_UV < a < RAILED_UV]
 
     def sample(self):
         """One frame of light-ready values, or None until the buffers fill."""
@@ -471,7 +502,8 @@ class Muse:
         if not ready:
             return None
 
-        good = set(self._contact())
+        amps = self.channel_amplitude()
+        good = set(self._contact(amps))
         use = [ch for ch in ready if ch in good] or ready   # fall back rather than stall
 
         totals = {b: 0.0 for b in BANDS}
@@ -532,6 +564,8 @@ class Muse:
             "roll": round(roll, 1),
             "blink": blink,
             "contact": len(good),
+            "channels": {ch: (None if a is None else round(a, 1))
+                         for ch, a in amps.items()},
         }
         if bpm:
             out["bpm"] = round(bpm, 1)
@@ -571,6 +605,12 @@ class Meters:
                     f"   pitch {s['pitch']:>6.1f}°  roll {s['roll']:>6.1f}°")
         bpm = f"{s['bpm']:.0f}" if "bpm" in s else "--"
         rows.append(f"  {'bpm':<6} {bpm:<6}  blink {'●' if s['blink'] else '·'}")
+        rows.append("")
+        fit = []
+        for ch, a in s.get("channels", {}).items():
+            mark = "·" if a is None else ("ok" if FLAT_UV < a < RAILED_UV else "--")
+            fit.append(f"{ch} {'?' if a is None else f'{a:.0f}'}µV {mark}")
+        rows.append("  " + "   ".join(fit))
 
         if self.lines:
             sys.stdout.write(f"\033[{self.lines}A")
