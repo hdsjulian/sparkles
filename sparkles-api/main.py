@@ -1805,19 +1805,20 @@ async def brain_devices(timeout: float = Query(default=5.0, ge=1.0, le=15.0)):
 @app.get("/brain/status")
 async def brain_status():
     running = _brain_running()
-    return {
-        "running": running,
-        "uptime": round(time.monotonic() - _brain["started"], 1) if running else 0.0,
-        "settle": _brain["status"].get("settle", 0.0),
-        "value": _brain["status"].get("value", 0),
-        "phase": _brain["status"].get("phase", "stopped" if not running else "waiting"),
-        "session": _brain["status"].get("session", 0.0),
-        "contact": _brain["status"].get("contact", 0),
-        "connected": _brain["status"].get("connected", False),
-        "channels": _brain["status"].get("channels", {}),
-        "bpm": _brain["status"].get("bpm"),
-        "battery": _brain["status"].get("battery"),
-    }
+    # Pass the whole last frame through rather than hand-picking fields. Every
+    # field muse_bridge adds otherwise needs plumbing here as well, and when
+    # that is missed the page just sees undefined and draws something wrong --
+    # which is exactly how "connecting..." survived an active connection.
+    st = dict(_brain["status"]) if running else {}
+    st.pop("event", None)
+    st["running"] = running
+    st["uptime"] = round(time.monotonic() - _brain["started"], 1) if running else 0.0
+    for key, default in (("settle", 0.0), ("value", 0), ("session", 0.0),
+                         ("contact", 0), ("connected", False), ("channels", {}),
+                         ("bpm", None), ("battery", None)):
+        st.setdefault(key, default)
+    st.setdefault("phase", "waiting" if running else "stopped")
+    return st
 
 
 _build_dir = os.path.join(os.path.dirname(__file__), "..", "sparkles-ui", "build")
