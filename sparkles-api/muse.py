@@ -62,7 +62,7 @@ EEG_FS = 256.0          # EEG sample rate, fixed by the headband
 PPG_FS = 64.0           # PPG sample rate
 ACC_FS = 52.0           # accelerometer sample rate
 RETRY_DELAY = 3.0
-KEEPALIVE = 8.0         # the headband drops a link that looks idle on control
+KEEPALIVE = 5.0         # must beat the headband's ~7.5s control-idle timeout
 
 EEG_LSB      = 0.48828125   # µV per count, 12 bits over a 2 mVpp range
 ACCEL_SCALE  = 0.0000610352 # g per count
@@ -346,6 +346,7 @@ class Muse:
         self.bands = None                      # smoothed relative powers
         self.blink_until = 0.0
         self.blink_pending = False
+        self.control_buf = ""
         self.calm_range = AutoRange()
         self.focus_range = AutoRange()
         self.started = time.monotonic()
@@ -363,6 +364,19 @@ class Muse:
             if channel in FRONTAL:
                 self._check_blink(samples)
         return handler
+
+    def on_control(self, _sender, data: bytearray):
+        """The headband answers v1/s here, as JSON split across packets: a length
+        byte then that many chars. We barely care what it says — but muse-lsl
+        subscribes to this and so must we, because the device hangs up when its
+        replies have nowhere to go."""
+        if not data:
+            return
+        n = data[0]
+        self.control_buf += bytes(data)[1:1 + n].decode("ascii", errors="replace")
+        if self.control_buf.rstrip().endswith("}"):
+            log.debug("control: %s", self.control_buf.strip())
+            self.control_buf = ""
 
     def on_accel(self, _sender, data: bytearray):
         if len(data) < 20:
@@ -579,6 +593,9 @@ async def run_session(device):
     async with BleakClient(device, disconnected_callback=lambda _c: dropped.set()) as client:
         log.info("connected to %s", device.address)
 
+        # Control first, like muse-lsl: the replies to v1/s start coming back
+        # as soon as they are asked for.
+        await client.start_notify(CONTROL, muse.on_control)
         for ch, uuid in EEG_CHANS.items():
             await client.start_notify(uuid, muse.on_eeg(ch))
         await client.start_notify(ACCEL, muse.on_accel)
