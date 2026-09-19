@@ -13,6 +13,20 @@
 set -e
 
 PI="${1:-${PI_HOST:-julian@sparkles.local}}"
+# Hardcoded on purpose, same as the sudo password in update.sh: local
+# installation, and being prompted twice a deploy is the actual cost here.
+# Override with PI_PASS. `ssh-copy-id "$PI"` once would retire this entirely.
+PI_PASS="${PI_PASS:-raspi}"
+
+if command -v sshpass >/dev/null 2>&1; then
+    SSH=(sshpass -p "$PI_PASS" ssh)
+    SCP=(sshpass -p "$PI_PASS" scp)
+else
+    echo "note: sshpass not installed — you will be prompted for the password"
+    echo "      brew install hudochenkov/sshpass/sshpass   (or run ssh-copy-id $PI once)"
+    SSH=(ssh)
+    SCP=(scp)
+fi
 REPO="$(cd "$(dirname "$0")" && pwd)"
 BRANCH="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
 BUNDLE=/tmp/sparkles-update.bundle
@@ -21,7 +35,7 @@ echo "=== Bundling $BRANCH ==="
 git -C "$REPO" bundle create "$BUNDLE" "$BRANCH"
 
 echo "=== Copying bundle to $PI ==="
-scp "$BUNDLE" "$PI:/tmp/sparkles-update.bundle"
+"${SCP[@]}" "$BUNDLE" "$PI:/tmp/sparkles-update.bundle"
 
 # Pull the bundle into the Pi's repo FIRST, from here — this updates update.sh
 # itself to the offline-capable version before we run it (bootstrap: the Pi's
@@ -31,7 +45,7 @@ echo "=== Pulling bundle + running update.sh on $PI ==="
 # auth_config.yaml is rewritten by auth.py at startup, so the pi's copy is always
 # dirty and this pull would abort on it. Set it aside first; update.sh (the fresh
 # one this pull installs) merges the live users back out of the copy.
-ssh -t "$PI" "set -e; cd ~/sparkles && \
+"${SSH[@]}" -t "$PI" "set -e; cd ~/sparkles && \
   if [ -f sparkles-api/auth_config.yaml ] && ! git diff --quiet -- sparkles-api/auth_config.yaml; then \
     cp sparkles-api/auth_config.yaml sparkles-api/auth_config.local.yaml && \
     git checkout -- sparkles-api/auth_config.yaml; \
