@@ -366,6 +366,8 @@ class Muse:
         # A healthy link delivers ~85 eeg packets/s (4 channels, 21.3 each).
         # Watching that number is how a stall shows itself before the link dies.
         self.packets = 0
+        self.total_packets = 0
+        self.control_replied = asyncio.Event()
         self.pkt_mark = time.monotonic()
         self.pkt_rate = 0.0
         self.link_since = None
@@ -390,6 +392,7 @@ class Muse:
                 return
             samples = _unpack_eeg(bytes(data))
             self.packets += 1
+            self.total_packets += 1
             buf.extend(samples)
             if channel in FRONTAL:
                 self._check_blink(samples)
@@ -405,8 +408,9 @@ class Muse:
         n = data[0]
         self.control_buf += bytes(data)[1:1 + n].decode("ascii", errors="replace")
         if self.control_buf.rstrip().endswith("}"):
-            log.debug("control: %s", self.control_buf.strip())
+            log.info("headband says: %s", self.control_buf.strip())
             self.control_buf = ""
+            self.control_replied.set()
 
     def on_accel(self, _sender, data: bytearray):
         if len(data) < 20:
@@ -677,6 +681,18 @@ async def _keepalive(client):
             return          # link is already gone; the session loop handles it
 
 
+async def _first_data_watch(muse, since):
+    """Say plainly whether the stream ever started. Accepting the commands and
+    then sending nothing looks identical to a healthy connection otherwise."""
+    for _ in range(100):
+        await asyncio.sleep(0.1)
+        if muse.total_packets:
+            log.info("first eeg packet %.1fs after start", time.monotonic() - since)
+            return
+    log.warning("no eeg packets 10s after start — the headband took the "
+                "commands but is not streaming")
+
+
 async def _subscribe_and_start(client, muse):
     # Control first, like muse-lsl: the replies to v1/s start coming back
     # as soon as they are asked for.
@@ -690,7 +706,17 @@ async def _subscribe_and_start(client, muse):
 
     await client.write_gatt_char(CONTROL, _cmd("v1"), response=False)
     await client.write_gatt_char(CONTROL, _cmd(PRESET), response=False)
+
+    # Wait for the headband to answer before telling it to stream. muse-lsl
+    # does this and we did not: firing all four writes back to back means 'd'
+    # can land while the preset is still being applied, and then it connects,
+    # reports streaming, and sends nothing at all.
+    muse.control_replied.clear()
     await client.write_gatt_char(CONTROL, _cmd("s"), response=False)
+    try:
+        await asyncio.wait_for(muse.control_replied.wait(), timeout=2.0)
+    except asyncio.TimeoutError:
+        log.warning("no reply to 's' — starting anyway, but it may not stream")
     await client.write_gatt_char(CONTROL, _cmd("d"), response=False)
 
 
@@ -718,6 +744,7 @@ async def run_session(device, muse):
         period = 1.0 / args.rate
         next_at = time.monotonic()
         alive = asyncio.create_task(_keepalive(client))
+        asyncio.create_task(_first_data_watch(muse, time.monotonic()))
         while not dropped.is_set():
             next_at += period
             await asyncio.sleep(max(0.0, next_at - time.monotonic()))
