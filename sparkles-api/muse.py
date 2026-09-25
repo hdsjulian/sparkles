@@ -41,10 +41,15 @@ on macOS the terminal needs Bluetooth permission (System Settings → Privacy).
 
 import argparse
 import asyncio
+import fcntl
 import json
 import logging
 import math
+import os
 import queue
+import re
+import shutil
+import signal
 import struct
 import sys
 import threading
@@ -67,6 +72,9 @@ ACC_FS = 52.0           # accelerometer sample rate
 RETRY_DELAY = 3.0
 KEEPALIVE = 5.0         # must beat the headband's ~7.5s control-idle timeout
 CONNECT_TIMEOUT = 20.0  # BlueZ can sit in Connect() long past bleak's own timeout
+LOCK_PATH = "/tmp/sparkles-muse.lock"
+LOCK_WAIT = 12.0        # a session that was just stopped may still be tearing down
+BLUETOOTHCTL = "bluetoothctl"
 SETUP_TIMEOUT = 20.0    # subscribing to seven characteristics, one at a time
 
 EEG_LSB      = 0.48828125   # µV per count, 12 bits over a 2 mVpp range
@@ -843,6 +851,65 @@ async def scan_report(timeout: float = 5.0):
                   reverse=True)
 
 
+def _session_lock():
+    """One muse session at a time.
+
+    The headband takes a single connection, so two sessions fight over it and
+    both measurements come out wrong — which has happened twice. The OS drops a
+    flock however the process dies, SIGKILL included, so a crash can never
+    leave it stuck. Holding it is also what makes _release_stale_link safe:
+    while we have the lock, no other session can own a Muse link."""
+    f = open(LOCK_PATH, "a+")
+    deadline = time.monotonic() + LOCK_WAIT
+    while True:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if time.monotonic() > deadline:
+                f.seek(0)
+                holder = f.read().strip() or "?"
+                f.close()
+                return None, holder
+            time.sleep(0.5)
+    f.seek(0)
+    f.truncate()
+    f.write(str(os.getpid()))
+    f.flush()
+    return f, None
+
+
+async def _release_stale_link():
+    """Disconnect any Muse BlueZ is still holding from a run that died.
+
+    BlueZ owns the connection, not the process that asked for it, so a session
+    killed without its teardown leaves the headband connected to nobody. A
+    connected Muse stops advertising, so every scan after that comes up empty —
+    the "waiting for the headband" after a Stop. Called between links, while
+    we hold the session lock, so any Muse connected now cannot be ours."""
+    if not shutil.which(BLUETOOTHCTL):
+        return
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            BLUETOOTHCTL, "devices", "Connected",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await asyncio.wait_for(proc.communicate(), 5.0)
+    except Exception:
+        return
+    for line in out.decode(errors="replace").splitlines():
+        parts = re.sub(r"\x1b\[[0-9;]*m", "", line).split(None, 2)
+        if len(parts) == 3 and parts[0] == "Device" and parts[2].lower().startswith("muse"):
+            log.warning("BlueZ is still holding %s from a run that did not tear "
+                        "down — releasing it", parts[2])
+            try:
+                p = await asyncio.create_subprocess_exec(
+                    BLUETOOTHCTL, "disconnect", parts[1],
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                await asyncio.wait_for(p.wait(), 10.0)
+            except Exception:
+                pass
+
+
 async def find_muse(address: str = None):
     """Returns BLEDevice objects, never bare addresses.
 
@@ -1027,6 +1094,26 @@ async def main():
                 print(f"{d['address']}  {d['name']}  {d['rssi']} dBm")
         return
 
+    lock, holder = _session_lock()
+    if lock is None:
+        log.error("another muse session is already running (pid %s) — stop it "
+                  "first; two sessions fight over a headband that takes one "
+                  "connection", holder)
+        raise SystemExit(1)
+
+    # Stop cleanly on SIGTERM, which is what the Brain page's Stop and the
+    # service's restart sweep both send, and on SIGINT even when it arrives
+    # ignored — a background job inherits SIGINT as ignored, and Python keeps
+    # it that way. Without this both skip the teardown: no halt, no disconnect,
+    # and BlueZ goes on holding a link nobody is reading.
+    main_task = asyncio.current_task()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, main_task.cancel)
+        except (NotImplementedError, RuntimeError):
+            pass
+
     # One Muse for the whole run. A reconnect must not wipe the visitor's
     # baselines — losing the link for three seconds is not a new person, and
     # rebuilding this per session meant the anchor window could never finish.
@@ -1042,13 +1129,17 @@ async def main():
                 pass
         else:
             await _run(muse)
+    except asyncio.CancelledError:
+        log.info("stopping — link torn down")
     finally:
         muse.stability.summary()
+        lock.close()
 
 
 async def _run(muse):
     while True:
         try:
+            await _release_stale_link()
             # Rescan every attempt: a BLEDevice from a previous pass is stale
             # once the link drops, and the headband has usually moved on anyway.
             found = await find_muse(args.address)

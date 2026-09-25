@@ -15,8 +15,11 @@ import asyncio
 import json
 import math
 import os
+import signal
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -311,6 +314,8 @@ async def stability():
     check("link length recorded", st.sessions and 0.8 < st.sessions[0] < 3.0,
           f"{st.sessions}")
 
+    muse.LOCK_PATH = os.path.join(tempfile.mkdtemp(), "muse.lock")
+    muse.BLUETOOTHCTL = "no-such-bluetoothctl"
     # a soak that ends on its own timer must not count its own shutdown as a drop
     saved = sys.stdout
     sys.stdout = open(os.devnull, "w")
@@ -353,6 +358,114 @@ async def stability():
     drops = [r for r in records if "drop(s)" in r and not r.startswith("stability:")]
     n = int(drops[0].split()[0]) if drops else 0
     check("flapping link counts every drop", n >= 2, drops)
+
+
+HARNESS = """
+import os, sys, asyncio
+sys.path.insert(0, %r)
+import test_muse
+from test_muse import muse, FakeClient, dev
+muse.LOCK_PATH = os.environ["LOCK"]
+muse.LOCK_WAIT = float(os.environ.get("LOCK_WAIT", "12"))
+muse.BLUETOOTHCTL = os.environ.get("BTCTL", "no-such-bluetoothctl")
+muse.RETRY_DELAY = 0.2
+FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 600}
+async def one(address=None):
+    return [dev]
+muse.find_muse = one
+disconnect, write = FakeClient.disconnect, FakeClient.write_gatt_char
+async def loud_disconnect(self):
+    print("FAKE disconnect", file=sys.stderr, flush=True)
+    await disconnect(self)
+async def loud_write(self, uuid, data, response=False):
+    if bytes(data[1:-1]) == b"h":
+        print("FAKE halt", file=sys.stderr, flush=True)
+    await write(self, uuid, data, response)
+FakeClient.disconnect, FakeClient.write_gatt_char = loud_disconnect, loud_write
+try:
+    asyncio.run(muse.main())
+except KeyboardInterrupt:
+    pass
+"""
+
+
+def shutdown():
+    print("shutdown and exclusivity (real processes, real signals)")
+    work = tempfile.mkdtemp()
+    harness = os.path.join(work, "harness.py")
+    with open(harness, "w") as f:
+        f.write(HARNESS % HERE)
+    lock = os.path.join(work, "muse.lock")
+
+    def spawn(**env):
+        # a background job inherits SIGINT as ignored — reproduce that
+        p = subprocess.Popen(
+            [sys.executable, "-u", harness], stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE, text=True, env=dict(os.environ, LOCK=lock, **env),
+            preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN))
+        lines = []
+        threading.Thread(target=lambda: [lines.append(l.rstrip()) for l in p.stderr],
+                         daemon=True).start()
+        return p, lines
+
+    def saw(lines, text, timeout):
+        end = time.time() + timeout
+        while time.time() < end:
+            if any(text in l for l in lines):
+                return True
+            time.sleep(0.05)
+        return False
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        name = signal.Signals(sig).name
+        p, lines = spawn()
+        streaming = saw(lines, "streaming", 10)
+        p.send_signal(sig)
+        try:
+            code = p.wait(timeout=12)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            code = None
+        check(f"{name} stops the session", streaming and code == 0, f"exit {code}")
+        check(f"{name} halts the headband", saw(lines, "FAKE halt", 1))
+        check(f"{name} disconnects", saw(lines, "FAKE disconnect", 1))
+        check(f"{name} prints the summary", saw(lines, "stability over", 1))
+
+    # a second session while one is running is refused, not left to fight
+    a, a_lines = spawn()
+    saw(a_lines, "streaming", 10)
+    b, b_lines = spawn(LOCK_WAIT="1")
+    try:
+        b_code = b.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        b.kill()
+        b_code = None
+    check("second session is refused", b_code == 1, f"exit {b_code}")
+    check("and says why", saw(b_lines, "already running", 1))
+
+    # Stop then Start straight away: the new one waits out the old teardown
+    a.send_signal(signal.SIGTERM)
+    c, c_lines = spawn(LOCK_WAIT="10")
+    check("start right after stop gets the headband", saw(c_lines, "streaming", 15))
+    a.wait(timeout=10)
+    c.send_signal(signal.SIGTERM)
+    c.wait(timeout=10)
+
+    # a link left behind by a killed run is released before scanning
+    btlog = os.path.join(work, "bt.log")
+    btctl = os.path.join(work, "bluetoothctl")
+    with open(btctl, "w") as f:
+        f.write('#!/bin/sh\n'
+                'if [ "$1" = devices ]; then echo "Device 00:55:DA:B8:36:70 Muse-3670"; fi\n'
+                f'if [ "$1" = disconnect ]; then echo "$2" >> {btlog}; fi\n')
+    os.chmod(btctl, 0o755)
+    d, d_lines = spawn(BTCTL=btctl)
+    saw(d_lines, "streaming", 10)
+    d.send_signal(signal.SIGTERM)
+    d.wait(timeout=10)
+    released = open(btlog).read().split() if os.path.exists(btlog) else []
+    check("stale link released before scanning", "00:55:DA:B8:36:70" in released, released)
+    check("and logged", saw(d_lines, "still holding Muse-3670", 1))
 
 
 def bridge_reconnect():
@@ -416,6 +529,7 @@ if __name__ == "__main__":
     print("ble lifecycle")
     asyncio.run(lifecycle())
     asyncio.run(stability())
+    shutdown()
     bridge_reconnect()
     print()
     if failures:
