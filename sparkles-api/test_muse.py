@@ -280,6 +280,81 @@ async def lifecycle():
 
 
 
+async def stability():
+    print("stability ledger")
+    muse.RETRY_DELAY = 0.2
+
+    async def one_muse(address=None):
+        return [dev]
+    muse.find_muse = one_muse
+
+    # a connect that fails is an attempt and a failure, not a link
+    FakeClient.behaviour = {"connect": "raise"}
+    m = muse.Muse()
+    try:
+        await muse.run_session(dev, m)
+    except RuntimeError:
+        pass
+    st = m.stability
+    check("failed connect counted", st.attempts == 1 and sum(st.failures.values()) == 1,
+          f"attempts {st.attempts}, failures {st.failures}")
+    check("failed connect is not a link", not st.sessions and st.drops == 0)
+
+    # a link the headband ends is a drop, with its length on the books
+    FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 1.0}
+    m = muse.Muse()
+    muse.writer = Sink()
+    await muse.run_session(dev, m)
+    st = m.stability
+    check("dropped link counted", st.drops == 1 and len(st.sessions) == 1,
+          f"drops {st.drops}, sessions {st.sessions}")
+    check("link length recorded", st.sessions and 0.8 < st.sessions[0] < 3.0,
+          f"{st.sessions}")
+
+    # a soak that ends on its own timer must not count its own shutdown as a drop
+    saved = sys.stdout
+    sys.stdout = open(os.devnull, "w")
+    try:
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 60}
+        muse.args.soak = 3 / 60
+        records = []
+
+        class H(__import__("logging").Handler):
+            def emit(self, r):
+                records.append(r.getMessage())
+        h = H()
+        muse.log.addHandler(h)
+        await muse.main()
+        muse.log.removeHandler(h)
+    finally:
+        sys.stdout.close()
+        sys.stdout = saved
+        muse.args.soak = None
+    summary = [r for r in records if r.startswith("stability over")]
+    check("soak prints a summary", bool(summary), summary)
+    check("soak's own shutdown is not a drop",
+          any("0 drop(s)" in r for r in records), [r for r in records if "drop" in r])
+    up = float(summary[0].split("link up ")[1].split("%")[0]) if summary else 0
+    check("uptime measured", up > 60, f"{up}% (connect takes part of a 3s soak)")
+
+    # a flapping link: several drops, each one on the books
+    sys.stdout = open(os.devnull, "w")
+    try:
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 0.8}
+        muse.args.soak = 5 / 60
+        records.clear()
+        muse.log.addHandler(h)
+        await muse.main()
+        muse.log.removeHandler(h)
+    finally:
+        sys.stdout.close()
+        sys.stdout = saved
+        muse.args.soak = None
+    drops = [r for r in records if "drop(s)" in r and not r.startswith("stability:")]
+    n = int(drops[0].split()[0]) if drops else 0
+    check("flapping link counts every drop", n >= 2, drops)
+
+
 def bridge_reconnect():
     print("bridge")
     got = []
@@ -340,6 +415,7 @@ if __name__ == "__main__":
     settle()
     print("ble lifecycle")
     asyncio.run(lifecycle())
+    asyncio.run(stability())
     bridge_reconnect()
     print()
     if failures:

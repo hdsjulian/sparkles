@@ -151,6 +151,9 @@ parser.add_argument("--preset",   default=None,
                     help="Override the headband preset (default p50 with --ppg, else p21)")
 parser.add_argument("--no-reconnect", action="store_true",
                     help="Exit on disconnect instead of retrying")
+parser.add_argument("--soak",     type=float, default=None, metavar="MINUTES",
+                    help="Run for this long, then stop and print the stability "
+                         "summary — the number to compare before and after a change")
 args = parser.parse_args()
 
 PRESET = args.preset or ("p50" if args.ppg else "p21")
@@ -203,6 +206,80 @@ class AutoRange:
         return 0.5 if span < 1e-9 else min(1.0, max(0.0, (x - self.lo) / span))
 
 
+class Stability:
+    """The numbers that say whether the link holds: how much of the time it was
+    up, how often it fell over, and why connects failed. Eyeballing log lines
+    across runs never settled that; one uptime figure does."""
+
+    def __init__(self):
+        self.started = time.monotonic()
+        self.attempts = 0
+        self.failures = {}          # "phase: reason" -> count
+        self.sessions = []          # length of every link, seconds
+        self.drops = 0              # links the headband or BlueZ ended, not us
+        self.stalls = 0
+        self._up = 0.0
+        self.up_since = None
+
+    def attempt(self):
+        self.attempts += 1
+
+    def failed(self, phase, exc):
+        reason = str(exc).strip() or type(exc).__name__
+        key = f"{phase}: {reason[:60]}"
+        self.failures[key] = self.failures.get(key, 0) + 1
+
+    def connected(self):
+        self.up_since = time.monotonic()
+
+    def disconnected(self, dropped):
+        if self.up_since is not None:
+            length = time.monotonic() - self.up_since
+            self._up += length
+            self.sessions.append(length)
+            self.up_since = None
+        if dropped:
+            self.drops += 1
+
+    def up_total(self, now):
+        return self._up + (now - self.up_since if self.up_since is not None else 0.0)
+
+    def summary(self):
+        now = time.monotonic()
+        total = now - self.started
+        up = self.up_total(now)
+        lengths = sorted(self.sessions + ([now - self.up_since] if self.up_since else []))
+        lines = [f"stability over {total / 60:.1f} min: link up {100 * up / total:.1f}% of the time"
+                 if total > 0 else "stability: no time elapsed"]
+        if lengths:
+            mid = lengths[len(lengths) // 2]
+            lines.append(f"  {len(lengths)} link(s): longest {lengths[-1]:.0f}s, "
+                         f"shortest {lengths[0]:.0f}s, median {mid:.0f}s")
+        every = f", one every {total / 60 / self.drops:.1f} min" if self.drops else ""
+        lines.append(f"  {self.drops} drop(s){every}")
+        failed = sum(self.failures.values())
+        lines.append(f"  {self.attempts} connect attempt(s), {failed} failed"
+                     + "".join(f"\n    {k} ×{n}" for k, n in
+                               sorted(self.failures.items(), key=lambda kv: -kv[1])))
+        lines.append(f"  {self.stalls} event loop stall(s)")
+        for line in lines:
+            log.info(line)
+
+
+async def _stability_report(stability, every=60.0):
+    """One line a minute, so a long run shows its trend as it goes."""
+    last_t = time.monotonic()
+    last_up, last_drops, last_fail = 0.0, 0, 0
+    while True:
+        await asyncio.sleep(every)
+        now = time.monotonic()
+        up = stability.up_total(now)
+        fails = sum(stability.failures.values())
+        log.info("stability: link up %.0fs of the last %.0fs, %d drop(s), %d failed connect(s)",
+                 up - last_up, now - last_t, stability.drops - last_drops, fails - last_fail)
+        last_t, last_up, last_drops, last_fail = now, up, stability.drops, fails
+
+
 class FrameWriter:
     """stdout, written from its own thread.
 
@@ -235,7 +312,7 @@ class FrameWriter:
             self.dropped += 1
 
 
-async def _loop_lag_watch():
+async def _loop_lag_watch(stability):
     """The same loop services BLE notifications, so a stall here is a stall
     there. Measure it rather than infer it from the packet rate."""
     while True:
@@ -243,6 +320,7 @@ async def _loop_lag_watch():
         await asyncio.sleep(0.1)
         lag = time.monotonic() - t - 0.1
         if lag > 0.4:
+            stability.stalls += 1
             log.warning("event loop stalled %.2fs — BLE notifications were not "
                         "serviced during that time", lag)
 
@@ -434,6 +512,7 @@ class Muse:
         self.loss = 0.0
         self.link_since = None
         self.drops = 0
+        self.stability = Stability()
         self.accel = (0.0, 0.0, 1.0)
         self.battery = None
         self.bands = None                      # smoothed relative powers
@@ -879,9 +958,12 @@ async def run_session(device, muse):
     # and hanging with nothing in the log is the worst way for this to fail —
     # far better to give up, say so, and scan again.
     log.info("connecting to %s…", device.address)
+    muse.stability.attempt()
     try:
         await asyncio.wait_for(client.connect(), timeout=CONNECT_TIMEOUT)
-    except BaseException:
+    except BaseException as e:
+        if not isinstance(e, asyncio.CancelledError):
+            muse.stability.failed("connect", e)
         # The cleanup below only covered links that finished connecting. A
         # connect that failed or timed out mid-flight can leave BlueZ holding a
         # half-open link, and every later attempt then wedges against it — the
@@ -890,11 +972,14 @@ async def run_session(device, muse):
         raise
     log.info("connected to %s", device.address)
     muse.link_since = time.monotonic()
+    muse.stability.connected()
 
     alive = None
     watch = None
+    phase = "setup"
     try:
         await asyncio.wait_for(_subscribe_and_start(client, muse), timeout=SETUP_TIMEOUT)
+        phase = "streaming"
         log.info("streaming (preset %s) — ctrl-c to stop", PRESET)
 
         meters = None if args.json else Meters()
@@ -912,11 +997,17 @@ async def run_session(device, muse):
                 meters.draw(s)
             else:
                 writer.write(json.dumps(s) + "\n")
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        muse.stability.failed(phase, e)
+        raise
     finally:
         for task in (alive, watch):
             if task:
                 task.cancel()
         await _teardown(client)
+        muse.stability.disconnected(dropped=dropped.is_set())
 
     muse.drops += 1
     muse.link_since = None
@@ -936,11 +1027,26 @@ async def main():
                 print(f"{d['address']}  {d['name']}  {d['rssi']} dBm")
         return
 
-    asyncio.create_task(_loop_lag_watch())
     # One Muse for the whole run. A reconnect must not wipe the visitor's
     # baselines — losing the link for three seconds is not a new person, and
     # rebuilding this per session meant the anchor window could never finish.
     muse = Muse()
+    asyncio.create_task(_loop_lag_watch(muse.stability))
+    asyncio.create_task(_stability_report(muse.stability))
+    try:
+        if args.soak:
+            log.info("soak test: %.0f min, then a stability summary", args.soak)
+            try:
+                await asyncio.wait_for(_run(muse), timeout=args.soak * 60)
+            except asyncio.TimeoutError:
+                pass
+        else:
+            await _run(muse)
+    finally:
+        muse.stability.summary()
+
+
+async def _run(muse):
     while True:
         try:
             # Rescan every attempt: a BLEDevice from a previous pass is stale
