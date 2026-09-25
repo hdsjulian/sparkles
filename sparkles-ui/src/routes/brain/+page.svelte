@@ -10,12 +10,62 @@
   let headband = null;      // last scan result
   let scanning = false;
 
-  // knobs worth reaching for while bringing this up on a lamp or two
-  let anchor = 40;
-  let rise = 120;
-  let fall = 40;
+  // knobs worth reaching for while tuning — remembered in this browser so a
+  // setting that works survives the next session
+  const SETTINGS_KEY = 'brain.settings';
+  let anchor = 15;
+  let rise = 30;
+  let fall = 20;
+  let bias = 0.5;
+  let minValue = 60;
   let maxValue = 200;
   let ppg = true;
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
+    if (saved) ({ anchor, rise, fall, bias, minValue, maxValue, ppg } = { anchor, rise, fall, bias, minValue, maxValue, ppg, ...saved });
+  } catch { /* no storage here — defaults are fine */ }
+
+  // last few minutes of evidence and settle, for the tuning chart
+  const HISTORY_S = 180;
+  const CHART_W = 600, CHART_H = 160, CHART_MAX = 1.2;
+  let history = [];
+  $: record($brainStatus);
+
+  function record(st) {
+    if (!st || !running) return;
+    const now = Date.now();
+    // SSE and the 3s poll both deliver frames; one point a second is plenty
+    if (history.length && now - history[history.length - 1].t < 800) return;
+    history = [...history, { t: now, ev: st.evidence ?? null, settle: st.settle ?? 0 }]
+      .filter(p => now - p.t < HISTORY_S * 1000);
+  }
+
+  const y = v => CHART_H - Math.min(Math.max(v, 0), CHART_MAX) / CHART_MAX * CHART_H;
+
+  function path(points, key) {
+    if (!points.length) return '';
+    const end = points[points.length - 1].t;
+    const x = t => CHART_W - (end - t) / (HISTORY_S * 1000) * CHART_W;
+    let d = '', pen = false;
+    for (const p of points) {
+      const v = p[key];
+      if (v === null || v === undefined) { pen = false; continue; }   // gap during the baseline window
+      d += `${pen ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(v).toFixed(1)} `;
+      pen = true;
+    }
+    return d;
+  }
+
+  $: evidence = s.evidence ?? null;
+  $: activeBias = s.bias ?? bias;
+  $: scores = Object.entries(s.scores ?? {});
+  $: trend = evidence === null ? null
+    : evidence > activeBias ? 'rising'
+    : settle > 0 ? 'falling' : 'holding at dark';
+
+  const scoreName = {
+    still: 'stillness', emg: 'jaw / temple', bpm: 'heart rate', alpha: 'alpha', beta: 'beta',
+  };
 
   $: s = $brainStatus ?? {};
   $: settle = s.settle ?? 0;
@@ -57,7 +107,12 @@
   async function start() {
     error = ''; busy = true;
     try {
-      const r = await brainStart({ ppg, anchor, rise, fall, maxValue });
+      try {
+        localStorage.setItem(SETTINGS_KEY,
+          JSON.stringify({ anchor, rise, fall, bias, minValue, maxValue, ppg }));
+      } catch { /* not persisted, still starts */ }
+      history = [];
+      const r = await brainStart({ ppg, anchor, rise, fall, bias, minValue, maxValue });
       if (r.status === false) throw new Error(r.detail ?? 'failed to start');
       running = true;
     } catch (e) { error = e.message; }
@@ -143,11 +198,66 @@
   </div>
 </div>
 
+{#if running}
+<div class="panel">
+  <h2>Tuning</h2>
+  <div class="readout">
+    {#if evidence === null}
+      <span class="dim">evidence starts once the baseline window is over</span>
+    {:else}
+      <span class="big">{evidence.toFixed(2)}</span>
+      <span>evidence — needs above {activeBias.toFixed(2)} to rise</span>
+      <span class:up={trend === 'rising'} class:down={trend !== 'rising'}>{trend}</span>
+    {/if}
+  </div>
+
+  <svg class="chart" viewBox="0 0 {CHART_W} {CHART_H}" preserveAspectRatio="none">
+    <line class="grid" x1="0" x2={CHART_W} y1={y(1)} y2={y(1)} />
+    <line class="grid" x1="0" x2={CHART_W} y1={y(0.5)} y2={y(0.5)} />
+    <line class="bias" x1="0" x2={CHART_W} y1={y(activeBias)} y2={y(activeBias)} />
+    <path class="ev" d={path(history, 'ev')} />
+    <path class="st" d={path(history, 'settle')} />
+  </svg>
+  <div class="legend">
+    <span><i class="k ev"></i>evidence</span>
+    <span><i class="k st"></i>settle (lamp)</span>
+    <span><i class="k bias"></i>bias</span>
+    <span class="dim">last {HISTORY_S / 60} min</span>
+  </div>
+
+  {#if scores.length}
+    <div class="scores">
+      {#each scores as [name, v]}
+        <span class="sname">{scoreName[name] ?? name}</span>
+        <span class="strack">
+          <span class="smid"></span>
+          {#if v !== null}
+            <span class="sfill" class:good={v >= 0.5}
+                  style="left: {Math.min(v, 0.5) * 100}%; width: {Math.abs(v - 0.5) * 100}%"></span>
+          {/if}
+        </span>
+        <span class="sval">{v === null ? '—' : v.toFixed(2)}</span>
+      {/each}
+    </div>
+    <p class="hint">
+      0.50 is exactly how you were when you sat down. Green is calmer than that,
+      red is tenser. Stillness, jaw and heart rate carry the score; alpha and
+      beta can only nudge it. Set the bias just under where evidence sits once
+      you have genuinely settled. Watching this closely is itself enough to
+      keep you tense, so glance rather than stare.
+    </p>
+  {/if}
+</div>
+{/if}
+
 <fieldset class="panel" disabled={running}>
   <legend>Settings</legend>
   <label>Baseline window <input type="number" bind:value={anchor} min="5" max="300" /> s</label>
   <label>Time to full <input type="number" bind:value={rise} min="5" max="1800" /> s</label>
   <label>Time to dark <input type="number" bind:value={fall} min="5" max="1800" /> s</label>
+  <label>Bias <input type="number" bind:value={bias} min="0.3" max="0.9" step="0.05" />
+    <span class="dim">evidence needed to rise — lower is easier</span></label>
+  <label>Min brightness <input type="number" bind:value={minValue} min="0" max="254" /></label>
   <label>Max brightness <input type="number" bind:value={maxValue} min="1" max="255" /></label>
   <label class="check"><input type="checkbox" bind:checked={ppg} /> Heart rate (PPG)</label>
   <p class="hint">Locked while running — stop first to change them.</p>
@@ -204,4 +314,32 @@
   label.check { margin-top: 0.8rem; }
   input[type="number"] { width: 5.5rem; margin: 0 0.3rem; }
   .hint { color: #777; font-size: 0.85rem; margin-bottom: 0; }
+  h2 { font-size: 1rem; color: #bbb; margin: 0 0 0.6rem; font-weight: normal; }
+  .dim { color: #777; }
+  .up { color: #7ec699; }
+  .down { color: #d98080; }
+  .chart {
+    width: 100%; height: 160px; margin-top: 0.8rem;
+    background: #111; border: 1px solid #333; border-radius: 4px;
+  }
+  .chart path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .chart .ev { stroke: #6b9bd1; }
+  .chart .st { stroke: #d9a441; }
+  .chart .grid { stroke: #2a2a2a; vector-effect: non-scaling-stroke; }
+  .chart .bias { stroke: #999; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+  .legend { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: 0.8rem; color: #999; margin-top: 0.3rem; }
+  .k { display: inline-block; width: 14px; height: 3px; margin-right: 0.35rem; vertical-align: middle; }
+  .k.ev { background: #6b9bd1; }
+  .k.st { background: #d9a441; }
+  .k.bias { background: repeating-linear-gradient(90deg, #999 0 4px, transparent 4px 7px); }
+  .scores {
+    display: grid; grid-template-columns: auto 1fr 3rem; gap: 0.4rem 0.8rem;
+    align-items: center; margin-top: 1rem; font-size: 0.9rem;
+  }
+  .sname { color: #bbb; }
+  .strack { position: relative; height: 10px; background: #111; border-radius: 3px; }
+  .smid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: #555; }
+  .sfill { position: absolute; top: 0; bottom: 0; background: #d98080; border-radius: 3px; }
+  .sfill.good { background: #7ec699; }
+  .sval { color: #999; text-align: right; font-variant-numeric: tabular-nums; }
 </style>

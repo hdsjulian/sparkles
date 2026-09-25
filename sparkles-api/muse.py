@@ -783,6 +783,7 @@ class Muse:
                          for ch, a in amps.items()},
             "evidence": (None if st.get("evidence") is None
                          else round(st["evidence"], 3)),
+            "bias": EVIDENCE_BIAS,
             "scores": st.get("scores", {}),
         }
         if bpm:

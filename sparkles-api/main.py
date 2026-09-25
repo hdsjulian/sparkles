@@ -1699,6 +1699,8 @@ async def brain_start(
     anchor: float = Query(default=40.0, ge=5.0, le=300.0),
     rise: float = Query(default=120.0, ge=5.0, le=1800.0),
     fall: float = Query(default=40.0, ge=5.0, le=1800.0),
+    bias: float = Query(default=0.6, ge=0.3, le=0.9),
+    minValue: int = Query(default=0, ge=0, le=254),
     maxValue: int = Query(default=200, ge=1, le=255),
 ):
     """Start the Muse test rig: settling score → brightness on every lamp.
@@ -1709,11 +1711,13 @@ async def brain_start(
         raise HTTPException(409, detail="brain test already running")
 
     muse = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--json",
-            "--anchor", str(anchor), "--rise", str(rise), "--fall", str(fall)]
+            "--anchor", str(anchor), "--rise", str(rise), "--fall", str(fall),
+            "--bias", str(bias)]
     if ppg:
         muse.append("--ppg")
     bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
-                  "--status", "--max-value", str(maxValue)]
+                  "--status", "--min-value", str(minValue),
+                  "--max-value", str(max(maxValue, minValue + 1))]
     cmd = "%s | %s" % (" ".join(shlex.quote(a) for a in muse),
                        " ".join(shlex.quote(a) for a in bridge_cmd))
 

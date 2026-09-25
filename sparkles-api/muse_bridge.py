@@ -217,6 +217,10 @@ def main():
                     "contact": s.get("contact", 0),
                     "bpm":     s.get("bpm"),
                     "battery": s.get("battery"),
+                    # what settle is made of, so the page can show why it moves
+                    "evidence": s.get("evidence"),
+                    "bias":    s.get("bias"),
+                    "scores":  s.get("scores", {}),
                 }), flush=True)
             elif args.diag and (now - s.get("_seen", 0.0)) > 2.0:
                 # Say so rather than reprinting the last good frame forever --
