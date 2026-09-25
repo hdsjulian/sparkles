@@ -75,6 +75,7 @@ args = parser.parse_args()
 
 _sock: socket.socket | None = None
 _sock_lock = threading.Lock()
+_reconnecting = False
 
 state = {}
 state_lock = threading.Lock()
@@ -97,7 +98,32 @@ def _open_sock():
             time.sleep(RETRY_DELAY)
 
 
+def _reconnect():
+    """Reopen the socket off the frame loop, one attempt at a time.
+
+    serial_bridge lives inside the sparkles service, so every restart — which
+    update.sh does on each deploy — closes the socket under us. Without this
+    every send failed from then on and the lamps stayed dark until someone
+    restarted the bridge by hand."""
+    global _reconnecting
+    with _sock_lock:
+        if _reconnecting:
+            return
+        _reconnecting = True
+
+    def run():
+        global _reconnecting
+        try:
+            _open_sock()
+        finally:
+            with _sock_lock:
+                _reconnecting = False
+
+    threading.Thread(target=run, daemon=True, name="music-reconnect").start()
+
+
 def _send(cmd: dict):
+    global _sock
     if args.dry_run:
         return
     with _sock_lock:
@@ -107,7 +133,15 @@ def _send(cmd: dict):
     try:
         s.sendall((json.dumps(cmd) + "\n").encode())
     except Exception as e:
-        log.error("Music bridge send failed: %s", e)
+        log.error("Music bridge send failed: %s — reconnecting", e)
+        with _sock_lock:
+            if _sock is s:
+                _sock = None
+        try:
+            s.close()
+        except Exception:
+            pass
+        _reconnect()
 
 
 def _reader():
@@ -206,7 +240,7 @@ def main():
                       f"{s.get('phase', 'waiting'):<7} "
                       f"contact {s.get('contact', 0)}/4  "
                       f"link {link:5.1f}s  drops {s.get('drops', 0)}  "
-                      f"pps {s.get('pps', 0):5.1f}  "
+                      f"pps {s.get('pps', 0):5.1f}  loss {100 * (s.get('loss') or 0):3.0f}%  "
                       f"bpm {s.get('bpm') or 0:3.0f}  bat {s.get('battery') or 0:3.0f}%  "
                       f"| {ch}", file=sys.stderr, flush=True)
                 sc = s.get("scores") or {}

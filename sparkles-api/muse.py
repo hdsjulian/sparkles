@@ -422,9 +422,16 @@ class Muse:
         # Watching that number is how a stall shows itself before the link dies.
         self.packets = 0
         self.total_packets = 0
-        self.control_replied = asyncio.Event()
+        self.replies = asyncio.Queue(maxsize=16)   # control replies, in arrival order
         self.pkt_mark = time.monotonic()
         self.pkt_rate = 0.0
+        # Every eeg packet carries a 16-bit sequence number per channel. It is the
+        # only way to tell packets lost in transit from a headband that simply
+        # sends fewer, so count the gaps instead of guessing at them.
+        self.last_index = {}
+        self.lost = 0
+        self.lost_window = 0
+        self.loss = 0.0
         self.link_since = None
         self.drops = 0
         self.accel = (0.0, 0.0, 1.0)
@@ -445,7 +452,24 @@ class Muse:
         def handler(_sender, data: bytearray):
             if len(data) < 20:
                 return
-            samples = _unpack_eeg(bytes(data))
+            packet = bytes(data)
+            index = int.from_bytes(packet[0:2], "big")
+            samples = _unpack_eeg(packet)
+            last = self.last_index.get(channel)
+            self.last_index[channel] = index
+            if last is not None:
+                missed = (index - last - 1) & 0xFFFF
+                if 0 < missed < 256:
+                    self.lost += missed
+                    self.lost_window += missed
+                    # Bridge the gap rather than splice across it. Joining the
+                    # packets either side makes a step, and a step reads as
+                    # broadband energy — thousands of microvolts of nothing.
+                    # Interpolating also keeps the time axis uniform, which the
+                    # FFT assumes.
+                    if buf:
+                        fill = np.linspace(buf[-1], samples[0], 12 * missed + 2)[1:-1]
+                        buf.extend(fill.tolist())
             self.packets += 1
             self.total_packets += 1
             buf.extend(samples)
@@ -461,11 +485,28 @@ class Muse:
         if not data:
             return
         n = data[0]
-        self.control_buf += bytes(data)[1:1 + n].decode("ascii", errors="replace")
-        if self.control_buf.rstrip().endswith("}"):
-            log.info("headband says: %s", self.control_buf.strip())
-            self.control_buf = ""
-            self.control_replied.set()
+        chunk = bytes(data)[1:1 + n].decode("ascii", errors="replace")
+        if chunk.startswith("{"):
+            self.control_buf = ""   # a new reply; drop any fragment a lost packet orphaned
+        self.control_buf += chunk
+        if not self.control_buf.rstrip().endswith("}"):
+            return
+        msg = self.control_buf.strip()
+        self.control_buf = ""
+        try:
+            rc = json.loads(msg).get("rc")
+        except ValueError:
+            rc = None
+        if rc not in (0, None):
+            log.warning("headband rejected a command: %s", msg)
+        elif msg == '{"rc":0}':
+            log.debug("headband ack")      # keepalive acks, every 5s — noise
+        else:
+            log.info("headband says: %s", msg)
+        try:
+            self.replies.put_nowait(msg)
+        except asyncio.QueueFull:
+            pass    # only matters while a command is waiting, and none is
 
     def on_accel(self, _sender, data: bytearray):
         if len(data) < 20:
@@ -503,6 +544,12 @@ class Muse:
             buf.clear()
         self.ppg.clear()
         self.acc_mag.clear()
+        # Sequence numbers restart with the link, and a rate measured across the
+        # outage would average the dead time in.
+        self.last_index.clear()
+        self.packets = 0
+        self.lost_window = 0
+        self.pkt_mark = time.monotonic()
 
     def _emg(self):
         """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
@@ -614,7 +661,10 @@ class Muse:
         elapsed = now - self.pkt_mark
         if elapsed >= 1.0:
             self.pkt_rate = self.packets / elapsed
+            expected = self.packets + self.lost_window
+            self.loss = self.lost_window / expected if expected else 0.0
             self.packets = 0
+            self.lost_window = 0
             self.pkt_mark = now
         st = self.settle.update(now, dt, len(good) >= SETTLE_CONTACT, {
             "still": self._stillness(),
@@ -638,6 +688,8 @@ class Muse:
             "blink": blink,
             "contact": len(good),
             "pps": round(self.pkt_rate, 1),
+            "loss": round(self.loss, 3),
+            "lost": self.lost,
             "link": round(now - self.link_since, 1) if self.link_since else 0.0,
             "drops": self.drops,
             "channels": {ch: (None if a is None else round(a, 1))
@@ -741,14 +793,57 @@ async def _keepalive(client):
 
 async def _first_data_watch(muse, since):
     """Say plainly whether the stream ever started. Accepting the commands and
-    then sending nothing looks identical to a healthy connection otherwise."""
+    then sending nothing looks identical to a healthy connection otherwise.
+
+    Counts from this session's starting point: the total is cumulative, and
+    checking it raw let a previous session's packets pass for this one's."""
+    start = muse.total_packets
     for _ in range(100):
         await asyncio.sleep(0.1)
-        if muse.total_packets:
+        if muse.total_packets > start:
             log.info("first eeg packet %.1fs after start", time.monotonic() - since)
             return
     log.warning("no eeg packets 10s after start — the headband took the "
                 "commands but is not streaming")
+
+
+async def _command(client, muse, text, expect=None, timeout=2.0):
+    """Send one control command and wait for its own reply.
+
+    The headband acks every command, but the acks lag. Waiting on 'any reply
+    since I cleared' let the late ack to the preset satisfy the wait for 's',
+    so 'd' went out two seconds before the headband had answered the status
+    request — and that session connected, reported streaming, and sent nothing.
+    Drain whatever is queued, send, then wait for a reply that matches."""
+    while not muse.replies.empty():
+        muse.replies.get_nowait()
+    await client.write_gatt_char(CONTROL, _cmd(text), response=False)
+    deadline = time.monotonic() + timeout
+    while True:
+        left = deadline - time.monotonic()
+        try:
+            if left <= 0:
+                raise asyncio.TimeoutError
+            msg = await asyncio.wait_for(muse.replies.get(), timeout=left)
+        except asyncio.TimeoutError:
+            log.warning("no reply to %r within %.0fs", text, timeout)
+            return None
+        if expect is None or expect(msg):
+            return msg
+
+
+async def _teardown(client, halt=True):
+    """Best effort and bounded — a link that is already gone must not hang us."""
+    if halt:
+        try:
+            await asyncio.wait_for(
+                client.write_gatt_char(CONTROL, _cmd("h"), response=False), 3.0)
+        except Exception:
+            pass
+    try:
+        await asyncio.wait_for(client.disconnect(), 5.0)
+    except Exception:
+        pass
 
 
 async def _subscribe_and_start(client, muse):
@@ -762,20 +857,15 @@ async def _subscribe_and_start(client, muse):
     if args.ppg:
         await client.start_notify(PPG_IR, muse.on_ppg)
 
-    await client.write_gatt_char(CONTROL, _cmd("v1"), response=False)
-    await client.write_gatt_char(CONTROL, _cmd(PRESET), response=False)
-
-    # Wait for the headband to answer before telling it to stream. muse-lsl
-    # does this and we did not: firing all four writes back to back means 'd'
-    # can land while the preset is still being applied, and then it connects,
-    # reports streaming, and sends nothing at all.
-    muse.control_replied.clear()
-    await client.write_gatt_char(CONTROL, _cmd("s"), response=False)
-    try:
-        await asyncio.wait_for(muse.control_replied.wait(), timeout=2.0)
-    except asyncio.TimeoutError:
-        log.warning("no reply to 's' — starting anyway, but it may not stream")
-    await client.write_gatt_char(CONTROL, _cmd("d"), response=False)
+    # One command at a time, each waiting for its own reply, so 'd' can only
+    # go out once the headband has actually answered 's'.
+    await _command(client, muse, "v1", expect=lambda m: '"fw"' in m)
+    await _command(client, muse, PRESET)
+    status = await _command(client, muse, "s",
+                            expect=lambda m: '"hn"' in m or '"sn"' in m, timeout=3.0)
+    if status is None:
+        log.warning("no status reply — starting anyway, but it may not stream")
+    await _command(client, muse, "d")
 
 
 async def run_session(device, muse):
@@ -789,11 +879,20 @@ async def run_session(device, muse):
     # and hanging with nothing in the log is the worst way for this to fail —
     # far better to give up, say so, and scan again.
     log.info("connecting to %s…", device.address)
-    await asyncio.wait_for(client.connect(), timeout=CONNECT_TIMEOUT)
+    try:
+        await asyncio.wait_for(client.connect(), timeout=CONNECT_TIMEOUT)
+    except BaseException:
+        # The cleanup below only covered links that finished connecting. A
+        # connect that failed or timed out mid-flight can leave BlueZ holding a
+        # half-open link, and every later attempt then wedges against it — the
+        # stale link that took bluetoothctl to clear by hand. Always tear down.
+        await _teardown(client, halt=False)
+        raise
     log.info("connected to %s", device.address)
     muse.link_since = time.monotonic()
 
     alive = None
+    watch = None
     try:
         await asyncio.wait_for(_subscribe_and_start(client, muse), timeout=SETUP_TIMEOUT)
         log.info("streaming (preset %s) — ctrl-c to stop", PRESET)
@@ -802,7 +901,7 @@ async def run_session(device, muse):
         period = 1.0 / args.rate
         next_at = time.monotonic()
         alive = asyncio.create_task(_keepalive(client))
-        asyncio.create_task(_first_data_watch(muse, time.monotonic()))
+        watch = asyncio.create_task(_first_data_watch(muse, time.monotonic()))
         while not dropped.is_set():
             next_at += period
             await asyncio.sleep(max(0.0, next_at - time.monotonic()))
@@ -814,14 +913,10 @@ async def run_session(device, muse):
             else:
                 writer.write(json.dumps(s) + "\n")
     finally:
-        if alive:
-            alive.cancel()
-        for coro in (client.write_gatt_char(CONTROL, _cmd("h"), response=False),
-                     client.disconnect()):
-            try:
-                await asyncio.wait_for(coro, timeout=5.0)
-            except Exception:
-                pass
+        for task in (alive, watch):
+            if task:
+                task.cancel()
+        await _teardown(client)
 
     muse.drops += 1
     muse.link_since = None
