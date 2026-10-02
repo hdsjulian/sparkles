@@ -30,9 +30,6 @@
 // search window: the client records a fixed window from its own schedule, so
 // every millisecond of lead-in is a millisecond of detection range given up.
 // 100 ms cost half the range (67 m -> 33 m); 40 ms costs a fifth.
-#define CHIRP_LEAD_IN_MS  40
-#define LEAD_IN_SAMPLES   (I2S_SAMPLE_RATE * CHIRP_LEAD_IN_MS / 1000)   // 4410
-#define LEAD_IN_INTS      (LEAD_IN_SAMPLES * 2)                         // stereo
 // i2s_channel_write returns once the last bytes are queued, not played, so up to
 // a full DMA ring — 6 x 240 frames, 33 ms — can still be unplayed. The chirp is
 // at the very end of the buffer, so disabling the channel any sooner than this
@@ -45,10 +42,6 @@
 
 i2s_chan_handle_t txChan = nullptr;
 int16_t chirpBuffer[CHIRP_FRAMES];
-// lead-in silence and the chirp as one contiguous write: a gap between two
-// writes could underrun, and auto_clear would then insert its own zeros and
-// shift the chirp off the frame it was timestamped for
-int16_t chirpWithLeadIn[LEAD_IN_INTS + CHIRP_FRAMES];
 
 QueueHandle_t recvQueue;
 uint8_t myAddress[6];
@@ -143,12 +136,7 @@ void handleTimer(const message_data &msg) {
     }
 }
 
-// chirpBuffer preceded by CHIRP_LEAD_IN_MS of digital silence
-void buildChirpWithLeadIn() {
-    memset(chirpWithLeadIn, 0, LEAD_IN_INTS * sizeof(int16_t));
-    memcpy(chirpWithLeadIn + LEAD_IN_INTS, chirpBuffer, sizeof(chirpBuffer));
-}
-
+// Builds the chirp waveform the client's correlation template is matched against
 void buildChirp() {
     int out = 0;
     for (int step = 0; step < CHIRP_STEPS; step++) {
@@ -250,6 +238,19 @@ volatile uint64_t audioFrames = 0;      // frames written since the single enabl
 // later sync applies to every stamp from then on, retroactively and for free.
 long long audioEnableTimeLocal = 0;     // esp_timer at the enable, no offset
 
+// a tone request, consumed by the pump. Tones go through the pump for the same
+// reason chirps do: it is the only writer, so audioFrames stays the exact stream
+// index. The old helper wrote them itself, around its own disable/enable of the
+// channel, and never counted the frames — which left every later emission stamp
+// describing a stream that no longer existed, and the channel disabled on top.
+#define MAX_TONE_STEPS 8
+int               toneFreqs[MAX_TONE_STEPS];
+volatile int      toneRemaining  = 0;   // tones still to play
+volatile int      toneIndex      = 0;
+volatile int      toneMsPer      = 0;
+volatile int      toneFadeMs     = 0;
+volatile int      toneFramesDone = 0;   // frames rendered of the current tone
+
 // a burst request, consumed by the pump
 volatile int      burstRemaining = 0;   // chirps still to emit
 volatile bool     burstAnnounce  = false;
@@ -262,6 +263,7 @@ void requestChirps(int count, bool announce) {
     burstNextFrame = audioFrames + framesPerPeriod;
     burstNextIndex = 0;
     burstAnnounce  = announce;
+    toneRemaining  = 0;   // calibration outranks a test tone, and frees its waiter
     burstRemaining = count;
     (void)framesPerPeriod;
 }
@@ -296,6 +298,42 @@ void audioPumpTask(void *) {
                      (unsigned long long)((audioFrames - CHIRP_SAMPLES) * 1000ULL / I2S_SAMPLE_RATE));
             continue;
         }
+        if (toneRemaining > 0 && burstRemaining == 0) {
+            static int16_t toneChunk[PUMP_CHUNK_FRAMES * 2];
+            static float   tonePhase = 0.0f;
+            const int totalFrames = I2S_SAMPLE_RATE * toneMsPer / 1000;
+            int fadeFrames = I2S_SAMPLE_RATE * toneFadeMs / 1000;
+            if (fadeFrames * 2 > totalFrames) fadeFrames = totalFrames / 2;
+            int n = PUMP_CHUNK_FRAMES;
+            if (toneFramesDone + n > totalFrames) n = totalFrames - toneFramesDone;
+            const float inc = 2.0f * M_PI * (float)toneFreqs[toneIndex] / (float)I2S_SAMPLE_RATE;
+            for (int i = 0; i < n; i++) {
+                const int idx = toneFramesDone + i;
+                float env = 1.0f;
+                if (fadeFrames > 0) {
+                    if (idx < fadeFrames) {
+                        env = 0.5f * (1.0f - cosf(M_PI * (float)idx / (float)fadeFrames));
+                    } else if (idx >= totalFrames - fadeFrames) {
+                        env = 0.5f * (1.0f - cosf(M_PI * (float)(totalFrames - 1 - idx) / (float)fadeFrames));
+                    }
+                }
+                int16_t v = (int16_t)(CHIRP_AMPLITUDE * env * sinf(tonePhase));
+                tonePhase += inc;
+                if (tonePhase > 2.0f * M_PI) tonePhase -= 2.0f * M_PI;
+                toneChunk[2 * i]     = v;
+                toneChunk[2 * i + 1] = v;
+            }
+            i2s_channel_write(txChan, toneChunk, n * 2 * sizeof(int16_t), &w, portMAX_DELAY);
+            audioFrames    += n;
+            toneFramesDone += n;
+            if (toneFramesDone >= totalFrames) {
+                toneFramesDone = 0;
+                tonePhase      = 0.0f;
+                toneIndex++;
+                toneRemaining--;
+            }
+            continue;
+        }
         // silence, but never past the start of the next chirp
         int n = PUMP_CHUNK_FRAMES;
         if (burstRemaining > 0) {
@@ -323,53 +361,21 @@ void playSingleChirp() {
 }
 
 void playToneSequence(const int *freqs, int count, int msPer, int fadeMs) {
-    i2s_channel_disable(txChan);                 // ensure READY
-    ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // clock starts here
-    // same run-up the chirp gets, for the same reason: the DAC recovers its
-    // clock from BCLK and needs it running before there is anything to hear
-    {
-        size_t w = 0;
-        i2s_channel_write(txChan, chirpWithLeadIn, LEAD_IN_INTS * sizeof(int16_t),
-                          &w, portMAX_DELAY);
+    if (count > MAX_TONE_STEPS) count = MAX_TONE_STEPS;
+    if (burstRemaining > 0) {
+        ESP_LOGW("CHIRP", "Burst in progress, not playing tones");
+        return;
     }
-
-    const int framesPerChunk = 256;
-    static int16_t chunk[framesPerChunk * 2];
-
-    for (int t = 0; t < count; t++) {
-        const int totalFrames = I2S_SAMPLE_RATE * msPer / 1000;
-        int fadeFrames = I2S_SAMPLE_RATE * fadeMs / 1000;
-        if (fadeFrames * 2 > totalFrames) fadeFrames = totalFrames / 2;
-
-        float phase = 0.0f;
-        const float inc = 2.0f * M_PI * (float)freqs[t] / (float)I2S_SAMPLE_RATE;
-        int done = 0;
-        while (done < totalFrames) {
-            int n = (totalFrames - done) < framesPerChunk ? (totalFrames - done) : framesPerChunk;
-            for (int i = 0; i < n; i++) {
-                const int idx = done + i;
-                float env = 1.0f;
-                if (fadeFrames > 0) {
-                    if (idx < fadeFrames) {
-                        env = 0.5f * (1.0f - cosf(M_PI * (float)idx / (float)fadeFrames));
-                    } else if (idx >= totalFrames - fadeFrames) {
-                        env = 0.5f * (1.0f - cosf(M_PI * (float)(totalFrames - 1 - idx) / (float)fadeFrames));
-                    }
-                }
-                int16_t v = (int16_t)(CHIRP_AMPLITUDE * env * sinf(phase));
-                phase += inc;
-                if (phase > 2.0f * M_PI) phase -= 2.0f * M_PI;
-                chunk[2 * i]     = v;
-                chunk[2 * i + 1] = v;
-            }
-            size_t written = 0;
-            i2s_channel_write(txChan, chunk, n * 2 * sizeof(int16_t), &written, portMAX_DELAY);
-            done += n;
-        }
-        ESP_LOGI("CHIRP", "  tone %d/%d: %d Hz for %d ms", t + 1, count, freqs[t], msPer);
-    }
-    vTaskDelay(pdMS_TO_TICKS(CHIRP_DRAIN_MS));
-    i2s_channel_disable(txChan);
+    for (int i = 0; i < count; i++) toneFreqs[i] = freqs[i];
+    toneMsPer      = msPer;
+    toneFadeMs     = fadeMs;
+    toneIndex      = 0;
+    toneFramesDone = 0;
+    toneRemaining  = count;
+    // Block until the pump has played them, so callers can still log "done"
+    // afterwards — but never touch the channel, and never write a frame the
+    // pump has not counted.
+    while (toneRemaining > 0) vTaskDelay(pdMS_TO_TICKS(20));
 }
 
 void playTestTone(int freqHz, int ms) {
@@ -576,7 +582,6 @@ void setup() {
     WiFi.macAddress(myAddress);
 
     buildChirp();
-    buildChirpWithLeadIn();
     i2sInit();
 
     pinMode(TEST_CHIRP_BUTTON, INPUT_PULLUP);
@@ -590,11 +595,12 @@ void setup() {
     addPeer(broadcastAddress);
 
     xTaskCreate(handleReceiveTask, "handleRecv", 4096, nullptr, 5, nullptr);
-    // owns the I2S channel for the board's lifetime and keeps inaudible dither
-    // flowing, so the DAC never sleeps and never has to ramp up mid-burst
-    xTaskCreatePinnedToCore(audioPumpTask, "audioPump", 4096, nullptr, 8, nullptr, 1);
-    // owns the I2S channel for the lifetime of the board: the DAC un-mutes and
-    // settles over seconds when its clock starts, so the clock must never stop
+    // Exactly one. It owns the I2S channel for the board's lifetime, keeps
+    // inaudible dither flowing so the DAC never sleeps or ramps up mid-burst,
+    // and — the part that matters for timing — is the only writer, so
+    // audioFrames stays the exact stream index every emission stamp is built on.
+    // Started twice for a while: two tasks racing audioFrames += n, each
+    // re-enabling the channel under the other and resetting the anchor.
     xTaskCreatePinnedToCore(audioPumpTask, "audioPump", 4096, nullptr, 8, nullptr, 1);
 
     delay(500);
