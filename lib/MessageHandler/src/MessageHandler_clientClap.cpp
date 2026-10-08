@@ -16,7 +16,7 @@ static const int   CHIRP_SAMPLES      = CHIRP_STEPS * SAMPLES_PER_STEP;         
 // boards come out of headroom rather than out of range. Must still leave the
 // correlation time to finish inside CHIRP_BURST_PERIOD_MS.
 static const int   RECORD_MS          = 300;
-static const int   RECORD_SAMPLES     = CHIRP_SAMPLE_RATE * RECORD_MS / 1000;     // 2200
+static const int   RECORD_SAMPLES     = CHIRP_SAMPLE_RATE * RECORD_MS / 1000;     // 3000
 static const int   MAX_LAG            = RECORD_SAMPLES - CHIRP_SAMPLES;           // last window that fits
 static const float SOUND_SPEED        = 343.0f;          // m/s
 static const float MIN_CORR_THRESHOLD = 0.15f;           // normalised, floor under the noise gate
@@ -74,7 +74,7 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     // is irrelevant; if it stands out clearly but correlation is still zero,
     // the sound got here and simply does not match what we are looking for.
     const int blk = 100;                       // 10 ms at 10 kHz
-    const int nblk = RECORD_SAMPLES / blk;     // 22
+    const int nblk = RECORD_SAMPLES / blk;     // 30
     int loudBlk = 0, loudRms = 0, quietRms = 32767;
     for (int b = 0; b < nblk; b++) {
         long long e = 0;
@@ -208,10 +208,10 @@ void MessageHandler::runClapTask() {
         for (int chirp = 0; chirp < CHIRP_BURST_COUNT; chirp++) {
             unsigned long long recordStart = 0;
             float peakCorr = 0;
-            // Deliberately not cleared. The emitter announces at enable, which is
-            // CHIRP_LEAD_IN_MS before the sound and can therefore land just
-            // *before* this window opens — clearing it here threw that stamp
-            // away and reported "emission MISSING", forcing a full-window search.
+            // Deliberately not cleared. The emitter announces each chirp as it
+            // queues it, ~40 ms after the broadcast that opened window 0, so a
+            // board that opens its window late gets the stamp just *before* it —
+            // clearing here would throw that away and force a full-window search.
             float delaySamples = detectChirp(audioPin, chirpTmpl, tmplEnergy, recordStart, peakCorr);
 
             message_data clapMessage = createClapMessage(true);

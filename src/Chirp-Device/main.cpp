@@ -21,20 +21,13 @@
 #define CHIRP_SAMPLES     (CHIRP_STEPS * SAMPLES_PER_STEP)            // 1056
 #define CHIRP_FRAMES      (CHIRP_SAMPLES * 2)                         // stereo
 #define CHIRP_AMPLITUDE   26000
-// Silence played before the chirp so the PCM5102A's PLL can lock onto BCLK
-// before there is anything to hear. The peripheral consumes at exactly the
-// sample rate from the moment it is enabled, so frame k leaves at
-// enable + k/I2S_SAMPLE_RATE — which means a lead-in of a known length costs
-// nothing in timing accuracy, it just moves the chirp to a later known frame.
-// Long enough for the DAC's PLL to lock, short enough not to eat the client's
-// search window: the client records a fixed window from its own schedule, so
-// every millisecond of lead-in is a millisecond of detection range given up.
-// 100 ms cost half the range (67 m -> 33 m); 40 ms costs a fifth.
-// i2s_channel_write returns once the last bytes are queued, not played, so up to
-// a full DMA ring — 6 x 240 frames, 33 ms — can still be unplayed. The chirp is
-// at the very end of the buffer, so disabling the channel any sooner than this
-// truncates its tail.
-#define CHIRP_DRAIN_MS    50
+// First chirp of a burst is queued this long after the request. The clients
+// open window 0 on the same broadcast and count windows from it, so chirp n is
+// only in window n if chirp 0 is in window 0 — a whole burst period here put
+// every chirp one window late, and the master paired each with the next chirp's
+// stamp and dropped it. Heard ~70 ms into the 300 ms window, which leaves about
+// the 200 ms of flight the master accepts.
+#define CHIRP_LEAD_MS     40
 // The devkit's BOOT button. A strapping pin at reset, an ordinary input after —
 // which is all the chirp needs to be testable with nothing but a usb cable, no
 // master, no mesh, no browser.
@@ -157,11 +150,8 @@ void i2sInit() {
 
     i2s_std_config_t stdCfg = {
         .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(I2S_SAMPLE_RATE),
-        // MSB (left-justified), not Philips: this board's PCM5102A has FMT tied
-        // high. Tested — Philips gives silence on it, MSB gives sound. So the
-        // format was never the reason the chirp sounds wrong; buildChirp is.
-        // MSB (left-justified): this board's PCM5102A has FMT tied high. Tested
-        // both ways — Philips is silent on it.
+        // Philips (one bit delayed), not MSB. Measured: on MSB every board heard
+        // the chirp and correlated it at zero (3389591).
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
@@ -173,11 +163,8 @@ void i2sInit() {
         },
     };
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(txChan, &stdCfg));
-    // Left in READY on purpose, not enabled. An enabled channel clocks silence
-    // through a 6 x 240 frame ring — 33 ms at 44.1 kHz — and a write lands
-    // wherever the DMA happens to be, so the sound leaves an unknown time after
-    // we stamp it. Each chirp preloads the ring while stopped instead, and
-    // starts on the enable, which we can timestamp.
+    // Left in READY: audioPumpTask preloads the ring and does the one enable,
+    // which every emission stamp is counted from.
 }
 
 void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime) {
@@ -203,10 +190,15 @@ void broadcastClapMessage(bool happened, uint8_t chirpIndex, long long emitTime)
 // this worked before the burst change, and it is the only arrangement where
 // every chirp comes out at the same level.
 //
-// Timing is exact for free: the peripheral consumes at precisely
-// I2S_SAMPLE_RATE from the single enable, so frame k leaves at
-// enable + k/I2S_SAMPLE_RATE. audioFrames counts every frame ever written, so
-// any chirp's emission time is arithmetic on a counter that never resets.
+// Timing: the peripheral consumes at precisely I2S_SAMPLE_RATE from the single
+// enable — 160 MHz / (14 + 76/441) is exactly 256 x 44.1 kHz, off the same
+// crystal as esp_timer, so a stamp does not drift with uptime. Frame k leaves at
+// enable + k/I2S_SAMPLE_RATE provided frame 0 is in the ring at the enable: the
+// driver plays out the whole ring before the first frame written after it, and
+// the ring starts empty. Without the preload frame k left at
+// enable + (1440 + k)/rate and every stamp was 33 ms, 11 m, early. audioFrames
+// counts the preloaded frames too, so any chirp's emission time is arithmetic
+// on a counter that never resets.
 static const int PUMP_CHUNK_FRAMES = 441;                 // 10 ms at 44.1 kHz
 // Not zeros, and not a token 1 LSB either. The DAC needs ramp-up: after an idle
 // stretch the first chirps of a burst simply do not come out, which is why a
@@ -258,24 +250,32 @@ volatile uint8_t  burstNextIndex = 0;
 volatile uint64_t burstNextFrame = 0;   // frame at which the next chirp starts
 
 void requestChirps(int count, bool announce) {
-    const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
-    // start far enough ahead that the pump has not already written past it
-    burstNextFrame = audioFrames + framesPerPeriod;
+    // inside the clients' window 0, and far enough ahead that the pump has not
+    // already written past it
+    burstNextFrame = audioFrames + I2S_SAMPLE_RATE * CHIRP_LEAD_MS / 1000;
     burstNextIndex = 0;
     burstAnnounce  = announce;
     toneRemaining  = 0;   // calibration outranks a test tone, and frees its waiter
     burstRemaining = count;
-    (void)framesPerPeriod;
 }
 
 void audioPumpTask(void *) {
     const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
     buildPumpDither();
     i2s_channel_disable(txChan);                 // ensure READY
+    // fill the ring until the driver takes no more, so the first frame counted
+    // is the first frame played
+    uint64_t preloaded = 0;
+    size_t loaded = 0;
+    do {
+        ESP_ERROR_CHECK(i2s_channel_preload_data(txChan, pumpSilence, sizeof(pumpSilence), &loaded));
+        preloaded += loaded / (2 * sizeof(int16_t));
+    } while (loaded == sizeof(pumpSilence));
     ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the only enable, ever
     audioEnableTimeLocal = esp_timer_get_time();
-    audioFrames = 0;
-    ESP_LOGI("CHIRP", "audio pump running, clock is up and stays up");
+    audioFrames = preloaded;
+    ESP_LOGI("CHIRP", "audio pump running, %llu frames preloaded, clock is up and stays up",
+             (unsigned long long)preloaded);
 
     while (true) {
         size_t w = 0;
@@ -475,6 +475,13 @@ void startTestTone() {
 // exists, which would refuse every test chirp from then on — so check the task
 // really is alive rather than merely that the pointer is set.
 void startTestChirp(const char *source) {
+    // the burst lives in the pump and its task exits before the first chirp, so
+    // the handle alone no longer says a calibration is running — and a test
+    // chirp would replace the rest of it with one unannounced chirp
+    if (burstRemaining > 0) {
+        ESP_LOGW("CHIRP", "Burst in progress, ignoring test chirp from %s", source);
+        return;
+    }
     if (chirpTaskHandle != nullptr) {
         eTaskState state = eTaskGetState(chirpTaskHandle);
         if (state != eDeleted && state != eInvalid) {
