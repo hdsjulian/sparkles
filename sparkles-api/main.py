@@ -450,8 +450,8 @@ async def _heap_low_watcher():
 async def _map_measurement_collector():
     """Keep the chirp distance matrix for the anchor-free solve.
 
-    The master emits one chirp_distance per board at the end of every burst, and
-    announces the slot it is about to measure — a re-run of a spot replaces it.
+    The master emits one chirp_distance per board at the end of its batch's burst,
+    and announces the slot it is about to measure — a re-run of a spot replaces it.
     """
     queue = bridge.subscribe()
     try:
@@ -461,7 +461,8 @@ async def _map_measurement_collector():
             if event == "chirp_distance":
                 map_data.record(frame.get("boardId"), frame.get("slot"), frame.get("distance"))
             elif event in ("position_status", "distance_status") and frame.get("status") == "running":
-                if frame.get("chirp") in (0, None):   # start of a burst, not a per-chirp tick
+                # start of a spot: not a per-chirp tick, and not a later batch of it
+                if frame.get("chirp") in (0, None) and frame.get("batch") in (1, None):
                     map_data.clear_slot(frame.get("slot", 0))
     finally:
         bridge.unsubscribe(queue)

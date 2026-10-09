@@ -83,12 +83,16 @@
     const s = ev.status;
     if (s === 'started' || s === 'running') {
       distState = 'running';
-      distMsg = ev.chirp
-        ? `Chirp ${ev.chirp} of ${ev.total}...`
-        : 'Distance calibration running...';
+      // the master syncs and measures up to 20 boards per burst
+      const step = ev.chirp ? `chirp ${ev.chirp} of ${ev.total}...` : 'syncing clocks...';
+      distMsg = ev.batches > 1
+        ? `Batch ${ev.batch} of ${ev.batches}: ${step}`
+        : `Distance calibration: ${step}`;
     } else if (s === 'done' || s === 'complete') {
       distState = 'done';
-      distMsg = `Distance calibration complete, averaged over ${ev.total ?? 10} chirps.`;
+      distMsg = ev.registered
+        ? `Distance calibration complete: ${ev.boards} of ${ev.registered} boards measured, ${ev.total ?? 10} chirps each.`
+        : `Distance calibration complete, averaged over ${ev.total ?? 10} chirps.`;
     } else if (s === 'failed') {
       distState = 'idle';
       distMsg = '';
@@ -105,12 +109,15 @@
     if (s === 'running') {
       posBusy = true;
       posError = '';
+      const batch = ev.batches > 1 ? `, batch ${ev.batch} of ${ev.batches}` : '';
       posMsg = ev.chirp
-        ? `Location ${ev.slot + 1}: chirp ${ev.chirp} of ${ev.total}...`
-        : `Location ${ev.slot + 1} at (${ev.x?.toFixed(2)}, ${ev.y?.toFixed(2)}): chirping...`;
+        ? `Location ${ev.slot + 1}${batch}: chirp ${ev.chirp} of ${ev.total}...`
+        : `Location ${ev.slot + 1} at (${ev.x?.toFixed(2)}, ${ev.y?.toFixed(2)})${batch}: syncing clocks...`;
     } else if (s === 'done') {
       posBusy = false;
-      posMsg = `Location ${ev.slot + 1} recorded: ${ev.boards} boards heard ${ev.chirp} chirps.`;
+      posMsg = ev.registered
+        ? `Location ${ev.slot + 1} recorded: ${ev.boards} of ${ev.registered} boards measured.`
+        : `Location ${ev.slot + 1} recorded: ${ev.boards} boards heard ${ev.chirp} chirps.`;
       posLocations = [
         ...posLocations.filter(l => l.slot !== ev.slot),
         { slot: ev.slot, x: ev.x, y: ev.y, boards: ev.boards }

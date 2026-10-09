@@ -216,6 +216,8 @@ public:
     void endDistanceCalibration();
     void chirpAtPosition(float xPos, float yPos);
     void beginBurst(int slot, float xPos, float yPos, bool isDistance);
+    void runBurstBatches(int commandType);
+    bool runBurstBatch(int commandType, int first, int end);
     void finishBurst();
     void emitBurstStatus(const char* status, int chirpsHeard, int boardsMeasured = 0, const char* reason = nullptr);
     void recordChirpEmission(int chirpIndex, unsigned long long emissionTime);
@@ -374,6 +376,12 @@ private:
     int burstSlot = 0;
     float burstX = 0.0f, burstY = 0.0f;
     bool burstIsDistance = true;
+    // A spot is measured in batches, each synced right before its own burst.
+    // Every board hears every burst, only reports from [burstFirst, burstEnd) count.
+    volatile int burstFirst = 0, burstEnd = 0;
+    int burstBatch = 0, burstBatches = 0, burstBoards = 0;
+    int burstChirpsHeard = 0, burstBoardsMeasured = 0;
+    unsigned long long burstFirstEmission = 0;
     // Constructor and Deleted Functions
     MessageHandler();
     MessageHandler(const MessageHandler&) = delete;
