@@ -663,7 +663,13 @@ void MessageHandler::handleSend() {
     }
 }
 void MessageHandler::startBatterySyncTask() {
-    xTaskCreatePinnedToCore(runBatterySyncWrapper, "runBatterySync", 10000, this, 2, NULL, 0);
+    // One for the board's lifetime: the task loops forever, reporting every 10
+    // minutes. It was started after every completed sync, so each sync left
+    // another 10 KB task behind until the heap could no longer fit the clap or
+    // blink task — the board kept syncing, and stopped listening and blinking.
+    // The level rides on every MSG_GOT_TIMER anyway.
+    if (batterySyncHandle != nullptr) return;
+    xTaskCreatePinnedToCore(runBatterySyncWrapper, "runBatterySync", 10000, this, 2, &batterySyncHandle, 0);
 }
 
 void MessageHandler::startWiFiToggleTask() {
