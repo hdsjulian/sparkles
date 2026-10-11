@@ -177,7 +177,8 @@ public:
     void runFastResyncAll();
     bool runClapDeviceTimerSync();
     void servicePendingAnnounce();
-    void startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance);
+    void startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance, int testBoard = -1);
+    void startLatencyBurst(int boardId);
     int acquireTxSlot(const uint8_t *mac);
     void releaseTxSlot(int slot);
     void recordTxDelay(const uint8_t *mac);
@@ -380,6 +381,8 @@ private:
     // Every board hears every burst, only reports from [burstFirst, burstEnd) count.
     volatile int burstFirst = 0, burstEnd = 0;
     int burstBatch = 0, burstBatches = 0, burstBoards = 0;
+    // >= 0: a latency test burst — only this board listens, nothing is recorded
+    int burstTestBoard = -1;
     int burstChirpsHeard = 0, burstBoardsMeasured = 0;
     unsigned long long burstFirstEmission = 0;
     // the board runTimerSyncAt is syncing, and whether it has confirmed — its own

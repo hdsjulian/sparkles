@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { calibrationStatus, distanceStatus, positionStatus, clientClap } from '$lib/stores.js';
+  import LatencyTest from '$lib/components/LatencyTest.svelte';
   import {
     commandStartCalibration,
     commandCancelCalibration,
@@ -487,6 +488,9 @@
       <button class="btn btn-primary" on:click={testChirp}>🔊 Test Chirp</button>
     </div>
   </div>
+
+  <!-- ======== Speaker latency test ======== -->
+  <LatencyTest />
 
   <!-- ======== Chirp Position Calibration ======== -->
   <div class="card" style="margin-bottom:1.25rem;">

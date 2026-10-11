@@ -248,6 +248,17 @@ export const commandAbortDistanceCalibration = () =>
 export const commandTestCalibration = () =>
   fetch(`${BASE}/commandTestCalibration`).then(r => r.json());
 
+// ---- Speaker latency test ----
+// burst after burst with one board at a known distance, streamed per burst
+export const latencyTest = ({ boardId, distance, bursts = 60, gap = 0, label = '' }) =>
+  new EventSource(`${BASE}/latencyTest?${new URLSearchParams({ boardId, distance, bursts, gap, label })}`);
+
+export const getLatencyRuns = () =>
+  fetch(`${BASE}/latencyRuns`).then(r => r.json());
+
+export const clearLatencyRuns = () =>
+  fetch(`${BASE}/latencyRunsClear`).then(r => r.json());
+
 
 export const getAudioLevel = () =>
   fetch(`${BASE}/audioLevel`).then(r => r.json());

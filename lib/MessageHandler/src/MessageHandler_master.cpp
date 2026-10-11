@@ -899,6 +899,7 @@ void MessageHandler::abortDistanceCalibration() {
     LOG_I("MSG", "Aborting distance calibration, resetting all data");
     burstActive = false;
     burstBatches = 0;
+    burstTestBoard = -1;
     // Abort left distCalHandle set, so a burst task that was killed or wedged
     // blocked every later burst for good — and the refusal was silent, so there
     // was no way to tell and no way back short of rebooting the master. Abort is
@@ -925,7 +926,8 @@ void MessageHandler::endDistanceCalibration() {
 
 void MessageHandler::emitBurstStatus(const char* status, int chirpsHeard, int boardsMeasured, const char* reason) {
     JsonDocument doc;
-    doc["event"]  = burstIsDistance ? "distance_status" : "position_status";
+    doc["event"]  = burstTestBoard >= 0 ? "latency_status"
+                  : burstIsDistance     ? "distance_status" : "position_status";
     doc["status"] = status;
     doc["chirp"]  = chirpsHeard;
     doc["total"]  = CHIRP_BURST_COUNT;
@@ -958,9 +960,11 @@ void MessageHandler::clearClapMeasurements() {
 // Everything already recorded from other spots stays.
 void MessageHandler::beginBurst(int slot, float xPos, float yPos, bool isDistance) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        memset(&clapTable[slot], 0, sizeof(clap_table));
-        for (int i = 0; i < NUM_DEVICES; i++) {
-            addressList[i].distances[slot] = 0.0f;
+        if (burstTestBoard < 0) {   // a latency test touches no recorded data
+            memset(&clapTable[slot], 0, sizeof(clap_table));
+            for (int i = 0; i < NUM_DEVICES; i++) {
+                addressList[i].distances[slot] = 0.0f;
+            }
         }
         burstSlot = slot;
         burstX = xPos;
@@ -982,6 +986,18 @@ void MessageHandler::runBurstBatches(int commandType) {
         return;
     }
     burstFirst = burstEnd = 0;
+    if (burstTestBoard >= 0) {
+        // a latency test syncs and hears one board only
+        if (burstTestBoard >= total) {
+            emitBurstStatus("failed", 0, 0, "no such board");
+            return;
+        }
+        burstBoards = 1;
+        burstBatches = 1;
+        burstBatch = 1;
+        if (runBurstBatch(commandType, burstTestBoard, burstTestBoard + 1)) finishBurst();
+        return;
+    }
     burstBoards = total;
     burstBatches = (total + CALIBRATION_BATCH_SIZE - 1) / CALIBRATION_BATCH_SIZE;
     // even batches rather than 20s and a straggler, the largest one sets the drift
@@ -1060,8 +1076,22 @@ bool MessageHandler::runBurstBatch(int commandType, int first, int end) {
         }
         int kept = 0;
         float distance = averageWithoutOutliers(samples, count, kept);
-        addressList[i].distances[burstSlot] = (count > 0) ? distance : 0.0f;
         if (count > 0) burstBoardsMeasured++;
+        if (burstTestBoard >= 0) {
+            // all ten readings in one line, missing ones as 0: per-chirp lines
+            // can be damaged on the way to the pi, and the test needs every one
+            JsonDocument doc;
+            doc["event"]    = "latency_burst";
+            doc["boardId"]  = i;
+            doc["distance"] = (count > 0) ? distance : 0.0f;
+            doc["kept"]     = kept;
+            doc["chirps"]   = count;
+            JsonArray readings = doc["d"].to<JsonArray>();
+            for (int c = 0; c < CHIRP_BURST_COUNT; c++) readings.add(burstSamples[i][c]);
+            String out; serializeJson(doc, out); Serial.println(out);
+            continue;
+        }
+        addressList[i].distances[burstSlot] = (count > 0) ? distance : 0.0f;
         ESP_LOGI("MSG", "Device %d at slot %d: %.2f m (%d of %d chirps kept)",
                  i, burstSlot, addressList[i].distances[burstSlot], kept, count);
         JsonDocument doc;
@@ -1095,16 +1125,17 @@ void MessageHandler::finishBurst() {
     }
 
     // a slot only counts for the solver once it carries the emitter's spot and
-    // the moment it fired there
-    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
-        clapTable[burstSlot].xPos = burstX;
-        clapTable[burstSlot].yPos = burstY;
-        clapTable[burstSlot].clapTime = burstFirstEmission;
-        if (!burstIsDistance && burstSlot == clapIndex && clapIndex < NUM_CLAPS) clapIndex++;
-        xSemaphoreGive(configMutex);
+    // the moment it fired there — and a latency test records no spot at all
+    if (burstTestBoard < 0) {
+        if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+            clapTable[burstSlot].xPos = burstX;
+            clapTable[burstSlot].yPos = burstY;
+            clapTable[burstSlot].clapTime = burstFirstEmission;
+            if (!burstIsDistance && burstSlot == clapIndex && clapIndex < NUM_CLAPS) clapIndex++;
+            xSemaphoreGive(configMutex);
+        }
+        if (burstIsDistance) calculateDistances();
     }
-
-    if (burstIsDistance) calculateDistances();
     ESP_LOGI("MSG", "Burst at slot %d done, %d chirps, %d boards measured",
              burstSlot, burstChirpsHeard, burstBoardsMeasured);
     emitBurstStatus("done", burstChirpsHeard, burstBoardsMeasured);
@@ -1204,38 +1235,47 @@ void MessageHandler::chirpAtPosition(float xPos, float yPos) {
                         slot, xPos, yPos, false);
 }
 
+// For timing the audio path: one board at a known distance listens to a full
+// burst, its ten readings come back in one line, and nothing is recorded — no
+// slot, no distance, no flash write — so it can run a hundred times in a row.
+void MessageHandler::startLatencyBurst(int boardId) {
+    startChirpBurstTask(CMD_CONTINUE_DISTANCE_CALIBRATION, 0, 0.0f, 0.0f, false, boardId);
+}
+
 // Clock offsets drift tens of µs per second, refresh every participant
 // right before the measurement, then send the calibration command
-struct ChirpBurstArgs { MessageHandler* self; int commandType; int slot; float xPos; float yPos; bool isDistance; };
+struct ChirpBurstArgs { MessageHandler* self; int commandType; int slot; float xPos; float yPos; bool isDistance; int testBoard; };
 
 // One command runs the whole spot: for each batch of boards a resync, the
 // emitter's sync and one burst of CHIRP_BURST_COUNT chirps counted off by the
 // emitter and the clients themselves, then the averages.
-void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance) {
+void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, float yPos, bool isDistance, int testBoard) {
+    // a refusal goes to whoever asked, without relabelling the spot that is
+    // still running — a batched one runs long enough to be clicked over
+    auto refuse = [&](const char* reason) {
+        bool runningIsDistance = burstIsDistance;
+        int runningTestBoard = burstTestBoard;
+        burstIsDistance = isDistance;
+        burstTestBoard = testBoard;
+        emitBurstStatus("failed", 0, 0, reason);
+        burstIsDistance = runningIsDistance;
+        burstTestBoard = runningTestBoard;
+    };
     if (distCalHandle != NULL) {
         // Silent before: ESP_LOGW is compiled out at CORE_DEBUG_LEVEL=0 and no
         // event was emitted, so a stuck handle refused every future burst with
         // no trace anywhere — the UI just kept reporting that no board heard
         // the chirps, which was true and entirely uninformative.
         LOG_I("MSG", "Chirp burst refused: a previous one never finished");
-        // the refusal goes to whoever asked, without relabelling the spot that
-        // is still running — a batched one runs long enough to be clicked over
-        bool runningIsDistance = burstIsDistance;
-        burstIsDistance = isDistance;
-        emitBurstStatus("failed", 0, 0,
-            "a chirp burst is already running, or a previous one never finished — abort it and retry");
-        burstIsDistance = runningIsDistance;
+        refuse("a chirp burst is already running, or a previous one never finished — abort it and retry");
         return;
     }
     if (fastResyncHandle != NULL) {
         // both resync through runTimerSyncAt, which syncs one board at a time
-        bool runningIsDistance = burstIsDistance;
-        burstIsDistance = isDistance;
-        emitBurstStatus("failed", 0, 0, "a resync is still running — chirp again once it is done");
-        burstIsDistance = runningIsDistance;
+        refuse("a resync is still running — chirp again once it is done");
         return;
     }
-    auto* args = new ChirpBurstArgs{this, commandType, slot, xPos, yPos, isDistance};
+    auto* args = new ChirpBurstArgs{this, commandType, slot, xPos, yPos, isDistance, testBoard};
     xTaskCreatePinnedToCore([](void* pv) {
         auto* a = (ChirpBurstArgs*)pv;
         MessageHandler* self = a->self;
@@ -1247,9 +1287,11 @@ void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, 
         }
         // sets the burst kind before anything reports, or a refusal names itself
         // under the wrong event and the UI listening for it never hears
+        self->burstTestBoard = burst.testBoard;
         self->beginBurst(burst.slot, burst.xPos, burst.yPos, burst.isDistance);
         self->runBurstBatches(burst.commandType);
         self->burstBatches = 0;
+        self->burstTestBoard = -1;
         if (animationWasRunning) {
             self->resumeAnimationLoop();
         }

@@ -779,6 +779,9 @@ static void handleSerialCommand(const char* line) {
         message_data m = msgHandler.createCommandMessage(CMD_TEST_CHIRP, true);
         msgHandler.pushToSendQueue(m);
 
+    } else if (strcmp(cmd, "latency_burst") == 0) {
+        msgHandler.startLatencyBurst(doc["boardId"] | 0);
+
     } else if (strcmp(cmd, "health_ping") == 0) {
         // one board per command: the pi asks, counts the answer or the silence,
         // and decides for itself whether to ask again. boardId -1 asks everyone

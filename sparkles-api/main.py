@@ -12,6 +12,7 @@ import os
 import shlex
 import shutil
 import signal
+import statistics
 import subprocess
 import sys
 import time
@@ -1271,6 +1272,228 @@ async def command_health_ping(boardId: int = Query(default=-1)):
 
 # A board answers in tens of milliseconds or it is not there. Waiting longer
 # only makes a sweep of a sleeping fleet take minutes.
+# ---------------------------------------------------------------------------
+# Speaker latency test: one board at a measured distance, burst after burst,
+# to see whether the audio path's delay holds still enough to write into code
+# ---------------------------------------------------------------------------
+
+_LATENCY_RUNS_PATH = os.environ.get("SPARKLES_LATENCY_RUNS", "/home/julian/sparkles/latency_runs.json")
+_LATENCY_KEEP_RUNS = 50
+_LATENCY_BURST_TIMEOUT_S = 30.0
+_LATENCY_MAX_FAILURES = 3     # bursts in a row that measured nothing
+_SOUND_SPEED = 343.0          # m/s, the master's convertMicrosToMeters
+_CHIRP_PERIOD_S = 0.5         # CHIRP_BURST_PERIOD_MS
+_CHIRPS_PER_BURST = 10        # CHIRP_BURST_COUNT
+_latency_running = False
+
+
+def _load_latency_runs() -> list:
+    try:
+        with open(_LATENCY_RUNS_PATH) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+def _save_latency_run(run: dict):
+    runs = (_load_latency_runs() + [run])[-_LATENCY_KEEP_RUNS:]
+    os.makedirs(os.path.dirname(_LATENCY_RUNS_PATH), exist_ok=True)
+    tmp = _LATENCY_RUNS_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(runs, f)
+    os.replace(tmp, _LATENCY_RUNS_PATH)
+
+
+def _fit_line(points: list) -> "tuple[float, float, float] | None":
+    """Least squares y = a + b·x as (a, b, residual sd); None under two points."""
+    n = len(points)
+    if n < 2:
+        return None
+    mx = sum(x for x, _ in points) / n
+    my = sum(y for _, y in points) / n
+    sxx = sum((x - mx) ** 2 for x, _ in points)
+    if sxx == 0:
+        return None
+    b = sum((x - mx) * (y - my) for x, y in points) / sxx
+    a = my - b * mx
+    sd = (sum((y - a - b * x) ** 2 for x, y in points) / (n - 2)) ** 0.5 if n > 2 else 0.0
+    return a, b, sd
+
+
+def _latency_burst_stats(n: int, t: float, result: dict, true_distance: float) -> dict:
+    """Everything past the measured distance is delay in the audio path."""
+    readings = result.get("d") or []
+    delays = [round((d - true_distance) / _SOUND_SPEED * 1000.0, 4) if d and d > 0 else None
+              for d in readings]
+    points = [(i * _CHIRP_PERIOD_S, v) for i, v in enumerate(delays) if v is not None]
+    burst = {"n": n, "t": round(t, 2), "status": result.get("status"),
+             "reason": result.get("reason"), "source": result.get("source"),
+             "chirpsSent": result.get("chirpsSent"), "heard": len(points),
+             "kept": result.get("kept"), "d": readings, "delays": delays}
+    if points:
+        values = [v for _, v in points]
+        burst["meanDelayMs"] = round(statistics.fmean(values), 4)
+        burst["medianDelayMs"] = round(statistics.median(values), 4)
+        burst["minDelayMs"] = min(values)
+        burst["maxDelayMs"] = max(values)
+    fit = _fit_line(points)
+    if fit:
+        burst["driftPpm"] = round(fit[1] * 1000.0, 1)   # ms of delay per s = µs per s
+        burst["jitterMs"] = round(fit[2], 4)            # scatter around that line
+    return burst
+
+
+def _latency_summary(bursts: list) -> dict:
+    measured = [b for b in bursts if b.get("meanDelayMs") is not None]
+    summary = {"bursts": len(bursts), "measured": len(measured)}
+    if not measured:
+        return summary
+    means = [b["meanDelayMs"] for b in measured]
+    summary["meanDelayMs"] = round(statistics.fmean(means), 4)
+    summary["sdDelayMs"] = round(statistics.stdev(means), 4) if len(means) > 1 else 0.0
+    summary["minDelayMs"] = min(means)
+    summary["maxDelayMs"] = max(means)
+    summary["rangeMs"] = round(max(means) - min(means), 4)
+    summary["rangeCm"] = round((max(means) - min(means)) * _SOUND_SPEED / 10.0, 2)
+    trend = _fit_line([(b["t"], b["meanDelayMs"]) for b in measured])
+    if trend:
+        summary["trendMsPerMin"] = round(trend[1] * 60.0, 4)
+    drifts = [b["driftPpm"] for b in measured if b.get("driftPpm") is not None]
+    if drifts:
+        summary["meanDriftPpm"] = round(statistics.fmean(drifts), 1)
+        summary["sdDriftPpm"] = round(statistics.stdev(drifts), 1) if len(drifts) > 1 else 0.0
+    jitter = [b["jitterMs"] for b in measured if b.get("jitterMs") is not None]
+    if jitter:
+        summary["meanJitterMs"] = round(statistics.fmean(jitter), 4)
+    return summary
+
+
+async def _await_latency_burst(queue: asyncio.Queue, board_id: int, timeout: float) -> dict:
+    """One test burst: the board's one-line summary, or its per-chirp
+    client_clap lines if that summary was damaged on the serial link."""
+    deadline = time.monotonic() + timeout
+    summary = None
+    claps: dict = {}
+    chirps_sent = 0
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {"status": "timeout", "reason": "no result from the master",
+                    "d": [claps.get(i, 0.0) for i in range(_CHIRPS_PER_BURST)],
+                    "source": "client_clap" if claps else None, "chirpsSent": chirps_sent}
+        try:
+            frame = await asyncio.wait_for(queue.get(), remaining)
+        except asyncio.TimeoutError:
+            continue
+        event = frame.get("event")
+        if event == "latency_burst" and frame.get("boardId") == board_id:
+            summary = frame
+        elif event == "client_clap" and frame.get("boardId") == board_id:
+            claps[int(frame.get("clapId", -1))] = float(frame.get("clapDistance") or 0.0)
+        elif event == "latency_status":
+            status = frame.get("status")
+            if status == "running":
+                chirps_sent = max(chirps_sent, int(frame.get("chirp") or 0))
+            elif status in ("done", "failed"):
+                if summary is not None:
+                    readings, source = [float(x or 0.0) for x in summary.get("d", [])], "summary"
+                else:
+                    readings = [claps.get(i, 0.0) for i in range(_CHIRPS_PER_BURST)]
+                    source = "client_clap" if claps else None
+                return {"status": status, "reason": frame.get("reason"), "d": readings,
+                        "source": source, "kept": summary.get("kept") if summary else None,
+                        "chirpsSent": frame.get("chirp", chirps_sent)}
+
+
+@app.get("/latencyTest")
+async def latency_test(
+    request: Request,
+    boardId: int = Query(..., ge=0),
+    distance: float = Query(..., ge=0.0, le=100.0),
+    bursts: int = Query(default=60, ge=1, le=500),
+    gap: float = Query(default=0.0, ge=0.0, le=60.0),
+    label: str = Query(default="", max_length=80),
+) -> StreamingResponse:
+    """Burst after burst with one board at a measured distance from the speaker,
+    streamed as it goes. Each burst gives the delay per chirp; across bursts the
+    question is whether it holds still. The master records nothing, and the run
+    is saved here even when it is stopped half way."""
+    global _latency_running
+    _assert_connected()
+    # set before the generator runs, which is too late to turn away a second run
+    if _latency_running:
+        raise HTTPException(409, detail="A latency test is already running")
+    _latency_running = True
+
+    async def generator() -> AsyncGenerator[str, None]:
+        global _latency_running
+
+        def emit(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {json.dumps({'event': event, **data})}\n\n"
+
+        run = {"label": label, "boardId": boardId, "distance": distance, "requested": bursts,
+               "gap": gap, "started": time.time(), "bursts": []}
+        saved = False
+        queue = bridge.subscribe()
+        try:
+            yield emit("latency_start", {k: run[k] for k in
+                                         ("label", "boardId", "distance", "requested", "gap", "started")})
+            failures = 0
+            for n in range(1, bursts + 1):
+                if await request.is_disconnected():
+                    break
+                while not queue.empty():   # a straggler from the last burst is not this one's
+                    queue.get_nowait()
+                sent_at = time.time()
+                bridge.send({"cmd": "latency_burst", "boardId": boardId})
+                result = await _await_latency_burst(queue, boardId, _LATENCY_BURST_TIMEOUT_S)
+                burst = _latency_burst_stats(n, sent_at - run["started"], result, distance)
+                run["bursts"].append(burst)
+                yield emit("latency_result", {"burst": burst, "summary": _latency_summary(run["bursts"])})
+                failures = 0 if burst.get("meanDelayMs") is not None else failures + 1
+                if failures >= _LATENCY_MAX_FAILURES:
+                    yield emit("latency_error", {"detail": f"{failures} bursts in a row measured nothing "
+                                                           "— check the chirp device and the board"})
+                    break
+                if gap > 0:
+                    await asyncio.sleep(gap)
+            run["summary"] = _latency_summary(run["bursts"])
+            run["finished"] = time.time()
+            _save_latency_run(run)
+            saved = True
+            yield emit("latency_done", {"summary": run["summary"], "finished": run["finished"]})
+        finally:
+            bridge.unsubscribe(queue)
+            if not saved and run["bursts"]:
+                # stopped from the browser: keep what was measured
+                run["summary"] = _latency_summary(run["bursts"])
+                run["finished"] = time.time()
+                run["stopped"] = True
+                try:
+                    _save_latency_run(run)
+                except OSError as exc:
+                    logger.warning("could not save the latency run: %s", exc)
+            _latency_running = False
+
+    return StreamingResponse(generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/latencyRuns")
+async def latency_runs():
+    """Every saved latency run, oldest first, with all of its readings."""
+    return JSONResponse(_load_latency_runs())
+
+
+@app.get("/latencyRunsClear")
+async def latency_runs_clear():
+    try:
+        os.remove(_LATENCY_RUNS_PATH)
+    except FileNotFoundError:
+        pass
+    return _ok("Latency runs cleared")
+
+
 _HEALTH_REPLY_TIMEOUT_S = 1.0
 _HEALTH_PASSES = 3
 
