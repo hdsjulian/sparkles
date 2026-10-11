@@ -382,6 +382,10 @@ private:
     int burstBatch = 0, burstBatches = 0, burstBoards = 0;
     int burstChirpsHeard = 0, burstBoardsMeasured = 0;
     unsigned long long burstFirstEmission = 0;
+    // the board runTimerSyncAt is syncing, and whether it has confirmed — its own
+    // state, so a resync never touches the shared index the announce path uses
+    volatile int resyncIndex = -1;
+    volatile bool resyncConfirmed = false;
     // Constructor and Deleted Functions
     MessageHandler();
     MessageHandler(const MessageHandler&) = delete;

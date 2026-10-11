@@ -36,6 +36,10 @@ void MessageHandler::startAllTimerSyncTask() {
 // arrivals hundreds of seconds out. The old code logged "No free TX slot" via
 // ESP_LOGW, invisible at CORE_DEBUG_LEVEL=0, and carried on regardless.
 #define TX_SLOT_STALE_MS 10000
+// A resync sends until the board confirms; these bound one that never does.
+// The client needs 11 packets in a row, so a healthy board stops near 12.
+#define RESYNC_MAX_PACKETS 100
+#define RESYNC_GIVE_UP     6     // consecutive packets the radio could not deliver
 
 int MessageHandler::acquireTxSlot(const uint8_t *mac) {
     int slot = -1;
@@ -120,6 +124,11 @@ void MessageHandler::runFastResyncAll() {
 
 void MessageHandler::startFastResyncTask() {
     if (fastResyncHandle != NULL) {
+        return;
+    }
+    if (distCalHandle != NULL) {
+        // a calibration resyncs its own batches through runTimerSyncAt too
+        LOG_I("TIMER", "resync refused, a calibration is running");
         return;
     }
     stopAnimationLoop();
@@ -310,41 +319,52 @@ bool MessageHandler::runClapDeviceTimerSync() {
 }
 
 void MessageHandler::runTimerSyncAt(int index) {
-    // Race-free version for parallel fast resync, index passed directly, not via shared state.
-    // Sends TIMER_ARRAY_COUNT + 5 packets then stops; no shared counter state touched.
+    // Race-free version for the resyncs, index passed directly, not via the
+    // shared state the announce path also writes.
+    //
+    // Sends until the board confirms — which is also when it blinks green — and
+    // gives up on one whose packets stop being delivered. A fixed 30 packets
+    // stopped whether or not the board was done: a slow one kept its previous
+    // offset, showed nothing, and was marked ACTIVE regardless, so its chirp
+    // detections were timed against a stale clock with no trace of why.
     message_timer timerMessage;
     message_data messageData;
     messageData.messageType = MSG_TIMER;
 
     addPeer(addressList[index].address);
+    resyncConfirmed = false;
+    resyncIndex = index;
 
     int txSlot = acquireTxSlot(addressList[index].address);
+    int sent = 0;
+    int undelivered = 0;
     TickType_t lastWakeTime = xTaskGetTickCount();
-    // TIMER_ARRAY_COUNT + 5 left no margin. The client needs TIMER_ARRAY_COUNT
-    // samples and only counts a packet whose predecessor was measured, so any
-    // loss breaks the chain — measured at 9 of 15 arriving, which yields at most
-    // 8 samples and never completes. It then silently keeps its previous offset
-    // while this function marks it ACTIVE regardless, so the master believes a
-    // board is synced whose clock belongs to an earlier master generation. Its
-    // chirp detections then land hundreds of seconds out and read as tens of
-    // metres. Same margin the emitter's sync needed.
-    for (int i = 0; i < TIMER_ARRAY_COUNT * 3; i++) {
+    while (!resyncConfirmed && sent < RESYNC_MAX_PACKETS && undelivered < RESYNC_GIVE_UP) {
         lastWakeTime = xTaskGetTickCount();
-        timerMessage.counter   = i;
+        // a delivered packet has its measurement consumed by the send callback
+        if (txSlot >= 0 && sent > 0 && txSlots[txSlot].sendTime != 0) undelivered++;
+        else undelivered = 0;
+        timerMessage.counter   = sent;
         timerMessage.lastDelay = (txSlot >= 0) ? clampTxDelay(txSlots[txSlot].lastDelay) : 0;
-        timerMessage.reset     = (i == 0);
+        timerMessage.reset     = (sent == 0);
         timerMessage.addressId = index;
         timerMessage.sendTime  = esp_timer_get_time();
         memcpy(&messageData.payload.timer, &timerMessage, sizeof(timerMessage));
         if (txSlot >= 0) txSlots[txSlot].sendTime = timerMessage.sendTime;
         esp_now_send(addressList[index].address, (uint8_t*)&messageData, ESPNOW_CLIENT_COMPAT_SIZE);
+        sent++;
         vTaskDelayUntil(&lastWakeTime, TIMER_FREQUENCY / portTICK_PERIOD_MS);
     }
     releaseTxSlot(txSlot);
+    resyncIndex = -1;
 
     removePeer(addressList[index].address);
-    addressList[index].active = ACTIVE;
-    addressList[index].lastUpdateTime = millis();
+    // a confirmation marks the board active where it arrives, in handleReceive
+    if (!resyncConfirmed) {
+        LOG_I("SYNC", "board %d did not confirm the resync after %d packets%s", index, sent,
+              undelivered >= RESYNC_GIVE_UP ? ", radio stopped delivering" : "");
+        setUnavailable(index);
+    }
 }
 
 void MessageHandler::runTimerSync() {

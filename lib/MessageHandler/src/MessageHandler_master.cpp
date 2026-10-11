@@ -248,6 +248,21 @@ void MessageHandler::handleReceive() {
                     setSettingTimer(false);
                     continue;
                 }
+                // a resync keeps its own target: match its confirmation by sender,
+                // never through the shared index — and resume no animation loop
+                // here, since a calibration resyncs between its bursts
+                int r = resyncIndex;
+                if (r >= 0 && memcmp(incomingData.senderAddress, addressList[r].address, 6) == 0) {
+                    addressList[r].batteryPercentage = incomingData.payload.gotTimer.batteryPercentage;
+                    addressList[r].delay = incomingData.payload.gotTimer.delayAverage;
+                    long long resyncOffset = incomingData.payload.gotTimer.offset;
+                    addressList[r].timerOffset = (int32_t)constrain(resyncOffset, (long long)INT32_MIN, (long long)INT32_MAX);
+                    addressList[r].active = ACTIVE;
+                    addressList[r].lastUpdateTime = millis();
+                    resyncConfirmed = true;
+                    serialEmitBoard(r, addressList[r]);
+                    continue;
+                }
                 int timerIndex = getCurrentTimerIndex();
                 if (timerIndex < 0 || timerIndex >= NUM_DEVICES) {
                     // late/stale MSG_GOT_TIMER — the sync it belongs to already finished
@@ -990,6 +1005,10 @@ bool MessageHandler::runBurstBatch(int commandType, int first, int end) {
     for (int i = first; i < end; i++) {
         runTimerSyncAt(i);
     }
+    // Starting the chirps stops whatever every board is showing, so leave the
+    // last board's green blink (1.5 s) time to finish — the emitter's sync below
+    // adds at least another 0.6 s.
+    vTaskDelay(pdMS_TO_TICKS(1000));
     // The emitter last, right before its chirps: a stale emitter clock shifts
     // every board in the batch alike, and differently from the next batch.
     // Without a fresh confirmation its stamps could be a whole master generation
@@ -1205,6 +1224,14 @@ void MessageHandler::startChirpBurstTask(int commandType, int slot, float xPos, 
         burstIsDistance = isDistance;
         emitBurstStatus("failed", 0, 0,
             "a chirp burst is already running, or a previous one never finished — abort it and retry");
+        burstIsDistance = runningIsDistance;
+        return;
+    }
+    if (fastResyncHandle != NULL) {
+        // both resync through runTimerSyncAt, which syncs one board at a time
+        bool runningIsDistance = burstIsDistance;
+        burstIsDistance = isDistance;
+        emitBurstStatus("failed", 0, 0, "a resync is still running — chirp again once it is done");
         burstIsDistance = runningIsDistance;
         return;
     }
