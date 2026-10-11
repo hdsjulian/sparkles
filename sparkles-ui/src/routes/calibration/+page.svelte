@@ -91,7 +91,7 @@
     } else if (s === 'done' || s === 'complete') {
       distState = 'done';
       distMsg = ev.registered
-        ? `Distance calibration complete: ${ev.boards} of ${ev.registered} boards measured, ${ev.total ?? 10} chirps each.`
+        ? `Distance calibration complete: ${ev.boards} of ${ev.registered} boards measured, ${ev.chirp} of ${(ev.total ?? 10) * (ev.batches ?? 1)} chirps sent.`
         : `Distance calibration complete, averaged over ${ev.total ?? 10} chirps.`;
     } else if (s === 'failed') {
       distState = 'idle';
