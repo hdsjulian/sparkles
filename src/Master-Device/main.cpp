@@ -772,8 +772,11 @@ static void handleSerialCommand(const char* line) {
 
     } else if (strcmp(cmd, "test_chirp") == 0) {
         // straight to the sound device, no calibration state touched — this is
-        // for hearing the chirp, not for measuring anything with it
-        message_data m = msgHandler.createCommandMessage(CMD_TEST_CHIRP, false);
+        // for hearing the chirp, not for measuring anything with it. Broadcast:
+        // unicast goes to the address learned from its announce, and a master
+        // that never heard one sent it nowhere — the very case this is for
+        // debugging. Clients ignore CMD_TEST_CHIRP.
+        message_data m = msgHandler.createCommandMessage(CMD_TEST_CHIRP, true);
         msgHandler.pushToSendQueue(m);
 
     } else if (strcmp(cmd, "health_ping") == 0) {

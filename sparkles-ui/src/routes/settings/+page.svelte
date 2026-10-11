@@ -20,6 +20,7 @@
     resetClients,
     factoryReset,
     commandResetChirp,
+    commandTestChirp,
     commandAnimate,
     commandAnimationOff,
     getAppSettings,
@@ -392,6 +393,18 @@
     }
   }
 
+  // one chirp, nothing measured — for checking the audio path in the field
+  async function handleTestChirp() {
+    error = '';
+    try {
+      await commandTestChirp();
+      successMsg = 'Test chirp sent — the chirp device flashes green as it goes to the DAC';
+      setTimeout(() => { successMsg = ''; }, 3000);
+    } catch (e) {
+      error = e.message;
+    }
+  }
+
   async function handleResetChirp() {
     if (!confirm('Reboot the chirp device? It drops off the mesh for a few seconds and re-announces itself.')) return;
     error = '';
@@ -755,12 +768,18 @@
         Test Mode: {testMode ? 'ON' : 'OFF'}
       </button>
       <button class="btn btn-ghost" on:click={handleReannounce}>Reannounce</button>
+      <button class="btn btn-ghost" on:click={handleTestChirp}>Test Chirp</button>
       <button class="btn btn-ghost" on:click={handleResetChirp}>Reboot Chirp Device</button>
     </div>
     <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.5rem;">
       The chirp device is not in the address list, so neither the fleet reboot nor a
       factory reset ever reaches it — this is the only way to restart it short of
       unplugging it.
+    </p>
+    <p style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.5rem;">
+      Its LED blinks blue for every message from the master and green for every chirp
+      it sends to the DAC. No blue: it isn't hearing the master. Green but silent: the
+      DAC, its cable or the boombox.
     </p>
   </div>
 

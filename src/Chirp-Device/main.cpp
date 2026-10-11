@@ -32,8 +32,44 @@
 // which is all the chirp needs to be testable with nothing but a usb cable, no
 // master, no mesh, no browser.
 #define TEST_CHIRP_BUTTON GPIO_NUM_0
+// The devkit's RGB LED, for debugging in the field without a laptop: blue for a
+// message from the master, green for a chirp handed to the DAC. Blue and never
+// green: the master is heard but never asks for a chirp. Green and nothing
+// audible: the fault is past the ESP32 — DAC, cable or boombox.
+// GPIO48 is the LED on DevKitC-1 v1.0. v1.1 moved it to GPIO38, which is BCLK
+// here, so on a v1.1 board it stays dark rather than fight the DAC's clock.
+#define STATUS_LED_PIN    48
+#define LED_BRIGHTNESS    60
+#define LED_MESSAGE       (1u << 0)
+#define LED_CHIRP         (1u << 1)
 
 i2s_chan_handle_t txChan = nullptr;
+TaskHandle_t ledTaskHandle = nullptr;
+
+void flashLed(uint32_t what) {
+    if (ledTaskHandle != nullptr) xTaskNotify(ledTaskHandle, what, eSetBits);
+}
+
+// Requests collapse into one blink, so a 30-packet timer burst reads as a
+// flicker instead of queueing 30 blinks, and a chirp outranks a message.
+void ledTask(void *) {
+    // red, green, blue once at boot: the LED works and the firmware is running
+    const uint8_t boot[3][3] = {{LED_BRIGHTNESS, 0, 0}, {0, LED_BRIGHTNESS, 0}, {0, 0, LED_BRIGHTNESS}};
+    for (int i = 0; i < 3; i++) {
+        rgbLedWrite(STATUS_LED_PIN, boot[i][0], boot[i][1], boot[i][2]);
+        vTaskDelay(pdMS_TO_TICKS(150));
+    }
+    rgbLedWrite(STATUS_LED_PIN, 0, 0, 0);
+    while (true) {
+        uint32_t what = 0;
+        xTaskNotifyWait(0, UINT32_MAX, &what, portMAX_DELAY);
+        bool chirp = (what & LED_CHIRP) != 0;
+        rgbLedWrite(STATUS_LED_PIN, 0, chirp ? LED_BRIGHTNESS : 0, chirp ? 0 : LED_BRIGHTNESS);
+        vTaskDelay(pdMS_TO_TICKS(chirp ? 150 : 40));
+        rgbLedWrite(STATUS_LED_PIN, 0, 0, 0);
+        vTaskDelay(pdMS_TO_TICKS(40));   // a gap, so a stream still reads as blinks
+    }
+}
 int16_t chirpBuffer[CHIRP_FRAMES];
 
 QueueHandle_t recvQueue;
@@ -290,6 +326,7 @@ void audioPumpTask(void *) {
             if (burstAnnounce) broadcastClapMessage(true, idx, emitTime);
             i2s_channel_write(txChan, chirpBuffer, sizeof(chirpBuffer), &w, portMAX_DELAY);
             audioFrames += CHIRP_SAMPLES;
+            flashLed(LED_CHIRP);
             burstNextIndex = idx + 1;
             burstNextFrame = burstNextFrame + framesPerPeriod;
             if (--burstRemaining == 0) ESP_LOGI("CHIRP", "Burst done");
@@ -506,6 +543,7 @@ void handleReceiveTask(void *) {
         if (xQueueReceive(recvQueue, &msg, portMAX_DELAY) != pdTRUE) continue;
 
         if (msg.messageType == MSG_TIMER) {
+            flashLed(LED_MESSAGE);
             engaged = true;
             if (!hostLearned) {
                 memcpy(hostAddress, msg.senderAddress, 6);
@@ -520,6 +558,7 @@ void handleReceiveTask(void *) {
         }
 
         if (msg.messageType != MSG_COMMAND) continue;
+        flashLed(LED_MESSAGE);
         engaged = true;
         switch (msg.payload.command.commandType) {
             case CMD_START_DISTANCE_CALIBRATION:
@@ -584,6 +623,9 @@ void announceAddress() {
 
 void setup() {
     Serial.begin(115200);
+    // first, so its boot flash shows the firmware is up even if a later step fails;
+    // on core 0, out of the audio pump's way
+    xTaskCreatePinnedToCore(ledTask, "statusLed", 4096, nullptr, 2, &ledTaskHandle, 0);
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false); // modem sleep adds RX latency and skews hardware RX timestamps
     WiFi.macAddress(myAddress);
