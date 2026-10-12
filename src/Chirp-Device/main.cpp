@@ -21,6 +21,7 @@
 #define CHIRP_SAMPLES     (CHIRP_STEPS * SAMPLES_PER_STEP)            // 1056
 #define CHIRP_FRAMES      (CHIRP_SAMPLES * 2)                         // stereo
 #define CHIRP_AMPLITUDE   26000
+#define PUMP_IDLE_LSB     64      // what the DAC gets between chirps, see the pump
 // First chirp of a burst is queued this long after the request. The clients
 // open window 0 on the same broadcast and count windows from it, so chirp n is
 // only in window n if chirp 0 is in window 0 — a whole burst period here put
@@ -171,6 +172,12 @@ void handleTimer(const message_data &msg) {
     }
 }
 
+// Which channels carry the chirp; the other holds the idle offset. One alone
+// makes a stereo boombox play it from one driver instead of two, whose spacing
+// would otherwise blur the arrival. 'l', 'r' and 'b' over serial switch it.
+enum ChirpChannels { CHIRP_BOTH, CHIRP_LEFT, CHIRP_RIGHT };
+volatile int chirpChannels = CHIRP_BOTH;
+
 // Builds the chirp waveform the client's correlation template is matched against
 void buildChirp() {
     int out = 0;
@@ -179,8 +186,8 @@ void buildChirp() {
         for (int s = 0; s < SAMPLES_PER_STEP; s++) {
             int totalSample = step * SAMPLES_PER_STEP + s;
             int16_t val = (int16_t)(CHIRP_AMPLITUDE * sinf(2.0f * M_PI * freq * totalSample / I2S_SAMPLE_RATE));
-            chirpBuffer[out++] = val; // L
-            chirpBuffer[out++] = val; // R
+            chirpBuffer[out++] = chirpChannels == CHIRP_RIGHT ? PUMP_IDLE_LSB : val; // L
+            chirpBuffer[out++] = chirpChannels == CHIRP_LEFT  ? PUMP_IDLE_LSB : val; // R
         }
     }
 }
@@ -250,7 +257,6 @@ static const int PUMP_CHUNK_FRAMES = 441;                 // 10 ms at 44.1 kHz
 // chirps came through, and being pure offset it makes no sound. +-64 alternating
 // every frame, a 22 kHz dither, did the same and was meant to be above hearing,
 // but a boombox with a digital input turned it into a loud hum.
-#define PUMP_IDLE_LSB 64
 static int16_t pumpOffset[PUMP_CHUNK_FRAMES * 2];
 // the dither and true silence stay switchable over serial ('d') for testing
 static int16_t pumpDither[PUMP_CHUNK_FRAMES * 2];
@@ -533,6 +539,18 @@ void startTestTone() {
     xTaskCreatePinnedToCore(testToneTask, "testTone", 8192, nullptr, 10, &chirpTaskHandle, 1);
 }
 
+// not mid-burst: the pump may be copying chirpBuffer out
+void setChirpChannels(int channels) {
+    static const char* names[3] = {"both channels", "the left channel only", "the right channel only"};
+    if (burstRemaining > 0) {
+        ESP_LOGW("CHIRP", "Burst in progress, the chirp stays on %s", names[chirpChannels]);
+        return;
+    }
+    chirpChannels = channels;
+    buildChirp();
+    ESP_LOGI("CHIRP", "chirp now on %s", names[channels]);
+}
+
 // shares chirpTaskHandle with the burst on purpose: both drive the one I2S
 // channel, so a test chirp must not start on top of a calibration. A burst that
 // was killed mid-flight can leave the handle pointing at a task that no longer
@@ -698,13 +716,18 @@ void loop() {
     if (pressed && !wasPressed) startTestChirp("BOOT button");
     wasPressed = pressed;
 
-    // 'd' switches what plays between chirps; anything else on serial chirps
-    // once, 'c' being just the shortest thing to type
+    // 'd' switches what plays between chirps, 'l' 'r' 'b' which channels the
+    // chirp is on; anything else on serial chirps once, 'c' being just the
+    // shortest thing to type
     while (Serial.available() > 0) {
         int c = Serial.read();
         if (c == '\n' || c == '\r') continue;
         if (c == 'd') {
             setIdleSignal((idleSignal + 1) % 3);
+            continue;
+        }
+        if (c == 'l' || c == 'r' || c == 'b') {
+            setChirpChannels(c == 'l' ? CHIRP_LEFT : c == 'r' ? CHIRP_RIGHT : CHIRP_BOTH);
             continue;
         }
         // 't'/'b' tone helpers are gone: the pump owns the channel, and the
