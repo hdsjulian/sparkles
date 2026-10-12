@@ -701,7 +701,7 @@ class SerialBridge:
                 except json.JSONDecodeError:
                     continue  # actual boot noise
                 self._append_log(line)
-                self._dispatch(frame)
+                self._dispatch_safe(frame, line)
             if not self._running:
                 break
             self._serial.reset_input_buffer()
@@ -728,7 +728,7 @@ class SerialBridge:
                         continue
                     import time as _time
                     self._last_frame_time = _time.monotonic()
-                    self._dispatch(frame)
+                    self._dispatch_safe(frame, line)
                 except Exception as exc:
                     # pyserial can raise raw OSError/TypeError when the port is
                     # closed under a blocked readline (flash, usb re-enumeration) —
@@ -741,6 +741,19 @@ class SerialBridge:
                         pass
                     _time.sleep(RECONNECT_DELAY)
                     break
+
+    def _dispatch_safe(self, frame, line: str):
+        # The master drops bytes when the pi falls behind, and a line with a
+        # chunk cut out can still parse: '{"event":10,"slot":0,...}', or a bare
+        # number. That is one bad line. Raising here used to look like a lost
+        # port to the read loop, and the reconnect threw away the next 5 s of
+        # traffic — a whole calibration burst.
+        if not isinstance(frame, dict) or not isinstance(frame.get("event", ""), str):
+            return
+        try:
+            self._dispatch(frame)
+        except Exception as exc:
+            logger.warning("Dropped a frame that broke dispatch (%s): %.120s", exc, line)
 
     def _dispatch(self, frame: dict):
         if self._loop is None:
