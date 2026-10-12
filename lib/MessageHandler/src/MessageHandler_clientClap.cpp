@@ -34,6 +34,48 @@ static void buildChirpTemplate(float* tmpl) {
     }
 }
 
+#if CHIRP_DIAG
+#include "mbedtls/base64.h"
+// Diagnostic build (env Client_Diag), for one board on a usb cable: every
+// arrival in every window, the raw recording, and the 70% rule applied to the
+// outline instead of the raw correlation. The raw correlation ripples at the
+// chirp's pitch, so its earliest peak can be one wave early; the outline — the
+// magnitude of the template and its 90° twin — has one smooth peak per copy,
+// plus the chirp's own sidelobes, up to 40% of it, before it as well as after.
+static const float ENVELOPE_COPY_RATIO = 0.7f;
+static int diagChirp = 0;                          // window index, set by runClapTask
+static float diagTmplQ[CHIRP_SAMPLES];
+
+static void buildDiagTemplate() {
+    for (int step = 0; step < CHIRP_STEPS; step++) {
+        float freq = (float)chirpFrequencies[step];
+        for (int s = 0; s < SAMPLES_PER_STEP; s++) {
+            int idx = step * SAMPLES_PER_STEP + s;
+            diagTmplQ[idx] = cosf(2.0f * M_PI * freq * idx / CHIRP_SAMPLE_RATE);
+        }
+    }
+}
+
+// The whole recording as base64 of the int16 samples, in parts that each fit a
+// line. Blocking writes for the dump only — the usual non-blocking ones would
+// drop most of it.
+static void diagDumpRecording(const int16_t* rec) {
+    static const int PART = 120;   // samples per line
+    static unsigned char text[((PART * 2 + 2) / 3) * 4 + 4];
+    const int parts = (RECORD_SAMPLES + PART - 1) / PART;
+    Serial.setTxTimeoutMs(50);
+    for (int p = 0; p < parts; p++) {
+        int n = RECORD_SAMPLES - p * PART;
+        if (n > PART) n = PART;
+        size_t olen = 0;
+        mbedtls_base64_encode(text, sizeof(text), &olen, (const unsigned char*)(rec + p * PART), n * 2);
+        text[olen] = 0;
+        Serial.printf("DIAGRAW c=%d p=%d/%d %s\n", diagChirp, p, parts, (const char*)text);
+    }
+    Serial.setTxTimeoutMs(0);
+}
+#endif
+
 // Records one window and correlates it against the template. Returns the delay
 // from the first sample to the chirp arrival in samples, or -1 when nothing
 // plausible was heard. recordStart is the esp_timer stamp of the first sample.
@@ -41,6 +83,14 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
                                   unsigned long long& recordStart, float& peakCorr) {
     static int16_t recBuf[RECORD_SAMPLES];
     static float corrBuf[MAX_LAG + 1]; // indexed by lag in samples
+#if CHIRP_DIAG
+    static float envBuf[MAX_LAG + 1];
+    static bool diagTemplateBuilt = false;
+    if (!diagTemplateBuilt) {
+        buildDiagTemplate();
+        diagTemplateBuilt = true;
+    }
+#endif
 
     const unsigned long long intervalUs = 1000000ULL / CHIRP_SAMPLE_RATE; // 100 µs
     recordStart = esp_timer_get_time();
@@ -121,13 +171,22 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     for (int d = minLag; d <= MAX_LAG; d++) {
         float corr = 0;
         float sigEnergy = 0;
+#if CHIRP_DIAG
+        float corrQ = 0;
+#endif
         for (int k = 0; k < CHIRP_SAMPLES; k++) {
             float s = (float)recBuf[d + k];
             corr      += s * tmpl[k];
             sigEnergy += s * s;
+#if CHIRP_DIAG
+            corrQ     += s * diagTmplQ[k];
+#endif
         }
         // Normalise by signal energy to make threshold signal-level independent
         corrBuf[d] = (sigEnergy > 0) ? (corr / sqrtf(tmplEnergy * sigEnergy)) : 0;
+#if CHIRP_DIAG
+        envBuf[d] = (sigEnergy > 0) ? (sqrtf(corr * corr + corrQ * corrQ) / sqrtf(tmplEnergy * sigEnergy)) : 0;
+#endif
         if (corrBuf[d] > bestCorr) bestCorr = corrBuf[d];
         sum   += corrBuf[d];
         sumSq += corrBuf[d] * corrBuf[d];
@@ -160,6 +219,65 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
              (unsigned long long)(recordStart / 1000),
              (emission != 0 ? (long long)(emissionOffsetUs / 1000) : staleOffsetUs / 1000),
              minLag, MAX_LAG, bestCorr, gate);
+
+#if CHIRP_DIAG
+    {
+        // what the 70% rule would have picked, for comparison
+        int oldIdx = -1;
+        if (bestCorr >= gate) {
+            float accept = bestCorr * FIRST_PEAK_RATIO;
+            for (int d = (minLag > 0 ? minLag + 1 : 1); d < MAX_LAG; d++) {
+                if (corrBuf[d] >= accept && corrBuf[d] >= corrBuf[d - 1] && corrBuf[d] >= corrBuf[d + 1]) {
+                    oldIdx = d;
+                    break;
+                }
+            }
+        }
+        float envMax = 0, envSum = 0, envSumSq = 0;
+        for (int d = minLag; d <= MAX_LAG; d++) {
+            float e = envBuf[d];
+            if (e > envMax) envMax = e;
+            envSum   += e;
+            envSumSq += e * e;
+        }
+        float envMean = envSum / lagCount;
+        float envVar = envSumSq / lagCount - envMean * envMean;
+        float envGate = fmaxf(MIN_CORR_THRESHOLD, envMean + NOISE_GATE_SIGMAS * (envVar > 0 ? sqrtf(envVar) : 0.0f));
+        float copyFloor = fmaxf(envGate, envMax * ENVELOPE_COPY_RATIO);
+
+        // every outline peak above a fifth of the strongest; the first above the
+        // copy floor is the result
+        int newIdx = -1;
+        char peaks[420];
+        int len = 0, listed = 0;
+        peaks[0] = 0;
+        for (int d = (minLag > 0 ? minLag + 1 : 1); d < MAX_LAG; d++) {
+            if (envBuf[d] < envMax * 0.2f || envBuf[d] < envBuf[d - 1] || envBuf[d] < envBuf[d + 1]) continue;
+            if (newIdx < 0 && envBuf[d] >= copyFloor) newIdx = d;
+            if (listed < 16 && len < (int)sizeof(peaks) - 24) {
+                len += snprintf(peaks + len, sizeof(peaks) - len, " %d:%.3f", d, envBuf[d]);
+                listed++;
+            }
+        }
+        float newPos = -1.0f;
+        if (newIdx > 0 && envMax >= envGate) {
+            float c0 = envBuf[newIdx - 1], c1 = envBuf[newIdx], c2 = envBuf[newIdx + 1];
+            float denom = c0 - 2.0f * c1 + c2;
+            float frac = (denom < -1e-9f) ? 0.5f * (c0 - c2) / denom : 0.0f;
+            newPos = (float)newIdx + constrain(frac, -0.5f, 0.5f);
+            peakCorr = c1;
+        } else {
+            peakCorr = envMax;
+        }
+        // lags in samples of 0.1 ms from the window's first sample; emit is where
+        // the chirp device's stamp falls on that same scale
+        Serial.printf("DIAG c=%d stamp=%s emit=%.1f minLag=%d gate=%.3f best=%.3f old=%d envGate=%.3f envMax=%.3f new=%.2f peaks%s\n",
+                      diagChirp, (emission != 0) ? "ok" : (staleOffsetUs != 0 ? "stale" : "none"),
+                      emissionOffsetUs / 100.0f, minLag, gate, bestCorr, oldIdx, envGate, envMax, newPos, peaks);
+        diagDumpRecording(recBuf);
+        return newPos;
+    }
+#endif
 
     peakCorr = bestCorr;
     if (bestCorr < gate) return -1.0f;
@@ -212,6 +330,9 @@ void MessageHandler::runClapTask() {
             // queues it, ~40 ms after the broadcast that opened window 0, so a
             // board that opens its window late gets the stamp just *before* it —
             // clearing here would throw that away and force a full-window search.
+#if CHIRP_DIAG
+            diagChirp = chirp;
+#endif
             float delaySamples = detectChirp(audioPin, chirpTmpl, tmplEnergy, recordStart, peakCorr);
 
             message_data clapMessage = createClapMessage(true);
