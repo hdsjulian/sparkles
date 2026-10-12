@@ -42,9 +42,13 @@
 #define LED_BRIGHTNESS    60
 #define LED_MESSAGE       (1u << 0)
 #define LED_CHIRP         (1u << 1)
+#define LED_IDLE          (1u << 2)   // the idle colour changed, show it
 
 i2s_chan_handle_t txChan = nullptr;
 TaskHandle_t ledTaskHandle = nullptr;
+// shown between blinks: off normally, a colour while the pump plays something
+// other than the offset between chirps (see setIdleSignal)
+volatile uint8_t ledIdle[3] = {0, 0, 0};
 
 void flashLed(uint32_t what) {
     if (ledTaskHandle != nullptr) xTaskNotify(ledTaskHandle, what, eSetBits);
@@ -63,10 +67,12 @@ void ledTask(void *) {
     while (true) {
         uint32_t what = 0;
         xTaskNotifyWait(0, UINT32_MAX, &what, portMAX_DELAY);
-        bool chirp = (what & LED_CHIRP) != 0;
-        rgbLedWrite(STATUS_LED_PIN, 0, chirp ? LED_BRIGHTNESS : 0, chirp ? 0 : LED_BRIGHTNESS);
-        vTaskDelay(pdMS_TO_TICKS(chirp ? 150 : 40));
-        rgbLedWrite(STATUS_LED_PIN, 0, 0, 0);
+        if (what & (LED_CHIRP | LED_MESSAGE)) {
+            bool chirp = (what & LED_CHIRP) != 0;
+            rgbLedWrite(STATUS_LED_PIN, 0, chirp ? LED_BRIGHTNESS : 0, chirp ? 0 : LED_BRIGHTNESS);
+            vTaskDelay(pdMS_TO_TICKS(chirp ? 150 : 40));
+        }
+        rgbLedWrite(STATUS_LED_PIN, ledIdle[0], ledIdle[1], ledIdle[2]);
         vTaskDelay(pdMS_TO_TICKS(40));   // a gap, so a stream still reads as blinks
     }
 }
@@ -240,18 +246,37 @@ static const int PUMP_CHUNK_FRAMES = 441;                 // 10 ms at 44.1 kHz
 // stretch the first chirps of a burst simply do not come out, which is why a
 // first burst gave 4 and a second burst 3 s later gave 10. Feeding true silence
 // lets it fall asleep between bursts; feeding +-1 LSB was not enough to hold it
-// awake (7-8 of 10). +-64 is -54 dBFS, and alternating every frame puts it at
-// half the sample rate — 22 kHz, above hearing — so it keeps the DAC fully awake
-// without being audible.
-#define PUMP_DITHER_LSB 64
-static int16_t pumpSilence[PUMP_CHUNK_FRAMES * 2];
+// awake (7-8 of 10). A constant +64 (-54 dBFS) holds it awake, 200 of 200
+// chirps came through, and being pure offset it makes no sound. +-64 alternating
+// every frame, a 22 kHz dither, did the same and was meant to be above hearing,
+// but a boombox with a digital input turned it into a loud hum.
+#define PUMP_IDLE_LSB 64
+static int16_t pumpOffset[PUMP_CHUNK_FRAMES * 2];
+// the dither and true silence stay switchable over serial ('d') for testing
+static int16_t pumpDither[PUMP_CHUNK_FRAMES * 2];
+static int16_t pumpZero[PUMP_CHUNK_FRAMES * 2];
+enum IdleSignal { IDLE_OFFSET, IDLE_DITHER, IDLE_ZERO };
+volatile int idleSignal = IDLE_OFFSET;
 
-static void buildPumpDither() {
+static void buildPumpIdle() {
     for (int i = 0; i < PUMP_CHUNK_FRAMES; i++) {
-        int16_t v = (i & 1) ? PUMP_DITHER_LSB : -PUMP_DITHER_LSB;
-        pumpSilence[2 * i]     = v;
-        pumpSilence[2 * i + 1] = v;
+        int16_t v = (i & 1) ? PUMP_IDLE_LSB : -PUMP_IDLE_LSB;
+        pumpOffset[2 * i]     = PUMP_IDLE_LSB;
+        pumpOffset[2 * i + 1] = PUMP_IDLE_LSB;
+        pumpDither[2 * i]     = v;
+        pumpDither[2 * i + 1] = v;
     }
+}
+
+// the LED shows which one is playing: off for the offset, magenta for the
+// dither, yellow for silence
+void setIdleSignal(int signal) {
+    static const char* names[3] = {"constant offset", "22 kHz dither", "silence"};
+    static const uint8_t colours[3][3] = {{0, 0, 0}, {30, 0, 30}, {30, 30, 0}};
+    idleSignal = signal;
+    for (int i = 0; i < 3; i++) ledIdle[i] = colours[signal][i];
+    flashLed(LED_IDLE);
+    ESP_LOGI("CHIRP", "between chirps now: %s", names[signal]);
 }
 
 volatile uint64_t audioFrames = 0;      // frames written since the single enable
@@ -297,16 +322,16 @@ void requestChirps(int count, bool announce) {
 
 void audioPumpTask(void *) {
     const int framesPerPeriod = I2S_SAMPLE_RATE * CHIRP_BURST_PERIOD_MS / 1000;
-    buildPumpDither();
+    buildPumpIdle();
     i2s_channel_disable(txChan);                 // ensure READY
     // fill the ring until the driver takes no more, so the first frame counted
     // is the first frame played
     uint64_t preloaded = 0;
     size_t loaded = 0;
     do {
-        ESP_ERROR_CHECK(i2s_channel_preload_data(txChan, pumpSilence, sizeof(pumpSilence), &loaded));
+        ESP_ERROR_CHECK(i2s_channel_preload_data(txChan, pumpOffset, sizeof(pumpOffset), &loaded));
         preloaded += loaded / (2 * sizeof(int16_t));
-    } while (loaded == sizeof(pumpSilence));
+    } while (loaded == sizeof(pumpOffset));
     ESP_ERROR_CHECK(i2s_channel_enable(txChan)); // the only enable, ever
     audioEnableTimeLocal = esp_timer_get_time();
     audioFrames = preloaded;
@@ -378,7 +403,9 @@ void audioPumpTask(void *) {
             if (until < (uint64_t)n) n = (int)until;
         }
         if (n <= 0) n = 1;
-        i2s_channel_write(txChan, pumpSilence, n * 2 * sizeof(int16_t), &w, portMAX_DELAY);
+        const int16_t* idle = idleSignal == IDLE_DITHER ? pumpDither
+                            : idleSignal == IDLE_ZERO   ? pumpZero : pumpOffset;
+        i2s_channel_write(txChan, idle, n * 2 * sizeof(int16_t), &w, portMAX_DELAY);
         audioFrames += n;
     }
 }
@@ -671,10 +698,15 @@ void loop() {
     if (pressed && !wasPressed) startTestChirp("BOOT button");
     wasPressed = pressed;
 
-    // anything at all on serial chirps once; 'c' is just the shortest thing to type
+    // 'd' switches what plays between chirps; anything else on serial chirps
+    // once, 'c' being just the shortest thing to type
     while (Serial.available() > 0) {
         int c = Serial.read();
         if (c == '\n' || c == '\r') continue;
+        if (c == 'd') {
+            setIdleSignal((idleSignal + 1) % 3);
+            continue;
+        }
         // 't'/'b' tone helpers are gone: the pump owns the channel, and the
         // client's energy metric replaced what they were for
         startTestChirp("serial");
