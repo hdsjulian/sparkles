@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { devices } from '$lib/stores.js';
-  import { latencyTest, getLatencyRuns, clearLatencyRuns } from '$lib/api.js';
+  import { latencyTest, stopLatencyTest, getLatencyStatus, getLatencyRuns, clearLatencyRuns } from '$lib/api.js';
 
   // A spread of the per-burst delay under 0.3 ms — 10 cm of sound — is worth
   // trying as a fixed correction; anything more is not.
@@ -15,6 +15,9 @@
   let label = '';
 
   let running = false;
+  let ending = false;
+  let remote = null;     // a run this page did not start: opened mid-run, or another browser
+  let remoteTimer = null;
   let es = null;
   let error = '';
   let run = null;        // the run on screen: live, or one picked from the saved list
@@ -27,8 +30,44 @@
   $: v = verdict(s);
   $: chart = buildChart(run);
 
-  onMount(loadRuns);
-  onDestroy(() => es?.close());
+  onMount(() => {
+    loadRuns();
+    checkRemote();
+  });
+  onDestroy(() => {
+    es?.close();
+    clearTimeout(remoteTimer);
+  });
+
+  // a run started elsewhere still shows, and can still be ended, from here
+  async function checkRemote() {
+    clearTimeout(remoteTimer);
+    try {
+      const st = await getLatencyStatus();
+      if (st.running && !running) {
+        remote = st;
+        ending = !!st.ending;
+        remoteTimer = setTimeout(checkRemote, 3000);
+        return;
+      }
+    } catch {
+      // no status, no banner
+    }
+    if (remote) loadRuns();
+    remote = null;
+    if (!running) ending = false;
+  }
+
+  async function endTest() {
+    ending = true;
+    try {
+      await stopLatencyTest();
+    } catch (e) {
+      error = e.message;
+    }
+    // our own run finishes through latency_done; a remote one is followed by checkRemote
+    if (remote) checkRemote();
+  }
 
   async function loadRuns() {
     try {
@@ -73,6 +112,7 @@
 
   function finish() {
     running = false;
+    ending = false;
     es?.close();
     es = null;
     loadRuns();
@@ -210,10 +250,22 @@
     </div>
   </div>
 
+  {#if remote}
+    <div class="status-msg info">
+      A test is running: {remote.label || 'unlabelled'} · board #{remote.boardId} at {remote.distance} m ·
+      burst {remote.done} of {remote.requested}. It was started in another browser or before this page
+      was opened, so its readings show up under Saved runs once it ends.
+    </div>
+  {/if}
+
   <div class="btn-row">
-    {#if running}
-      <button class="btn btn-danger" on:click={finish}>Stop</button>
-      <span class="progress">Burst {run.bursts.length + 1} of {run.requested}…</span>
+    {#if running || remote}
+      <button class="btn btn-danger" on:click={endTest} disabled={ending}>
+        {ending ? 'Ending after this burst…' : 'End test'}
+      </button>
+      {#if running}
+        <span class="progress">Burst {run.bursts.length + 1} of {run.requested}…</span>
+      {/if}
     {:else}
       <button class="btn btn-primary" on:click={start}>Start</button>
     {/if}

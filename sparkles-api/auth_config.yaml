@@ -45,6 +45,8 @@ access:
     "GET /commandCancelDistanceCalibration":   [admin]
     "GET /commandAbortDistanceCalibration":    [admin]
     "GET /latencyTest":                        [admin]
+    "GET /latencyTestStop":                    [admin]
+    "GET /latencyStatus":                      [admin]
     "GET /latencyRuns":                        [admin]
     "GET /latencyRunsClear":                   [admin]
     "GET /setMidiParams":                 [admin]

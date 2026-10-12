@@ -1285,6 +1285,8 @@ _SOUND_SPEED = 343.0          # m/s, the master's convertMicrosToMeters
 _CHIRP_PERIOD_S = 0.5         # CHIRP_BURST_PERIOD_MS
 _CHIRPS_PER_BURST = 10        # CHIRP_BURST_COUNT
 _latency_running = False
+_latency_stop = False         # End test: finish the burst in flight, then stop
+_latency_progress: dict = {}  # what a page opened mid-run needs to show and end it
 
 
 def _load_latency_runs() -> list:
@@ -1418,15 +1420,18 @@ async def latency_test(
     streamed as it goes. Each burst gives the delay per chirp; across bursts the
     question is whether it holds still. The master records nothing, and the run
     is saved here even when it is stopped half way."""
-    global _latency_running
+    global _latency_running, _latency_stop, _latency_progress
     _assert_connected()
     # set before the generator runs, which is too late to turn away a second run
     if _latency_running:
         raise HTTPException(409, detail="A latency test is already running")
     _latency_running = True
+    _latency_stop = False
+    _latency_progress = {"label": label, "boardId": boardId, "distance": distance,
+                         "requested": bursts, "started": time.time(), "done": 0}
 
     async def generator() -> AsyncGenerator[str, None]:
-        global _latency_running
+        global _latency_running, _latency_stop, _latency_progress
 
         def emit(event: str, data: dict) -> str:
             return f"event: {event}\ndata: {json.dumps({'event': event, **data})}\n\n"
@@ -1440,7 +1445,7 @@ async def latency_test(
                                          ("label", "boardId", "distance", "requested", "gap", "started")})
             failures = 0
             for n in range(1, bursts + 1):
-                if await request.is_disconnected():
+                if _latency_stop or await request.is_disconnected():
                     break
                 while not queue.empty():   # a straggler from the last burst is not this one's
                     queue.get_nowait()
@@ -1449,6 +1454,7 @@ async def latency_test(
                 result = await _await_latency_burst(queue, boardId, _LATENCY_BURST_TIMEOUT_S)
                 burst = _latency_burst_stats(n, sent_at - run["started"], result, distance)
                 run["bursts"].append(burst)
+                _latency_progress["done"] = n
                 yield emit("latency_result", {"burst": burst, "summary": _latency_summary(run["bursts"])})
                 failures = 0 if burst.get("meanDelayMs") is not None else failures + 1
                 if failures >= _LATENCY_MAX_FAILURES:
@@ -1459,6 +1465,8 @@ async def latency_test(
                     await asyncio.sleep(gap)
             run["summary"] = _latency_summary(run["bursts"])
             run["finished"] = time.time()
+            if _latency_stop:
+                run["stopped"] = True
             _save_latency_run(run)
             saved = True
             yield emit("latency_done", {"summary": run["summary"], "finished": run["finished"]})
@@ -1474,9 +1482,28 @@ async def latency_test(
                 except OSError as exc:
                     logger.warning("could not save the latency run: %s", exc)
             _latency_running = False
+            _latency_stop = False
+            _latency_progress = {}
 
     return StreamingResponse(generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/latencyTestStop")
+async def latency_test_stop():
+    """End the running latency test once the burst in flight is in. Works from
+    any browser, not only the one that started it; what was measured is kept."""
+    global _latency_stop
+    if not _latency_running:
+        return _ok("No latency test is running")
+    _latency_stop = True
+    return _ok("Ending after the current burst")
+
+
+@app.get("/latencyStatus")
+async def latency_status():
+    """Whether a latency test is running, so a page opened mid-run can end it."""
+    return JSONResponse({"running": _latency_running, "ending": _latency_stop, **_latency_progress})
 
 
 @app.get("/latencyRuns")

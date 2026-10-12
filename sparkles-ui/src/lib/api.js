@@ -253,6 +253,13 @@ export const commandTestCalibration = () =>
 export const latencyTest = ({ boardId, distance, bursts = 60, gap = 0, label = '' }) =>
   new EventSource(`${BASE}/latencyTest?${new URLSearchParams({ boardId, distance, bursts, gap, label })}`);
 
+// ends after the burst in flight, from any browser; the run is kept
+export const stopLatencyTest = () =>
+  fetch(`${BASE}/latencyTestStop`).then(r => r.json());
+
+export const getLatencyStatus = () =>
+  fetch(`${BASE}/latencyStatus`).then(r => r.json());
+
 export const getLatencyRuns = () =>
   fetch(`${BASE}/latencyRuns`).then(r => r.json());
 
