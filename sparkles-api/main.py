@@ -1285,7 +1285,6 @@ _LATENCY_RUNS_PATH = os.environ.get("SPARKLES_LATENCY_RUNS", "/home/julian/spark
 _LATENCY_KEEP_RUNS = 50
 _LATENCY_BURST_TIMEOUT_S = 30.0
 _LATENCY_MAX_FAILURES = 3     # bursts in a row that measured nothing
-_SOUND_SPEED = 343.0          # m/s, the master's convertMicrosToMeters
 _CHIRP_PERIOD_S = 0.5         # CHIRP_BURST_PERIOD_MS
 _CHIRPS_PER_BURST = 10        # CHIRP_BURST_COUNT
 _latency_running = False
@@ -1329,7 +1328,9 @@ def _fit_line(points: list) -> "tuple[float, float, float] | None":
 def _latency_burst_stats(n: int, t: float, result: dict, true_distance: float) -> dict:
     """Everything past the measured distance is delay in the audio path."""
     readings = result.get("d") or []
-    delays = [round((d - true_distance) / _SOUND_SPEED * 1000.0, 4) if d and d > 0 else None
+    # the master turned these into distances at this speed, so undo them with it
+    c = bridge.sound_speed()
+    delays = [round((d - true_distance) / c * 1000.0, 4) if d and d > 0 else None
               for d in readings]
     points = [(i * _CHIRP_PERIOD_S, v) for i, v in enumerate(delays) if v is not None]
     burst = {"n": n, "t": round(t, 2), "status": result.get("status"),
@@ -1360,7 +1361,7 @@ def _latency_summary(bursts: list) -> dict:
     summary["minDelayMs"] = min(means)
     summary["maxDelayMs"] = max(means)
     summary["rangeMs"] = round(max(means) - min(means), 4)
-    summary["rangeCm"] = round((max(means) - min(means)) * _SOUND_SPEED / 10.0, 2)
+    summary["rangeCm"] = round((max(means) - min(means)) * bridge.sound_speed() / 10.0, 2)
     trend = _fit_line([(b["t"], b["meanDelayMs"]) for b in measured])
     if trend:
         summary["trendMsPerMin"] = round(trend[1] * 60.0, 4)
@@ -1528,6 +1529,19 @@ async def latency_runs_clear():
 @app.get("/speakerDelay")
 async def get_speaker_delay():
     return bridge.speaker
+
+
+@app.get("/airTemp")
+async def get_air_temp():
+    return {**bridge.air, "soundSpeed": round(bridge.sound_speed(), 2)}
+
+
+@app.get("/setAirTemp")
+async def set_air_temp(c: float = Query(..., ge=-30.0, le=50.0)):
+    # sound travels 0.6 m/s faster per degree; the master turns flight times
+    # into distances with it
+    bridge.set_air_temp(c)
+    return _ok(f"Air temperature {c:.1f} °C, sound at {bridge.sound_speed():.1f} m/s")
 
 
 @app.get("/setSpeakerDelay")

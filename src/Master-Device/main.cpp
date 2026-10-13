@@ -481,6 +481,16 @@ static void handleSerialCommand(const char* line) {
         JsonDocument r; r["event"] = "speaker_delay"; r["us"] = us;
         serialSendDoc(r);
 
+    } else if (strcmp(cmd, "set_sound_speed") == 0) {
+        // from the air temperature on the pi, which re-sends it on every connect
+        float mps = doc["mps"] | 343.0f;
+        if (mps > 300.0f && mps < 380.0f) {
+            msgHandler.setSoundSpeed(mps);
+            prefs.putFloat("soundSpeed", mps);
+        }
+        JsonDocument r; r["event"] = "sound_speed"; r["mps"] = msgHandler.getSoundSpeed();
+        serialSendDoc(r);
+
     } else if (strcmp(cmd, "set_sleep_time") == 0) {
         msgHandler.setSleepTime(doc["hours"].as<int>(), doc["minutes"].as<int>(), doc["seconds"].as<int>());
         prefs.putInt("sleepH", doc["hours"].as<int>());
@@ -1155,6 +1165,7 @@ void setup()
         tzset();
     }
     msgHandler.setSpeakerDelayUs(prefs.getInt("speakerDelay", 0));
+    msgHandler.setSoundSpeed(prefs.getFloat("soundSpeed", 343.0f));
     if (prefs.isKey("sleepH")) {
         msgHandler.setSleepTime(prefs.getInt("sleepH"), prefs.getInt("sleepM"), prefs.getInt("sleepS"));
         msgHandler.setWakeupTime(prefs.getInt("wakeH"), prefs.getInt("wakeM"), prefs.getInt("wakeS"));
@@ -1284,6 +1295,7 @@ void loop()
             r["minHeap"]      = ESP.getMinFreeHeap();
             r["uptime"]       = millis() / 1000;
             r["speakerDelay"] = msgHandler.getSpeakerDelayUs();
+            r["soundSpeed"]   = msgHandler.getSoundSpeed();
             r["dropped"]      = serialDroppedLines();
             serialSendDoc(r);
         }

@@ -20,6 +20,7 @@ Every command frame has at minimum `{"cmd": "<name>", ...params}`.
 | `submit_positions` | `boardId, xpos, ypos` | set board position |
 | `set_time` | `year, month, day, hours, minutes, seconds` | set RTC |
 | `set_sleep_time` | `hours, minutes, seconds` | schedule sleep |
+| `set_sound_speed` | `mps: float` | speed of sound for turning flight times into distances, from the air temperature on the pi; kept in NVS, re-sent on every connect, answered with `sound_speed` |
 | `set_speaker_delay` | `us: int` | the speaker's own delay, taken off every calibration chirp (not off latency tests); kept in NVS, re-sent by the pi on every connect, answered with `speaker_delay` |
 | `set_wakeup_time` | `hours, minutes, seconds` | schedule wakeup |
 | `set_midi_params` | `minVal, maxVal, minSat, maxSat, midiHue, midiSaturation, rangeMin, rangeMax, minDb, maxDb, mode, distance, distanceSwitch, distanceMode` | MIDI params |
@@ -60,8 +61,9 @@ Every event frame has `{"event": "<name>", ...data}`.
 |-------|------|-------------|
 | `address_list` | `numDevices, addresses: [{id,address,status,batteryPercentage,distance,xpos,ypos,lastUpdateTime,timerOffset,delay}]` | full address list |
 | `update_board` | same address object | single board updated — sent when it changes, no longer repeated every 5 s |
-| `status` | `boards, active, animating, animation, heap, minHeap, uptime, speakerDelay, dropped` | the master's one line every 5 s; `dropped` counts lines its serial queue had no room for |
+| `status` | `boards, active, animating, animation, heap, minHeap, uptime, speakerDelay, soundSpeed, dropped` | the master's one line every 5 s; `dropped` counts lines its serial queue had no room for |
 | `speaker_delay` | `us: int` | reply to `set_speaker_delay` |
+| `sound_speed` | `mps: float` | reply to `set_sound_speed` |
 | `animate_status` | `status: bool, animation` | reply to `get_animate_status` / `animate_toggle` |
 | `calibration_status` | `status: int, [clapId, clapTime]` | calibration progress |
 | `distance_status` | `status: int, [clapId, clapTime]` | distance cal progress |

@@ -15,8 +15,43 @@
     commandTestChirp,
     commandTestCalibration,
     solveMap,
-    clearMap
+    clearMap,
+    getAirTemp,
+    setAirTemp
   } from '$lib/api.js';
+
+  // ---- Air temperature: the speed of sound distances are worked out with ----
+  let airTemp = '';
+  let soundSpeed = null;
+  let airMsg = '';
+
+  async function loadAirTemp() {
+    const a = await getAirTemp();
+    airTemp = a.tempC;
+    soundSpeed = a.soundSpeed;
+  }
+
+  onMount(() => {
+    // without it the calibration runs at whatever the master has
+    loadAirTemp().catch(() => {});
+  });
+
+  async function saveAirTemp() {
+    airMsg = '';
+    const t = Number(airTemp);
+    if (airTemp === '' || !(t >= -30 && t <= 50)) {
+      airMsg = 'Between -30 and 50 °C';
+      return;
+    }
+    try {
+      const r = await setAirTemp(t);
+      if (!r.status) throw new Error(r.detail || r.msg || 'not saved');
+      await loadAirTemp();
+      airMsg = 'Saved, and sent to the master';
+    } catch (e) {
+      airMsg = `Not saved: ${e.message}`;
+    }
+  }
 
   // ---- Calibration state machine ----
   // States: idle | open | clapHappened | waiting | calibrated
@@ -440,6 +475,17 @@
   <div class="card" style="margin-bottom:1.25rem;">
     <div class="card-title">Distance Calibration</div>
 
+    <div class="form-row air">
+      <div class="form-group">
+        <label for="air-temp">Air temperature (°C)</label>
+        <input id="air-temp" type="number" min="-30" max="50" step="0.5" bind:value={airTemp} />
+      </div>
+      <button class="btn btn-ghost btn-sm" on:click={saveAirTemp}>Save</button>
+      <span class="state-hint">
+        {soundSpeed ? `Sound travels at ${soundSpeed.toFixed(1)} m/s` : ''}{airMsg ? ` · ${airMsg}` : ''}
+      </span>
+    </div>
+
     <div class="state-box">
       <div class="state-label">Current State</div>
       <div class="state-value">{distStateLabel}</div>
@@ -614,6 +660,15 @@
 </div>
 
 <style>
+  .form-row.air {
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .form-row.air .state-hint {
+    align-self: center;
+  }
+
   .clap-info {
     background: rgba(233, 69, 96, 0.1);
     border: 1px solid rgba(233, 69, 96, 0.3);

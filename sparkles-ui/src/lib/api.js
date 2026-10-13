@@ -273,6 +273,13 @@ export const getSpeakerDelay = () =>
 export const setSpeakerDelay = (ms) =>
   fetch(`${BASE}/setSpeakerDelay?${new URLSearchParams({ ms })}`).then(r => r.json());
 
+// the air temperature, and the speed of sound the master works distances out with
+export const getAirTemp = () =>
+  fetch(`${BASE}/airTemp`).then(r => r.json());
+
+export const setAirTemp = (c) =>
+  fetch(`${BASE}/setAirTemp?${new URLSearchParams({ c })}`).then(r => r.json());
+
 
 export const getAudioLevel = () =>
   fetch(`${BASE}/audioLevel`).then(r => r.json());

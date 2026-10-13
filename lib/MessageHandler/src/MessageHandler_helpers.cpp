@@ -218,9 +218,9 @@ void MessageHandler::handleSystemStatus(message_data incomingData) {
 }
 
 float MessageHandler::convertMicrosToMeters(unsigned long long timeInMicros) {
-    // Speed of sound in air at 20 degrees Celsius is approximately 343 meters per second
-    // Convert time from microseconds to seconds and then to meters
-    return (timeInMicros / 1e6) * 343.0;
+    // the speed of sound for the air temperature set on the pi: 343 m/s at 20 °C,
+    // 1.7% slower at 10 °C, which is 34 cm over 20 m
+    return (timeInMicros / 1e6) * soundSpeed;
 }
 
 void MessageHandler::setBoardPosition(int boardId, float xPos, float yPos) {

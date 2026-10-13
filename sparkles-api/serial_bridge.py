@@ -18,6 +18,7 @@ import collections
 import glob
 import json
 import logging
+import math
 import os
 import queue
 import socket
@@ -72,6 +73,14 @@ _CLOCK_TRUST_PATH = os.environ.get("SPARKLES_CLOCK_TRUST", "/home/julian/sparkle
 # the speaker's own delay, measured with a latency test and subtracted by the master
 # from every calibration chirp; re-pushed on every serial connect like the schedule
 _SPEAKER_PATH     = os.environ.get("SPARKLES_SPEAKER", "/home/julian/sparkles/sparkles-api/speaker.json")
+# the air temperature, for the speed of sound the master turns flight times into
+# distances with; re-pushed on every serial connect like the speaker delay
+_AIR_PATH         = os.environ.get("SPARKLES_AIR", "/home/julian/sparkles/sparkles-api/air.json")
+
+
+def sound_speed(temp_c: float) -> float:
+    """Speed of sound in dry air, m/s: 343.2 at 20 °C, 337.3 at 10 °C."""
+    return 331.3 * math.sqrt(1.0 + temp_c / 273.15)
 
 
 class HealthMonitor:
@@ -186,6 +195,7 @@ class SerialBridge:
         self.colors = self._load_colors()
         self.schedule = self._load_schedule()
         self.speaker = self._load_speaker()
+        self.air = self._load_air()
         self.clock_trusted = self._load_clock_trust()
         self._clock_negotiated = True  # armed (set False) on each serial connect
         self.sleep_test_events = self._load_sleep_test_events()
@@ -335,6 +345,29 @@ class SerialBridge:
 
     def _send_speaker_delay(self):
         self.send({"cmd": "set_speaker_delay", "us": int(round(self.speaker["delayMs"] * 1000))})
+
+    @staticmethod
+    def _load_air() -> dict:
+        try:
+            with open(_AIR_PATH) as f:
+                return {"tempC": float(json.load(f).get("tempC", 20.0))}
+        except Exception:
+            return {"tempC": 20.0}
+
+    def sound_speed(self) -> float:
+        return sound_speed(self.air["tempC"])
+
+    def set_air_temp(self, temp_c: float):
+        self.air = {"tempC": round(float(temp_c), 1)}
+        try:
+            with open(_AIR_PATH, "w") as f:
+                json.dump(self.air, f, indent=2)
+        except Exception as exc:
+            logger.warning("Could not save air temperature to %s: %s", _AIR_PATH, exc)
+        self._send_sound_speed()
+
+    def _send_sound_speed(self):
+        self.send({"cmd": "set_sound_speed", "mps": round(self.sound_speed(), 2)})
 
     @staticmethod
     def _load_sleep_test_events() -> list:
@@ -737,6 +770,7 @@ class SerialBridge:
             self._send_ota_url()
             self._send_clock_and_schedule()
             self._send_speaker_delay()
+            self._send_sound_speed()
 
             # --- read loop (TX happens on the dedicated writer thread) ---
             # readline()'s timeout runs from the call, not from the last byte, so

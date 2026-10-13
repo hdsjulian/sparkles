@@ -50,6 +50,8 @@ access:
     "GET /latencyRuns":                        [admin]
     "GET /speakerDelay":                       [admin]
     "GET /setSpeakerDelay":                    [admin]
+    "GET /airTemp":                            [admin]
+    "GET /setAirTemp":                         [admin]
     "GET /latencyRunsClear":                   [admin]
     "GET /setMidiParams":                 [admin]
     "GET /setDarkroomParams":             [admin]
