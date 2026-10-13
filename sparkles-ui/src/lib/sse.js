@@ -25,7 +25,10 @@ export function setupSSE() {
     return () => {};
   }
 
-  const es = new EventSource('/events');
+  // Listeners are collected here and attached to each connection, so a new one
+  // can be opened when the browser gives up on the old (see connect below).
+  const handlers = [];
+  const on = (name, fn) => handlers.push([name, fn]);
 
   const upsertBoard = (board) => {
     const key = board.id ?? board.boardId;
@@ -36,12 +39,12 @@ export function setupSSE() {
     });
   };
 
-  es.addEventListener('new_board', (e) => {
+  on('new_board', (e) => {
     try { upsertBoard(JSON.parse(e.data)); }
     catch (err) { console.warn('SSE new_board parse error:', err); }
   });
 
-  es.addEventListener('update_board', (e) => {
+  on('update_board', (e) => {
     try { upsertBoard(JSON.parse(e.data)); }
     catch (err) { console.warn('SSE update_board parse error:', err); }
   });
@@ -49,21 +52,21 @@ export function setupSSE() {
   // Removal shifts every index after the removed one, so a partial map update
   // would leave stale entries — clear and let the update_board dump that
   // immediately follows (see emitAddressList on the master) repopulate it.
-  es.addEventListener('device_removed', () => {
+  on('device_removed', () => {
     deviceListError.set('');
     devices.set(new Map());
   });
-  es.addEventListener('all_devices_removed', () => {
+  on('all_devices_removed', () => {
     deviceListError.set('');
     devices.set(new Map());
     numDevices.set(0);
   });
-  es.addEventListener('remove_device_error', (e) => {
+  on('remove_device_error', (e) => {
     try { deviceListError.set(JSON.parse(e.data).detail || 'Remove failed'); }
     catch { deviceListError.set('Remove failed'); }
   });
 
-  es.addEventListener('address_list', (e) => {
+  on('address_list', (e) => {
     try {
       const n = JSON.parse(e.data).numDevices;
       if (typeof n === 'number') numDevices.set(n);
@@ -82,8 +85,8 @@ export function setupSSE() {
       animating.set(e.data !== '' && e.data !== 'off' && e.data !== 'done');
     }
   };
-  es.addEventListener('animate_status', onAnimateStatus);
-  es.addEventListener('animateStatus',  onAnimateStatus);
+  on('animate_status', onAnimateStatus);
+  on('animateStatus',  onAnimateStatus);
 
   const onNumDevices = (e) => {
     try {
@@ -95,12 +98,12 @@ export function setupSSE() {
       if (!isNaN(n)) numDevices.set(n);
     }
   };
-  es.addEventListener('num_devices', onNumDevices);
-  es.addEventListener('numDevices',  onNumDevices);
+  on('num_devices', onNumDevices);
+  on('numDevices',  onNumDevices);
 
   // the master's one line every 5 s, in place of separate animate_status and
   // num_devices dumps
-  es.addEventListener('status', (e) => {
+  on('status', (e) => {
     try {
       const s = JSON.parse(e.data);
       animateStatus.set(s.animating ? 'true' : 'false');
@@ -114,33 +117,33 @@ export function setupSSE() {
     try { calibrationStatus.set(JSON.parse(e.data)); }
     catch { calibrationStatus.set({ status: e.data }); }
   };
-  es.addEventListener('calibration_status', onCalibration);
-  es.addEventListener('calibrationStatus',  onCalibration);
+  on('calibration_status', onCalibration);
+  on('calibrationStatus',  onCalibration);
 
   const onDistance = (e) => {
     try { distanceStatus.set(JSON.parse(e.data)); }
     catch { distanceStatus.set({ status: e.data }); }
   };
-  es.addEventListener('distance_status', onDistance);
-  es.addEventListener('distanceStatus',  onDistance);
+  on('distance_status', onDistance);
+  on('distanceStatus',  onDistance);
 
   const onPosition = (e) => {
     try { positionStatus.set(JSON.parse(e.data)); }
     catch { positionStatus.set({ status: e.data }); }
   };
-  es.addEventListener('position_status', onPosition);
-  es.addEventListener('positionStatus',  onPosition);
+  on('position_status', onPosition);
+  on('positionStatus',  onPosition);
 
   const onClientClap = (e) => {
     try { clientClap.set(JSON.parse(e.data)); }
     catch { clientClap.set({ raw: e.data }); }
   };
-  es.addEventListener('client_clap', onClientClap);
-  es.addEventListener('clientClap',  onClientClap);
+  on('client_clap', onClientClap);
+  on('clientClap',  onClientClap);
 
   // a health reply also arrives here as an update_board, so the card's battery
   // refreshes on its own — this only keeps the extras the board sent with it
-  es.addEventListener('client_health', (e) => {
+  on('client_health', (e) => {
     try {
       const h = JSON.parse(e.data);
       if (h.boardId == null) return;
@@ -152,19 +155,34 @@ export function setupSSE() {
     } catch (err) { console.warn('SSE client_health parse error:', err); }
   });
 
-  es.addEventListener('brain_status', (e) => {
+  on('brain_status', (e) => {
     try { brainStatus.set(JSON.parse(e.data)); }
     catch (err) { console.warn('SSE brain_status parse error:', err); }
   });
 
-  es.addEventListener('sync_status', (e) => { syncStatus.set(e.data); });
-  es.addEventListener('syncStatus',  (e) => { syncStatus.set(e.data); });
+  on('sync_status', (e) => { syncStatus.set(e.data); });
+  on('syncStatus',  (e) => { syncStatus.set(e.data); });
 
-  es.onerror = (err) => {
-    console.warn('SSE connection error, will auto-reconnect:', err);
+  // A browser retries a dropped connection by itself, but gives up for good when
+  // a retry gets an error status: a 502 while the Pi restarts its service. The
+  // page then missed every event, a calibration's "done" included, until it was
+  // reloaded.
+  let es = null;
+  let retry = null;
+  const connect = () => {
+    es = new EventSource('/events');
+    for (const [name, fn] of handlers) es.addEventListener(name, fn);
+    es.onerror = () => {
+      if (es.readyState !== EventSource.CLOSED) return;   // the browser is retrying
+      console.warn('SSE connection closed, reconnecting in 3 s');
+      clearTimeout(retry);
+      retry = setTimeout(connect, 3000);
+    };
   };
+  connect();
 
   return () => {
-    es.close();
+    clearTimeout(retry);
+    es?.close();
   };
 }
