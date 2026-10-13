@@ -739,11 +739,19 @@ class SerialBridge:
             self._send_speaker_delay()
 
             # --- read loop (TX happens on the dedicated writer thread) ---
+            # readline()'s timeout runs from the call, not from the last byte, so
+            # a line still arriving when it expires comes back cut in two; the
+            # start waits here for the rest instead of failing to parse.
+            partial = b""
             while self._running:
                 try:
                     raw = self._serial.readline()
                     if not raw:
                         continue
+                    if not raw.endswith(b"\n"):
+                        partial += raw
+                        continue
+                    raw, partial = partial + raw, b""
                     line = raw.decode(errors="replace").strip()
                     if not line:
                         continue
