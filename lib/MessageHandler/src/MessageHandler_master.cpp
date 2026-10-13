@@ -397,6 +397,12 @@ void MessageHandler::handleReceive() {
                         ESP_LOGW("MSG", "Chirp %d: implausible flight time %lld us, dropping", slot, flightTime);
                         continue;
                     }
+                    // the speaker's own delay is in every chirp's flight time; a
+                    // latency test is there to measure it, so it keeps it
+                    if (burst && burstTestBoard < 0) {
+                        flightTime -= speakerDelayUs;
+                        if (flightTime < 0) flightTime = 0;
+                    }
                     for (int i = 0; i < NUM_DEVICES; i++) {
                         if (memcmp(addressList[i].address, incomingData.senderAddress, 6) == 0) {
                             // every board hears every batch's burst, but only the

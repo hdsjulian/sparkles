@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { devices } from '$lib/stores.js';
-  import { latencyTest, stopLatencyTest, getLatencyStatus, getLatencyRuns, clearLatencyRuns } from '$lib/api.js';
+  import { latencyTest, stopLatencyTest, getLatencyStatus, getLatencyRuns, clearLatencyRuns,
+           getSpeakerDelay, setSpeakerDelay } from '$lib/api.js';
 
   // A spread of the per-burst delay under 0.3 ms — 10 cm of sound — is worth
   // trying as a fixed correction; anything more is not.
@@ -24,6 +25,9 @@
   let pastRuns = [];
   let openBurst = null;
   let showAll = false;
+  let speakerDelay = null;   // what the Pi has stored, in ms
+  let speakerInput = '';
+  let speakerMsg = '';
 
   $: boardIds = [...$devices.keys()].map(Number).filter((n) => !isNaN(n)).sort((a, b) => a - b);
   $: s = run?.summary;
@@ -33,7 +37,35 @@
   onMount(() => {
     loadRuns();
     checkRemote();
+    loadSpeakerDelay();
   });
+
+  async function loadSpeakerDelay() {
+    try {
+      speakerDelay = (await getSpeakerDelay()).delayMs;
+      speakerInput = speakerDelay;
+    } catch {
+      // the field stays empty, the test runs without it
+    }
+  }
+
+  async function saveSpeakerDelay(ms) {
+    speakerMsg = '';
+    const value = Number(ms);
+    if (!(value >= 0 && value <= 150)) {
+      speakerMsg = 'Between 0 and 150 ms';
+      return;
+    }
+    try {
+      const r = await setSpeakerDelay(value.toFixed(3));
+      if (!r.status) throw new Error(r.detail || r.msg || 'not saved');
+      speakerDelay = Math.round(value * 1000) / 1000;
+      speakerInput = speakerDelay;
+      speakerMsg = 'Saved, and sent to the master';
+    } catch (e) {
+      speakerMsg = `Not saved: ${e.message}`;
+    }
+  }
   onDestroy(() => {
     es?.close();
     clearTimeout(remoteTimer);
@@ -208,14 +240,23 @@
 <div class="card" style="margin-bottom:1.25rem;">
   <div class="card-title">Speaker Latency Test</div>
   <p class="hint">
-    Is the speaker's delay steady enough to correct for in code? Put one board at a measured
-    distance in front of the speaker — 1 m works well — and enter it here. Everything beyond
-    that distance is delay in the audio path. A burst takes about 9 s, so 60 bursts is roughly
-    9 minutes. Then power-cycle the speaker and run again, change its volume and run again,
-    and do one run with earbuds taped to the board's microphone: that run shows the boards'
-    own clock drift, which every other run includes. Nothing is recorded on the master, and
-    every run is saved on the Pi, also when stopped.
+    Measures the speaker's own delay, which every distance calibration takes off each chirp.
+    Put one board at a measured distance in front of the speaker — 1 m works well — and enter
+    it here; everything beyond that distance is delay in the audio path. A boombox settles
+    within about 4 minutes of being switched on, so start after that. A burst takes about 9 s.
+    The test always measures the whole delay, whatever is stored below, and every run is saved
+    on the Pi, also when stopped.
   </p>
+
+  <div class="form-row speaker">
+    <div class="form-group">
+      <label for="lt-speaker">Speaker delay (ms)</label>
+      <input id="lt-speaker" type="number" min="0" max="150" step="0.01" bind:value={speakerInput} />
+    </div>
+    <button class="btn btn-ghost btn-sm" on:click={() => saveSpeakerDelay(speakerInput)}
+            disabled={speakerInput === '' || Number(speakerInput) === speakerDelay}>Save</button>
+    {#if speakerMsg}<span class="progress">{speakerMsg}</span>{/if}
+  </div>
 
   {#if error}
     <div class="status-msg error">{error}</div>
@@ -292,6 +333,13 @@
     </div>
     {#if v}
       <div class="status-msg" class:success={v.ok} class:error={!v.ok}>{v.text}</div>
+    {/if}
+    {#if !running && s.meanDelayMs != null}
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" on:click={() => saveSpeakerDelay(s.meanDelayMs)}>
+          Use {num(s.meanDelayMs, 2)} ms as the speaker delay
+        </button>
+      </div>
     {/if}
   {/if}
 
@@ -396,6 +444,11 @@
   .form-row select,
   .form-row input {
     width: 100%;
+  }
+
+  .form-row.speaker {
+    align-items: flex-end;
+    margin-bottom: 1rem;
   }
 
   .progress,

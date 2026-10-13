@@ -266,6 +266,13 @@ export const getLatencyRuns = () =>
 export const clearLatencyRuns = () =>
   fetch(`${BASE}/latencyRunsClear`).then(r => r.json());
 
+// what distance calibrations take off every chirp's flight time
+export const getSpeakerDelay = () =>
+  fetch(`${BASE}/speakerDelay`).then(r => r.json());
+
+export const setSpeakerDelay = (ms) =>
+  fetch(`${BASE}/setSpeakerDelay?${new URLSearchParams({ ms })}`).then(r => r.json());
+
 
 export const getAudioLevel = () =>
   fetch(`${BASE}/audioLevel`).then(r => r.json());

@@ -3,6 +3,7 @@
 sparkles-api/.secret_key
 sparkles-api/colors.json
 sparkles-api/schedule.json
+sparkles-api/speaker.json
 sparkles-api/clock_trust.json
 __pycache__/
 # pi's live credentials, set aside by update.sh across a pull

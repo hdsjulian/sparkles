@@ -473,6 +473,14 @@ static void handleSerialCommand(const char* line) {
         tzset();
         prefs.putLong64("clock", (int64_t)tv.tv_sec);
 
+    } else if (strcmp(cmd, "set_speaker_delay") == 0) {
+        // measured with a latency test, the pi re-sends it on every connect
+        int32_t us = doc["us"] | 0;
+        msgHandler.setSpeakerDelayUs(us);
+        prefs.putInt("speakerDelay", us);
+        JsonDocument r; r["event"] = "speaker_delay"; r["us"] = us;
+        serialSendDoc(r);
+
     } else if (strcmp(cmd, "set_sleep_time") == 0) {
         msgHandler.setSleepTime(doc["hours"].as<int>(), doc["minutes"].as<int>(), doc["seconds"].as<int>());
         prefs.putInt("sleepH", doc["hours"].as<int>());
@@ -1146,6 +1154,7 @@ void setup()
         setenv("TZ", "UTC", 1);
         tzset();
     }
+    msgHandler.setSpeakerDelayUs(prefs.getInt("speakerDelay", 0));
     if (prefs.isKey("sleepH")) {
         msgHandler.setSleepTime(prefs.getInt("sleepH"), prefs.getInt("sleepM"), prefs.getInt("sleepS"));
         msgHandler.setWakeupTime(prefs.getInt("wakeH"), prefs.getInt("wakeM"), prefs.getInt("wakeS"));
@@ -1274,6 +1283,7 @@ void loop()
             r["heap"]         = ESP.getFreeHeap();
             r["minHeap"]      = ESP.getMinFreeHeap();
             r["uptime"]       = millis() / 1000;
+            r["speakerDelay"] = msgHandler.getSpeakerDelayUs();
             r["dropped"]      = serialDroppedLines();
             serialSendDoc(r);
         }

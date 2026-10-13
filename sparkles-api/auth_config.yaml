@@ -48,6 +48,8 @@ access:
     "GET /latencyTestStop":                    [admin]
     "GET /latencyStatus":                      [admin]
     "GET /latencyRuns":                        [admin]
+    "GET /speakerDelay":                       [admin]
+    "GET /setSpeakerDelay":                    [admin]
     "GET /latencyRunsClear":                   [admin]
     "GET /setMidiParams":                 [admin]
     "GET /setDarkroomParams":             [admin]

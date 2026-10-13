@@ -1525,6 +1525,19 @@ async def latency_runs_clear():
     return _ok("Latency runs cleared")
 
 
+@app.get("/speakerDelay")
+async def get_speaker_delay():
+    return bridge.speaker
+
+
+@app.get("/setSpeakerDelay")
+async def set_speaker_delay(ms: float = Query(..., ge=0.0, le=150.0)):
+    # the latency test's mean delay for the boombox in use; the master takes it
+    # off every calibration chirp, and a latency test keeps measuring the total
+    bridge.set_speaker_delay(ms)
+    return _ok(f"Speaker delay set to {ms:.2f} ms")
+
+
 _HEALTH_REPLY_TIMEOUT_S = 1.0
 _HEALTH_PASSES = 3
 

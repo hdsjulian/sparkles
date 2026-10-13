@@ -125,6 +125,9 @@ public:
     bool getChirpMode() { return chirpMode; }
     void setClapDeviceDelay(int delay);
     int getClapDeviceDelay();
+    // the speaker's own delay (boombox, DAC), measured with a latency test
+    void setSpeakerDelayUs(int32_t us) { speakerDelayUs = us; }
+    int32_t getSpeakerDelayUs() { return speakerDelayUs; }
     unsigned long long getLastMidiTime();
     void setLastMidiTime(unsigned long long timeStamp);
     unsigned long getSleepTime();
@@ -343,6 +346,7 @@ private:
     int wakeupTimeMinutes = 0;
     int wakeupTimeSeconds = 0;
     int clapDeviceDelay = 0;
+    volatile int32_t speakerDelayUs = 0;   // subtracted from chirp flight times
     // Per-target TX timing for sync bursts: a burst acquires a slot for its target,
     // onDataSent measures the real send latency, the next packet ships it as lastDelay
     static constexpr int TX_SLOT_COUNT = 8;

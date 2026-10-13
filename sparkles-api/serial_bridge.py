@@ -69,6 +69,9 @@ _SLEEP_TEST_EVENTS_PATH = os.environ.get("SPARKLES_SLEEP_TEST_EVENTS",
 # marker that a human set the clock via browser during this pi boot — only then is
 # the pi's clock worth pushing (no internet, no rtc: a fresh boot has a stale clock)
 _CLOCK_TRUST_PATH = os.environ.get("SPARKLES_CLOCK_TRUST", "/home/julian/sparkles/sparkles-api/clock_trust.json")
+# the speaker's own delay, measured with a latency test and subtracted by the master
+# from every calibration chirp; re-pushed on every serial connect like the schedule
+_SPEAKER_PATH     = os.environ.get("SPARKLES_SPEAKER", "/home/julian/sparkles/sparkles-api/speaker.json")
 
 
 class HealthMonitor:
@@ -182,6 +185,7 @@ class SerialBridge:
         # lamp colors and sleep schedule, raspi is the source of truth (persisted across reboots)
         self.colors = self._load_colors()
         self.schedule = self._load_schedule()
+        self.speaker = self._load_speaker()
         self.clock_trusted = self._load_clock_trust()
         self._clock_negotiated = True  # armed (set False) on each serial connect
         self.sleep_test_events = self._load_sleep_test_events()
@@ -311,6 +315,26 @@ class SerialBridge:
                 json.dump(self.schedule, f, indent=2)
         except Exception as exc:
             logger.warning("Could not save schedule to %s: %s", _SCHEDULE_PATH, exc)
+
+    @staticmethod
+    def _load_speaker() -> dict:
+        try:
+            with open(_SPEAKER_PATH) as f:
+                return {"delayMs": float(json.load(f).get("delayMs", 0.0))}
+        except Exception:
+            return {"delayMs": 0.0}
+
+    def set_speaker_delay(self, delay_ms: float):
+        self.speaker = {"delayMs": round(float(delay_ms), 3)}
+        try:
+            with open(_SPEAKER_PATH, "w") as f:
+                json.dump(self.speaker, f, indent=2)
+        except Exception as exc:
+            logger.warning("Could not save speaker delay to %s: %s", _SPEAKER_PATH, exc)
+        self._send_speaker_delay()
+
+    def _send_speaker_delay(self):
+        self.send({"cmd": "set_speaker_delay", "us": int(round(self.speaker["delayMs"] * 1000))})
 
     @staticmethod
     def _load_sleep_test_events() -> list:
@@ -712,6 +736,7 @@ class SerialBridge:
             self._emit_serial_status(True)
             self._send_ota_url()
             self._send_clock_and_schedule()
+            self._send_speaker_delay()
 
             # --- read loop (TX happens on the dedicated writer thread) ---
             while self._running:
