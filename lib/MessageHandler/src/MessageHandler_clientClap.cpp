@@ -6,6 +6,7 @@
 #include "WiFi.h"
 #include <PeakDetection.h>
 #include <math.h>
+#include <algorithm>
 
 // Chirp correlation template. Step count, length and frequencies come from
 // MyDefines.h so they always match what the Chirp-Device emits.
@@ -19,10 +20,15 @@ static const int   RECORD_MS          = 300;
 static const int   RECORD_SAMPLES     = CHIRP_SAMPLE_RATE * RECORD_MS / 1000;     // 3000
 static const int   MAX_LAG            = RECORD_SAMPLES - CHIRP_SAMPLES;           // last window that fits
 static const float SOUND_SPEED        = 343.0f;          // m/s
-static const float MIN_CORR_THRESHOLD = 0.15f;           // normalised, floor under the noise gate
-static const float NOISE_GATE_SIGMAS  = 5.0f;            // a real chirp beats the noise lags by this much
 static const int   EMISSION_MARGIN    = 20;              // 2 ms of slack on the emission stamp
-static const float FIRST_PEAK_RATIO   = 0.7f;            // earliest outline peak above this x its max wins
+// A window holds a chirp when its strongest match beats the median lag by this
+// much. The median lag holds noise or a faint tail: 12x at 4 m, 37x at 1 m,
+// where noise alone gets to about 3.5x over this many lags.
+static const float NOISE_GATE_RATIO   = 6.0f;
+// The earliest match peak above this x the strongest wins. The chirp's own side
+// peaks reach 0.41 of the peak they belong to, and at 4 m an echo came in twice
+// as strong as the direct sound, which then sat at 0.45-0.65 of it.
+static const float FIRST_PEAK_RATIO   = 0.5f;
 
 static void buildChirpTemplate(float* tmpl) {
     for (int step = 0; step < CHIRP_STEPS; step++) {
@@ -54,15 +60,19 @@ static void buildChirpTemplateQ(float* tmpl) {
 // arrival in every window, the raw recording, and what the old rule on the raw
 // correlation would have picked.
 static int diagChirp = 0;                          // window index, set by runClapTask
+// the old rule, for comparison: normalised correlation, earliest peak above
+// 70% of its maximum, noise gate at mean + 5 sigma
+static const float OLD_MIN_CORR       = 0.15f;
+static const float OLD_GATE_SIGMAS    = 5.0f;
+static const float OLD_PEAK_RATIO     = 0.7f;
 
 // The whole recording as base64 of the int16 samples, in parts that each fit a
-// line. Blocking writes for the dump only — the usual non-blocking ones would
+// line. Blocking writes, set by the caller — the usual non-blocking ones would
 // drop most of it.
 static void diagDumpRecording(const int16_t* rec) {
     static const int PART = 120;   // samples per line
     static unsigned char text[((PART * 2 + 2) / 3) * 4 + 4];
     const int parts = (RECORD_SAMPLES + PART - 1) / PART;
-    Serial.setTxTimeoutMs(50);
     for (int p = 0; p < parts; p++) {
         int n = RECORD_SAMPLES - p * PART;
         if (n > PART) n = PART;
@@ -172,45 +182,47 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
     }
 
     float envMax = 0;
-    float sum = 0, sumSq = 0;
     for (int d = minLag; d <= MAX_LAG; d++) {
         float corr = 0, corrQ = 0;
+#if CHIRP_DIAG
         float sigEnergy = 0;
+#endif
         for (int k = 0; k < CHIRP_SAMPLES; k++) {
             float s = (float)recBuf[d + k];
-            corr      += s * tmpl[k];
-            corrQ     += s * tmplQ[k];
-            sigEnergy += s * s;
-        }
-        // Normalise by signal energy to make threshold signal-level independent
-        float norm = (sigEnergy > 0) ? sqrtf(tmplEnergy * sigEnergy) : 0;
-        envBuf[d] = (norm > 0) ? sqrtf(corr * corr + corrQ * corrQ) / norm : 0;
+            corr  += s * tmpl[k];
+            corrQ += s * tmplQ[k];
 #if CHIRP_DIAG
-        corrBuf[d] = (norm > 0) ? corr / norm : 0;
+            sigEnergy += s * s;
+#endif
+        }
+        // Not normalised by the signal's own energy at this lag: that made every
+        // faint, chirp-shaped echo score like the direct sound, and at 4 m the
+        // echoes lifted the noise gate above the arrival in every window.
+        envBuf[d] = sqrtf(corr * corr + corrQ * corrQ);
+#if CHIRP_DIAG
+        corrBuf[d] = (sigEnergy > 0) ? corr / sqrtf(tmplEnergy * sigEnergy) : 0;
 #endif
         if (envBuf[d] > envMax) envMax = envBuf[d];
-        sum   += envBuf[d];
-        sumSq += envBuf[d] * envBuf[d];
     }
 
-    // Nearly every lag holds noise, so their spread says what a real chirp has to
-    // beat. A fixed threshold can't: 0.15 sits below the largest value noise alone
-    // produces over this many lags, which is a silent board reporting a distance.
+    // The median lag holds noise, or at most a faint tail: the chirp and its loud
+    // echoes span a few hundred of these 2,700 lags.
     int lagCount = MAX_LAG - minLag + 1;
-    float mean = sum / lagCount;
-    float variance = sumSq / lagCount - mean * mean;
-    float sigma = (variance > 0) ? sqrtf(variance) : 0.0f;
-    float gate = fmaxf(MIN_CORR_THRESHOLD, mean + NOISE_GATE_SIGMAS * sigma);
+    static float sortBuf[MAX_LAG + 1];
+    memcpy(sortBuf, envBuf + minLag, lagCount * sizeof(float));
+    std::nth_element(sortBuf, sortBuf + lagCount / 2, sortBuf + lagCount);
+    float noiseFloor = sortBuf[lagCount / 2];
+    float strength = (noiseFloor > 0) ? envMax / noiseFloor : 0.0f;
 
     // Everything the accept/reject decision rests on, in one line:
     //   rms ~0                  -> the mic heard nothing, look at the mic
     //   emission=MISSING        -> the emitter's announce never arrived
     //   minLag at MAX_LAG       -> the search window is empty, timing is off
-    //   best well under gate    -> sound arrived but did not match the template
+    //   loud but peak under 6x  -> sound arrived but did not match the template
     // rawLag is the whole story when minLag is pinned: a value just over MAX_LAG
     // means the emission is a little too late (schedule/lead-in), while one
     // orders of magnitude out means the emitter's clock is not synced at all.
-    ESP_LOGI("CLAP", "win rms%d loud%dms x%.0f | annc%lu %s emit=%llums our=%lldms rec=%llums off=%lldms lag%d/%d best%.3f g%.3f",
+    ESP_LOGI("CLAP", "win rms%d loud%dms x%.0f | annc%lu %s emit=%llums our=%lldms rec=%llums off=%lldms lag%d/%d peak %.1fx noise",
              rawRms, loudBlk * 10,
              quietRms > 0 ? (float)loudRms / (float)quietRms : 0.0f,
              (unsigned long)chirpAnnounceCount,
@@ -219,14 +231,13 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
              (long long)(ledInstance->getTimerOffset() / 1000),
              (unsigned long long)(recordStart / 1000),
              (emission != 0 ? (long long)(emissionOffsetUs / 1000) : staleOffsetUs / 1000),
-             minLag, MAX_LAG, envMax, gate);
+             minLag, MAX_LAG, strength);
 
-    // The direct sound always arrives first, so take the earliest outline peak
-    // close to the strongest rather than the strongest itself. The chirp's own
-    // sidelobes stay under half the peak, before it as well as after.
+    // The direct sound always arrives first, so take the earliest match peak
+    // close to the strongest rather than the strongest itself.
     int peakIdx = -1;
-    if (envMax >= gate) {
-        float accept = fmaxf(gate, envMax * FIRST_PEAK_RATIO);
+    if (strength >= NOISE_GATE_RATIO) {
+        float accept = envMax * FIRST_PEAK_RATIO;
         // from minLag + 1: the local-max test and the parabolic fit both read d - 1,
         // and envBuf below minLag still holds the previous window's values
         for (int d = (minLag > 0 ? minLag + 1 : 1); d < MAX_LAG; d++) {
@@ -237,20 +248,19 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
         }
     }
     float pos = -1.0f;
-    peakCorr = envMax;
+    peakCorr = strength;
     if (peakIdx > 0) {
         // parabolic fit through the peak for sub-sample resolution (one sample = 3.4 cm)
         float c0 = envBuf[peakIdx - 1], c1 = envBuf[peakIdx], c2 = envBuf[peakIdx + 1];
         float denom = c0 - 2.0f * c1 + c2;
         float frac  = (denom < -1e-9f) ? 0.5f * (c0 - c2) / denom : 0.0f;
         pos = (float)peakIdx + constrain(frac, -0.5f, 0.5f);
-        peakCorr = c1;
+        peakCorr = c1 / noiseFloor;
     }
 
 #if CHIRP_DIAG
     {
-        // what the old rule, the earliest raw-correlation peak above 70% of its
-        // maximum, would have picked
+        // what the old rule would have picked
         float bestCorr = 0, rawSumC = 0, rawSumSqC = 0;
         for (int d = minLag; d <= MAX_LAG; d++) {
             if (corrBuf[d] > bestCorr) bestCorr = corrBuf[d];
@@ -259,10 +269,10 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
         }
         float rawMeanC = rawSumC / lagCount;
         float rawVarC = rawSumSqC / lagCount - rawMeanC * rawMeanC;
-        float rawGate = fmaxf(MIN_CORR_THRESHOLD, rawMeanC + NOISE_GATE_SIGMAS * (rawVarC > 0 ? sqrtf(rawVarC) : 0.0f));
+        float rawGate = fmaxf(OLD_MIN_CORR, rawMeanC + OLD_GATE_SIGMAS * (rawVarC > 0 ? sqrtf(rawVarC) : 0.0f));
         int oldIdx = -1;
         if (bestCorr >= rawGate) {
-            float accept = bestCorr * FIRST_PEAK_RATIO;
+            float accept = bestCorr * OLD_PEAK_RATIO;
             for (int d = (minLag > 0 ? minLag + 1 : 1); d < MAX_LAG; d++) {
                 if (corrBuf[d] >= accept && corrBuf[d] >= corrBuf[d - 1] && corrBuf[d] >= corrBuf[d + 1]) {
                     oldIdx = d;
@@ -270,20 +280,23 @@ float MessageHandler::detectChirp(int audioPin, const float* tmpl, float tmplEne
                 }
             }
         }
-        // every outline peak above a fifth of the strongest
+        // every match peak above a fifth of the strongest, as a share of it
         char peaks[420];
         int len = 0, listed = 0;
         peaks[0] = 0;
         for (int d = (minLag > 0 ? minLag + 1 : 1); d < MAX_LAG && listed < 16 && len < (int)sizeof(peaks) - 24; d++) {
             if (envBuf[d] < envMax * 0.2f || envBuf[d] < envBuf[d - 1] || envBuf[d] < envBuf[d + 1]) continue;
-            len += snprintf(peaks + len, sizeof(peaks) - len, " %d:%.3f", d, envBuf[d]);
+            len += snprintf(peaks + len, sizeof(peaks) - len, " %d:%.3f", d, envBuf[d] / envMax);
             listed++;
         }
         // lags in samples of 0.1 ms from the window's first sample; emit is where
-        // the chirp device's stamp falls on that same scale
+        // the chirp device's stamp falls on that same scale. Blocking from here:
+        // this line alone overflows the 256-byte send buffer, and the driver then
+        // dropped the start of the dump that follows.
+        Serial.setTxTimeoutMs(50);
         Serial.printf("DIAG c=%d stamp=%s emit=%.1f minLag=%d gate=%.3f best=%.3f old=%d envGate=%.3f envMax=%.3f new=%.2f peaks%s\n",
                       diagChirp, (emission != 0) ? "ok" : (staleOffsetUs != 0 ? "stale" : "none"),
-                      emissionOffsetUs / 100.0f, minLag, rawGate, bestCorr, oldIdx, gate, envMax, pos, peaks);
+                      emissionOffsetUs / 100.0f, minLag, rawGate, bestCorr, oldIdx, noiseFloor * NOISE_GATE_RATIO, envMax, pos, peaks);
         diagDumpRecording(recBuf);
     }
 #endif
@@ -333,13 +346,18 @@ void MessageHandler::runClapTask() {
                                           + ledInstance->getTimerOffset();
                 clapMessage.payload.clap.clapTime = (unsigned long long)detectionTime;
                 clapMessage.payload.clap.clapHappened = true;
-                ESP_LOGI("CLAP", "Chirp %d peak at delay %.2f samples (%.1f ms) = %.2f m, corr=%.3f",
+                ESP_LOGI("CLAP", "Chirp %d peak at delay %.2f samples (%.1f ms) = %.2f m, %.1fx noise",
                          chirp, delaySamples, delayS * 1000.0f, delayS * SOUND_SPEED, peakCorr);
+                // heard it: two red flashes
                 message_animation flash = ledInstance->createFlash(esp_timer_get_time(), 300, 2, 0, 255, 255);
                 ledInstance->pushToAnimationQueue(flash);
             } else {
                 clapMessage.payload.clap.clapHappened = false;
-                ESP_LOGI("CLAP", "Chirp %d: no valid peak (best corr=%.3f)", chirp, peakCorr);
+                ESP_LOGI("CLAP", "Chirp %d: nothing heard (strongest %.1fx noise)", chirp, peakCorr);
+                // listened and heard nothing: one blue flash, so a board that takes
+                // part shows it even when it hears nothing
+                message_animation flash = ledInstance->createFlash(esp_timer_get_time(), 150, 1, 160, 255, 255);
+                ledInstance->pushToAnimationQueue(flash);
             }
             pushToSendQueue(clapMessage);
             // absolute schedule off the base, a slow correlation costs one window
