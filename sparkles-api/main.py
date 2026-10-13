@@ -430,9 +430,13 @@ async def _heap_low_watcher():
     try:
         while True:
             frame = await queue.get()
-            if frame.get("event") != "heap":
+            # the master's status line carries it now; "heap" is the old firmware
+            if frame.get("event") == "status":
+                free = frame.get("heap")
+            elif frame.get("event") == "heap":
+                free = frame.get("free")
+            else:
                 continue
-            free = frame.get("free")
             if not isinstance(free, int):
                 continue
             if free < MESH_HEAP_LOW:

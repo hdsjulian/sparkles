@@ -116,9 +116,11 @@ class HealthMonitor:
             elif event == "animate_status":
                 self._animating = frame.get("status") is True or frame.get("status") == "true"
 
-            elif event == "num_devices":
+            elif event in ("num_devices", "status"):
+                if event == "status":
+                    self._animating = frame.get("animating") is True
                 prev_n = self._num_devices
-                self._num_devices = frame.get("numDevices", 0)
+                self._num_devices = frame.get("numDevices", frame.get("boards", 0))
                 # alert: master rebooted (devices dropped to 0)
                 if prev_n > 0 and self._num_devices == 0:
                     self._send({"t": "alert", "event": "master_reboot"})

@@ -98,6 +98,18 @@ export function setupSSE() {
   es.addEventListener('num_devices', onNumDevices);
   es.addEventListener('numDevices',  onNumDevices);
 
+  // the master's one line every 5 s, in place of separate animate_status and
+  // num_devices dumps
+  es.addEventListener('status', (e) => {
+    try {
+      const s = JSON.parse(e.data);
+      animateStatus.set(s.animating ? 'true' : 'false');
+      animating.set(!!s.animating);
+      if (s.animation) currentAnimationName.set(s.animation);
+      if (typeof s.boards === 'number') numDevices.set(s.boards);
+    } catch (err) { console.warn('SSE status parse error:', err); }
+  });
+
   const onCalibration = (e) => {
     try { calibrationStatus.set(JSON.parse(e.data)); }
     catch { calibrationStatus.set({ status: e.data }); }

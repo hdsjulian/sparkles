@@ -82,6 +82,10 @@ static volatile bool sleepScheduleOverride = false;
 static volatile bool manualMode = false;
 static void serialSendDoc(JsonDocument& doc);
 static void runVerifiedWake(bool wasCancelled);
+// the core 1 writer every line for the pi goes through (MessageHandler_master.cpp)
+void serialStart();
+void serialSend(JsonDocument& doc);
+uint32_t serialDroppedLines();
 
 // One-shot "sleep right now until HH:MM" — for the pack-up/power-cycle workflow:
 // set the fleet up, then either work on it live or force it dark until showtime,
@@ -306,9 +310,7 @@ static char serialLineBuffer[256];
 static size_t serialLineLen = 0;
 
 static void serialSendDoc(JsonDocument& doc) {
-    String out;
-    serializeJson(doc, out);
-    Serial.println(out);
+    serialSend(doc);
 }
 
 // Full address-list dump, shared by get_address_list and anything that mutates
@@ -907,7 +909,7 @@ static void handleSerialCommand(const char* line) {
 
             auto emit = [](const char* event, JsonDocument& extra) {
                 extra["event"] = event;
-                String out; serializeJson(extra, out); Serial.println(out);
+                serialSend(extra);
             };
 
             // 1. Snapshot clients
@@ -1076,9 +1078,12 @@ static void handleSerialCommand(const char* line) {
 void setup()
 {
     Serial.setRxBufferSize(2048); // default 256 holds ~5 music messages — a burst during a loop stall would overflow
-    Serial.setTxBufferSize(4096); // default 256 truncates the 1 Hz housekeeping burst mid-line with tx timeout 0
+    Serial.setTxBufferSize(4096);
     Serial.begin(115200);
-    Serial.setTxTimeoutMs(0); // non-blocking CDC writes — housekeeping drops bytes rather than stalling the music broadcast path
+    // Only the serialOut task writes, so a write may wait for the pi without
+    // stalling anything else; with 0 a full buffer spun until the pi read again.
+    Serial.setTxTimeoutMs(50);
+    serialStart();
     delay(500);
 
     unsigned long long startTime = millis();
@@ -1237,72 +1242,41 @@ void loop()
         lastTick = millis();
         msgHandler.tickInactiveTimeout();
 
-        // While music is streaming, skip the housekeeping dump: building and
-        // serializing all those JSON docs stalls loop() for several ms, which
-        // delays the 30 Hz music parsing. Status keeps accumulating and the
-        // dump resumes 30 s after the last note.
+        // Clock checkpoint so a reboot restores approximate wall time without the
+        // pi. It writes flash, which stalls loop() and with it the 30 Hz music
+        // parsing, so it waits until 30 s after the last note.
         bool musicActive = msgHandler.getLastMidiTime() > 0 &&
                            millis() - msgHandler.getLastMidiTime() < 30000;
-        if (!musicActive) {
-
-        // clock checkpoint so a reboot restores approximate wall time without the pi
         static unsigned long lastClockSave = 0;
-        if (millis() - lastClockSave > 300000UL) {
+        if (!musicActive && millis() - lastClockSave > 300000UL) {
             lastClockSave = millis();
             time_t nowSecs;
             time(&nowSecs);
             if (nowSecs > 1700000000) prefs.putLong64("clock", (int64_t)nowSecs);
         }
 
-        // Send animate status to Pi so it stays in sync
+        // One line every 5 s. Each board goes out when it changes
+        // (serialEmitBoard), and repeating all of them here was most of the
+        // traffic without telling the pi anything new.
         {
+            int active = 0;
+            for (int i = 0; i < NUM_DEVICES; i++) {
+                client_address a = msgHandler.getItemFromAddressList(i);
+                if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
+                if (a.active == ACTIVE) active++;
+            }
             JsonDocument r;
-            r["event"]  = "animate_status";
-            r["status"] = msgHandler.isAnimationLoopRunning();
-            r["animation"] = animationTypeName(msgHandler.getLastAnimationType());
+            r["event"]        = "status";
+            r["boards"]       = msgHandler.getNumDevices();
+            r["active"]       = active;
+            r["animating"]    = msgHandler.isAnimationLoopRunning();
+            r["animation"]    = animationTypeName(msgHandler.getLastAnimationType());
+            r["heap"]         = ESP.getFreeHeap();
+            r["minHeap"]      = ESP.getMinFreeHeap();
+            r["uptime"]       = millis() / 1000;
+            r["dropped"]      = serialDroppedLines();
             serialSendDoc(r);
         }
-
-        // Heap report, watch for a downward trend that ends in a hang
-        {
-            JsonDocument r;
-            r["event"] = "heap";
-            r["free"]  = ESP.getFreeHeap();
-            r["min"]   = ESP.getMinFreeHeap();
-            serialSendDoc(r);
-        }
-
-        // Send all known board states to Pi
-        for (int i = 0; i < NUM_DEVICES; i++) {
-            client_address a = msgHandler.getItemFromAddressList(i);
-            if (memcmp(a.address, MessageHandler::emptyAddress, 6) == 0) break;
-            JsonDocument r;
-            r["event"] = "update_board";
-            r["id"]    = i;
-            char mac[18];
-            snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-                a.address[0], a.address[1], a.address[2],
-                a.address[3], a.address[4], a.address[5]);
-            r["address"]           = mac;
-            r["status"]            = (a.active == ACTIVE) ? "active" : "inactive";
-            r["batteryPercentage"] = a.batteryPercentage;
-            r["distance"]          = a.distanceFromCenter;
-            r["xpos"]              = a.xPos;
-            r["ypos"]              = a.yPos;
-            r["lastUpdateTime"]    = (unsigned long)a.lastUpdateTime;
-            r["timerOffset"]       = (long)a.timerOffset;
-            r["delay"]             = a.delay;
-            serialSendDoc(r);
-        }
-
-        {
-            JsonDocument r;
-            r["event"]      = "num_devices";
-            r["numDevices"] = msgHandler.getNumDevices();
-            serialSendDoc(r);
-        }
-
-        } // !musicActive
 
         if (millis() - msgHandler.getLastMidiTime() > MIDI_IDLE_ANIMATION_MS && msgHandler.getLastMidiTime() > 0) {
             ESP_LOGI("MSG", "No MIDI message for %d minutes, resuming the idle animation", MIDI_IDLE_ANIMATION_MS / 60000);

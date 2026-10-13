@@ -5,6 +5,43 @@
 #include "esp_now.h"
 #include "WiFi.h"
 #include <ArduinoJson.h>
+#include "freertos/ringbuf.h"
+
+// Every line for the pi goes out through one task on core 1, where Serial.begin()
+// put the USB interrupt. A print from a core 0 task raced that interrupt: its
+// flush cut the 64-byte packet the interrupt was still filling, and the driver
+// dropped the rest — half of all client_clap lines arrived without their middle.
+// When the queue is full a whole line is dropped instead, and counted.
+static RingbufHandle_t serialOut = nullptr;
+static volatile uint32_t serialDropped = 0;
+
+static void serialWriterTask(void*) {
+    while (true) {
+        size_t len = 0;
+        char* line = (char*)xRingbufferReceive(serialOut, &len, portMAX_DELAY);
+        if (line == nullptr) continue;
+        Serial.write((const uint8_t*)line, len);
+        vRingbufferReturnItem(serialOut, line);
+    }
+}
+
+void serialStart() {
+    serialOut = xRingbufferCreate(8192, RINGBUF_TYPE_NOSPLIT);
+    xTaskCreatePinnedToCore(serialWriterTask, "serialOut", 4096, nullptr, 3, nullptr, 1);
+}
+
+void serialSend(JsonDocument& doc) {
+    String out;
+    serializeJson(doc, out);
+    out += '\n';
+    if (serialOut == nullptr || xRingbufferSend(serialOut, out.c_str(), out.length(), 0) != pdTRUE) {
+        serialDropped++;
+    }
+}
+
+uint32_t serialDroppedLines() {
+    return serialDropped;
+}
 
 // A chirp needs 200 ms to travel further than the client's record window reaches,
 // anything outside that is a bad correlation or a stale clock, not a distance
@@ -74,7 +111,7 @@ static void serialEmitBoard(int id, const client_address& a) {
     doc["lastUpdateTime"]    = (unsigned long)a.lastUpdateTime;
     doc["timerOffset"]       = (long)a.timerOffset;
     doc["delay"]             = a.delay;
-    String out; serializeJson(doc, out); Serial.println(out);
+    serialSend(doc);
 }
 
 
@@ -191,7 +228,7 @@ void MessageHandler::handleReceive() {
                              incomingData.senderAddress[4], incomingData.senderAddress[5]);
                     d["address"] = mac;
                     d["delayMeasured"] = clapDelayMeasured;
-                    String out; serializeJson(d, out); Serial.println(out);
+                    serialSend(d);
                 }
                 // clap/chirp device announce, learn its address so either board works
                 bool newDevice = memcmp(clapDeviceAddress, incomingData.senderAddress, 6) != 0;
@@ -242,7 +279,7 @@ void MessageHandler::handleReceive() {
                         d["toleranceUs"] = (long long)EMITTER_SKEW_TOLERANCE_US;
                         d["offset"]   = (long long)incomingData.payload.gotTimer.offset;
                         d["delayAvg"] = incomingData.payload.gotTimer.delayAverage;
-                        String out; serializeJson(d, out); Serial.println(out);
+                        serialSend(d);
                     }
                     removePeer(clapDeviceAddress);
                     setSettingTimer(false);
@@ -346,7 +383,7 @@ void MessageHandler::handleReceive() {
                         doc["status"]   = 3;
                         doc["clapId"]   = slot;
                         doc["clapTime"] = emission;
-                        String out; serializeJson(doc, out); Serial.println(out);
+                        serialSend(doc);
                     }
                     if (burst) emitBurstStatus("running", slot + 1);
 
@@ -379,7 +416,7 @@ void MessageHandler::handleReceive() {
                                 doc["clapId"]       = slot;
                                 doc["boardId"]      = i;
                                 doc["clapDistance"] = meters;
-                                String out; serializeJson(doc, out); Serial.println(out);
+                                serialSend(doc);
                             }
 
                             break;
@@ -408,7 +445,7 @@ void MessageHandler::handleReceive() {
                     doc["mean"]    = m.meanLevel;
                     doc["rms"]     = m.rms;
                     doc["verdict"] = verdict;
-                    String out; serializeJson(doc, out); Serial.println(out);
+                    serialSend(doc);
                     break;
                 }
             }
@@ -433,7 +470,7 @@ void MessageHandler::handleReceive() {
                     doc["rssi"]              = h.rssi;
                     doc["resetReason"]       = h.resetReason;
                     doc["version"]           = h.version;
-                    String out; serializeJson(doc, out); Serial.println(out);
+                    serialSend(doc);
                     // same board object the dashboard cards already listen for,
                     // so a health reply refreshes the card without a second path
                     serialEmitBoard(i, addressList[i]);
@@ -474,7 +511,7 @@ void MessageHandler::handleReceive() {
                         doc["boardId"] = incomingData.payload.timerResponse.addressId;
                         doc["deltaUs"] = (long long)delta;
                         doc["rttUs"]   = (long long)rtt;
-                        String out; serializeJson(doc, out); Serial.println(out);
+                        serialSend(doc);
                         break;
                     }
                 }
@@ -857,7 +894,7 @@ void MessageHandler::runCalculatePositionsTask() {
                 doc["y"]         = y;
                 doc["locations"] = used;
                 doc["residual"]  = residual;
-                String out; serializeJson(doc, out); Serial.println(out);
+                serialSend(doc);
             }
         }
 
@@ -869,7 +906,7 @@ void MessageHandler::runCalculatePositionsTask() {
             JsonDocument doc;
             doc["event"]  = "calibration_status";
             doc["status"] = 5;
-            String out; serializeJson(doc, out); Serial.println(out);
+            serialSend(doc);
         }
         {
             JsonDocument doc;
@@ -879,7 +916,7 @@ void MessageHandler::runCalculatePositionsTask() {
             doc["locations"]     = locations;
             doc["worstResidual"] = worstResidual;
             if (solved == 0) doc["reason"] = "no board heard three usable locations";
-            String out; serializeJson(doc, out); Serial.println(out);
+            serialSend(doc);
         }
         ESP_LOGI("MSG", "Trilateration done: %d boards from %d locations, worst residual %.2f m",
                  solved, locations, worstResidual);
@@ -941,7 +978,7 @@ void MessageHandler::emitBurstStatus(const char* status, int chirpsHeard, int bo
         doc["registered"] = burstBoards;
     }
     if (reason != nullptr) doc["reason"] = reason;
-    String out; serializeJson(doc, out); Serial.println(out);
+    serialSend(doc);
 }
 
 void MessageHandler::clearClapMeasurements() {
@@ -1088,7 +1125,7 @@ bool MessageHandler::runBurstBatch(int commandType, int first, int end) {
             doc["chirps"]   = count;
             JsonArray readings = doc["d"].to<JsonArray>();
             for (int c = 0; c < CHIRP_BURST_COUNT; c++) readings.add(burstSamples[i][c]);
-            String out; serializeJson(doc, out); Serial.println(out);
+            serialSend(doc);
             continue;
         }
         addressList[i].distances[burstSlot] = (count > 0) ? distance : 0.0f;
@@ -1101,7 +1138,7 @@ bool MessageHandler::runBurstBatch(int commandType, int first, int end) {
         doc["distance"] = addressList[i].distances[burstSlot];
         doc["kept"]     = kept;
         doc["chirps"]   = count;
-        String out; serializeJson(doc, out); Serial.println(out);
+        serialSend(doc);
     }
     return true;
 }
@@ -1179,7 +1216,7 @@ void MessageHandler::calculateDistances() {
             doc["distance"] = addressList[i].distanceFromCenter;
             doc["kept"]     = kept;
             doc["chirps"]   = measured;
-            String out; serializeJson(doc, out); Serial.println(out);
+            serialSend(doc);
         }
         if (measured == 0) continue;
         serialEmitBoard(i, addressList[i]);

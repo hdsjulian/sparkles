@@ -58,12 +58,13 @@ Every event frame has `{"event": "<name>", ...data}`.
 | event | data | description |
 |-------|------|-------------|
 | `address_list` | `numDevices, addresses: [{id,address,status,batteryPercentage,distance,xpos,ypos,lastUpdateTime,timerOffset,delay}]` | full address list |
-| `update_board` | same address object | single board updated |
-| `animate_status` | `status: bool` | animation loop on/off |
+| `update_board` | same address object | single board updated — sent when it changes, no longer repeated every 5 s |
+| `status` | `boards, active, animating, animation, heap, minHeap, uptime, dropped` | the master's one line every 5 s; `dropped` counts lines its serial queue had no room for |
+| `animate_status` | `status: bool, animation` | reply to `get_animate_status` / `animate_toggle` |
 | `calibration_status` | `status: int, [clapId, clapTime]` | calibration progress |
 | `distance_status` | `status: int, [clapId, clapTime]` | distance cal progress |
 | `client_clap` | `clapId, boardId, clapDistance` | clap received from client |
-| `num_devices` | `numDevices: int` | device count changed |
+| `num_devices` | `numDevices: int` | old firmware's 5 s count, now part of `status` |
 | `sync_status` | `status: str` | sync progress |
 | `midi_params` | `minVal, maxVal, ...` | MIDI params response |
 | `darkroom_params` | `strobeMin, strobeMax, ...` | darkroom params response |
