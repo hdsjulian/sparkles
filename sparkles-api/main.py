@@ -99,7 +99,6 @@ async def _serial_status_broadcaster():
             pass
 
 
-@asynccontextmanager
 def _brain_sweep_strays():
     """Kill any muse pipeline left over from a previous run of this service.
 
@@ -115,6 +114,7 @@ def _brain_sweep_strays():
             logger.debug("stray sweep for %s: %s", name, exc)
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     auth.bootstrap()
     _brain_sweep_strays()
