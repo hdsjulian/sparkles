@@ -17,12 +17,14 @@
   let rise = 30;
   let fall = 20;
   let bias = 0.5;
-  let minValue = 60;
+  // brightness on a head before they settle — not the old minValue, which also
+  // lit the lamps with nobody wearing it, so a saved one is left behind
+  let wornValue = 13;
   let maxValue = 200;
   let ppg = true;
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
-    if (saved) ({ anchor, rise, fall, bias, minValue, maxValue, ppg } = { anchor, rise, fall, bias, minValue, maxValue, ppg, ...saved });
+    if (saved) ({ anchor, rise, fall, bias, wornValue, maxValue, ppg } = { anchor, rise, fall, bias, wornValue, maxValue, ppg, ...saved });
   } catch { /* no storage here — defaults are fine */ }
 
   // last few minutes of evidence and settle, for the tuning chart
@@ -75,6 +77,7 @@
   $: channels = s.channels ?? {};
   $: statusText = !running ? 'not running'
     : !connected ? 'connecting…'
+    : s.ending != null ? `headband off — session ends in ${Math.ceil(s.ending)}s`
     : contact < 2 ? `connected, but only ${contact}/4 electrodes — adjust the fit`
     : (phaseText[phase] ?? phase);
 
@@ -85,9 +88,18 @@
     stopped: 'not running',
   };
 
+  // the pump's closing 'stopped' frame carries none of this, so remember the
+  // last real one to say why a session ended without anyone pressing Stop
+  let wasEnding = false;
+  let notice = '';
+  $: if (running && s.phase !== 'stopped') wasEnding = s.ending != null;
+
   async function refresh() {
     try {
       const st = await getBrainStatus();
+      if (running && !st.running && !busy)
+        notice = wasEnding ? 'Session ended — the headband came off.'
+          : 'Session ended on its own — journalctl -u sparkles says why.';
       running = st.running;
       if (st.running) brainStatus.set(st);
     } catch { /* the page is useful even if a poll misses */ }
@@ -109,10 +121,11 @@
     try {
       try {
         localStorage.setItem(SETTINGS_KEY,
-          JSON.stringify({ anchor, rise, fall, bias, minValue, maxValue, ppg }));
+          JSON.stringify({ anchor, rise, fall, bias, wornValue, maxValue, ppg }));
       } catch { /* not persisted, still starts */ }
       history = [];
-      const r = await brainStart({ ppg, anchor, rise, fall, bias, minValue, maxValue });
+      notice = '';
+      const r = await brainStart({ ppg, anchor, rise, fall, bias, minValue: wornValue, maxValue });
       if (r.status === false) throw new Error(r.detail ?? 'failed to start');
       running = true;
     } catch (e) { error = e.message; }
@@ -142,11 +155,14 @@
 
 <p class="blurb">
   Settling score straight to brightness on every lamp that is powered on.
-  No positions, no distance, no animation curve — if a lamp is dark the score is
-  low. Put the headband on, wait out the baseline window, then actually relax.
+  No positions, no distance, no animation curve. On a head the lamps shimmer
+  faintly and climb as you settle; off a head they go dark, and after a while
+  the session ends and lets go of the headband. Put it on, wait out the
+  baseline window, then actually relax.
 </p>
 
 {#if error}<div class="error">{error}</div>{/if}
+{#if notice && !running}<div class="notice">{notice}</div>{/if}
 
 <div class="panel">
   <div class="row">
@@ -257,7 +273,8 @@
   <label>Time to dark <input type="number" bind:value={fall} min="5" max="1800" /> s</label>
   <label>Bias <input type="number" bind:value={bias} min="0.3" max="0.9" step="0.05" />
     <span class="dim">evidence needed to rise — lower is easier</span></label>
-  <label>Min brightness <input type="number" bind:value={minValue} min="0" max="254" /></label>
+  <label>Brightness on a head <input type="number" bind:value={wornValue} min="0" max="254" />
+    <span class="dim">before they settle — 13 is about 5%, off a head is dark</span></label>
   <label>Max brightness <input type="number" bind:value={maxValue} min="1" max="255" /></label>
   <label class="check"><input type="checkbox" bind:checked={ppg} /> Heart rate (PPG)</label>
   <p class="hint">Locked while running — stop first to change them.</p>
@@ -267,6 +284,7 @@
   h1 { margin-bottom: 0.2rem; }
   .blurb { color: #999; max-width: 46rem; margin-top: 0; }
   .error { color: #f44336; font-size: 0.9rem; }
+  .notice { color: #d9a441; font-size: 0.9rem; margin-bottom: 0.6rem; }
   .panel {
     background: #1b1b1b; border: 1px solid #333; border-radius: 8px;
     padding: 1rem; margin-bottom: 1rem; max-width: 46rem;

@@ -1982,12 +1982,13 @@ async def brain_start(
     rise: float = Query(default=120.0, ge=5.0, le=1800.0),
     fall: float = Query(default=40.0, ge=5.0, le=1800.0),
     bias: float = Query(default=0.6, ge=0.3, le=0.9),
-    minValue: int = Query(default=0, ge=0, le=254),
+    minValue: int = Query(default=13, ge=0, le=254),
     maxValue: int = Query(default=200, ge=1, le=255),
 ):
     """Start the Muse test rig: settling score → brightness on every lamp.
 
     No positions, no distance — one broadcast, whatever is powered on lights up.
+    Ends by itself once the headband has been off a head for a while.
     """
     if _brain_running():
         raise HTTPException(409, detail="brain test already running")

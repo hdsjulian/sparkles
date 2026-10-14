@@ -13,8 +13,11 @@ left alone too: serial_bridge stamps the configured shimmer hue onto every
 aubio_shimmer frame, and since we only touch `value` that works in our favour
 and nothing in the running system needs changing.
 
-The whole mapping is one line — brightness = settle — on purpose. If a lamp is
-dark you know the score is low, not that some animation curve ate it.
+The mapping is kept dumb on purpose. Off a head the lamps are dark; on one they
+shimmer faintly at --min-value (about 5%) and climb straight with settle to
+--max-value. If a lamp is dark you know the headband is off, not that some
+animation curve ate it. When muse.py ends the run because the headband came
+off, its output ends, and that hands the lamps back as below.
 
 Run by hand, lamps live and everything on screen (stdout carries the lamp
 stream, both scripts log to stderr, so one terminal shows the whole chain):
@@ -58,8 +61,9 @@ parser.add_argument("--sock",       default=os.environ.get("SPARKLES_MUSIC_SOCK"
                     help="Unix socket path to serial_bridge's music socket")
 parser.add_argument("--fps",        type=float, default=20.0,
                     help="Output frame rate (default 20)")
-parser.add_argument("--min-value",  type=int, default=0,
-                    help="Brightness at settle 0 (default 0, lamps fully dark)")
+parser.add_argument("--min-value",  type=int, default=13,
+                    help="Brightness on a head at settle 0 (default 13, about 5%%) — "
+                         "off a head the lamps are dark")
 parser.add_argument("--max-value",  type=int, default=200,
                     help="Brightness at settle 1 (default 200)")
 parser.add_argument("--smooth",     type=float, default=0.6,
@@ -160,6 +164,15 @@ def _reader():
     running = False
 
 
+def _target(s: dict) -> float:
+    """Off a head the lamps are dark. On one they never drop below min-value,
+    so a visitor who has not settled yet can still see the lamps listening."""
+    if not s.get("worn"):
+        return 0.0
+    settle = float(s.get("settle", 0.0) or 0.0)
+    return args.min_value + (args.max_value - args.min_value) * max(0.0, min(1.0, settle))
+
+
 def main():
     global running
 
@@ -168,8 +181,7 @@ def main():
     threading.Thread(target=_reader, daemon=True, name="muse-stdin").start()
 
     period = 1.0 / args.fps
-    span = args.max_value - args.min_value
-    value = float(args.min_value)
+    value = 0.0
     last = time.monotonic()
     next_at = last
     last_frame = None
@@ -187,7 +199,7 @@ def main():
             s = dict(state)
 
         settle = float(s.get("settle", 0.0) or 0.0)
-        target = args.min_value + span * max(0.0, min(1.0, settle))
+        target = _target(s)
         # settle already moves over minutes; this only takes the stair-step out
         # of the 10 Hz input so the lamps ramp instead of clicking.
         a = 1.0 - math.exp(-dt / args.smooth) if args.smooth > 0 else 1.0
@@ -215,6 +227,8 @@ def main():
                     "phase":   s.get("phase", "waiting"),
                     "session": s.get("session", 0.0),
                     "contact": s.get("contact", 0),
+                    "worn":    bool(s.get("worn")),
+                    "ending":  s.get("ending"),
                     "bpm":     s.get("bpm"),
                     "battery": s.get("battery"),
                     # what settle is made of, so the page can show why it moves
@@ -240,9 +254,11 @@ def main():
                     f"{name} {'--' if uv is None else format(uv, '.0f')}"
                     for name, uv in (s.get("channels") or {}).items())
                 link = s.get("link", 0.0)
+                head = ("on" if s.get("worn") else "off"
+                        + ("" if s.get("ending") is None else f", ends in {s['ending']:.0f}s"))
                 print(f"lamp {frame['value']:3d}/255  settle {settle:.2f}  "
                       f"{s.get('phase', 'waiting'):<7} "
-                      f"contact {s.get('contact', 0)}/4  "
+                      f"contact {s.get('contact', 0)}/4  head {head}  "
                       f"link {link:5.1f}s  drops {s.get('drops', 0)}  "
                       f"pps {s.get('pps', 0):5.1f}  loss {100 * (s.get('loss') or 0):3.0f}%  "
                       f"bpm {s.get('bpm') or 0:3.0f}  bat {s.get('battery') or 0:3.0f}%  "

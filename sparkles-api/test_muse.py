@@ -106,8 +106,8 @@ def control_packets(text):
         out.append(bytearray([len(chunk)]) + chunk + b"\x00" * (19 - len(chunk)))
     return out
 
-def eeg_packet(idx, t0, ch):
-    vals = [2048 + int(40 * math.sin(2 * math.pi * 10 * (t0 + k / 256.0) + ch))
+def eeg_packet(idx, t0, ch, amp=40):
+    vals = [2048 + int(amp * math.sin(2 * math.pi * 10 * (t0 + k / 256.0) + ch))
             for k in range(12)]
     bits = 0
     for v in vals:
@@ -168,16 +168,18 @@ class FakeClient:
     async def _stream(self):
         idx = {ch: 100 for ch in muse.EEG_CHANS}
         skip = self.b.get("skip_every")        # drop every Nth packet on TP9
+        off_after = self.b.get("off_after")    # taken off a head: ~2uV, not ~40
         n = 0
         t = 0.0
         started = time.monotonic()
         try:
             while time.monotonic() - started < self.b.get("stream_for", 4.0):
+                amp = 2 if off_after is not None and t >= off_after else 40
                 for i, (ch, uuid) in enumerate(muse.EEG_CHANS.items()):
                     idx[ch] = (idx[ch] + 1) & 0xFFFF
                     if skip and ch == "TP9" and n % skip == 0:
                         continue                   # the headband sent it; we lost it
-                    self.notify[uuid](None, eeg_packet(idx[ch], t, i))
+                    self.notify[uuid](None, eeg_packet(idx[ch], t, i, amp))
                 acc = (0).to_bytes(2, "big") + b"".join(
                     int(v).to_bytes(2, "big", signed=True) for v in (0, 0, 16384) * 3)
                 self.notify[muse.ACCEL](None, bytearray(acc))
@@ -372,6 +374,58 @@ async def stability():
     check("flapping link counts every drop", n >= 2, drops)
 
 
+async def off_head():
+    print("off a head")
+    muse.RETRY_DELAY = 0.2
+    muse.BLUETOOTHCTL = "no-such-bluetoothctl"
+    scans = []
+
+    async def one_muse(address=None):
+        scans.append(1)
+        return [dev]
+    muse.find_muse = one_muse
+    hold, drop = muse.OFF_HEAD_HOLD, muse.SESSION_DROP
+    muse.OFF_HEAD_HOLD, muse.SESSION_DROP = 0.5, 2.0
+    try:
+        # worn for 3s, then taken off: dark, then the run ends on its own
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
+                                "stream_for": 60, "off_after": 3.0}
+        m = muse.Muse()
+        muse.writer = Sink()
+        t0 = time.monotonic()
+        await asyncio.wait_for(muse._run(m), 20)
+        frames = muse.writer.frames
+        c = FakeClient.last
+        check("worn while on a head", any(f["worn"] for f in frames))
+        check("not worn once taken off", not frames[-1]["worn"], frames[-1])
+        check("counts down to the end", [f["ending"] for f in frames if f["ending"] is not None][-1] == 0)
+        check("the run ends without the headband hanging up",
+              m.ended and time.monotonic() - t0 < 15, f"{time.monotonic() - t0:.1f}s")
+        check("the link is cut", c.disconnect_calls >= 1 and any(cmd == "h" for _, cmd in c.writes))
+        check("and not reconnected", len(scans) == 1, f"{len(scans)} scans")
+        check("ending is not a drop", m.drops == 0 and m.stability.drops == 0, m.drops)
+
+        # never put on: lamps stay dark, but nothing ends until someone has worn it
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
+                                "stream_for": 5.0, "off_after": 0.0}
+        m = muse.Muse()
+        muse.writer = Sink()
+        await muse.run_session(dev, m)
+        frames = muse.writer.frames
+        check("never worn is dark", frames and not any(f["worn"] for f in frames))
+        check("never worn does not end the run", not m.ended and m.drops == 1)
+    finally:
+        muse.OFF_HEAD_HOLD, muse.SESSION_DROP = hold, drop
+
+    print("bridge brightness")
+    a = muse_bridge.args
+    a.min_value, a.max_value = 13, 200
+    check("off a head is dark", muse_bridge._target({"worn": False, "settle": 0.8}) == 0)
+    check("on a head, unsettled, is 5%", muse_bridge._target({"worn": True, "settle": 0.0}) == 13)
+    check("on a head, settled, is full", muse_bridge._target({"worn": True, "settle": 1.0}) == 200)
+    check("nothing heard yet is dark", muse_bridge._target({}) == 0)
+
+
 HARNESS = """
 import os, sys, asyncio
 sys.path.insert(0, %r)
@@ -541,6 +595,7 @@ if __name__ == "__main__":
     print("ble lifecycle")
     asyncio.run(lifecycle())
     asyncio.run(stability())
+    asyncio.run(off_head())
     shutdown()
     bridge_reconnect()
     print()

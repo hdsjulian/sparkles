@@ -12,11 +12,13 @@ second:
   blink                         frontal blink event, good for a one-off flash
   bpm                           heart rate from the PPG sensor (--ppg)
   contact                       how many of the 4 electrodes look attached
+  worn / ending                 on a head right now; seconds until the run ends
 
 `settle` is the one meant to drive an installation. Putting the headband on
 starts a session; for the first --anchor seconds nothing happens while the
 visitor's own arrival level is learned, and after that the score integrates
-slowly toward 1 for as long as they keep genuinely calming down.
+slowly toward 1 for as long as they keep genuinely calming down. Taking it off
+for SESSION_DROP seconds ends the run: the link is cut and the process exits.
 
 It is deliberately hard to fake. Alpha is the one channel a visitor can spike
 on purpose — close your eyes and it jumps within a second — so alpha only
@@ -103,7 +105,8 @@ EMG_BAND = (30.0, 45.0)
 TEMPORAL = ("TP9", "TP10")
 
 SETTLE_CONTACT = 2      # electrodes needed before a session counts as running
-SESSION_DROP = 15.0     # seconds of bad contact before the visitor is gone
+SESSION_DROP = 15.0     # seconds off a head before the visitor is gone and the run ends
+OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps go dark
 # Seconds the link can be down before the visitor counts as gone. A reconnect
 # is a retry wait, a full scan, connect, four acked commands and a window of
 # fresh samples — 16-19s when it goes well, so SESSION_DROP reset everyone.
@@ -535,6 +538,12 @@ class Muse:
         self.calm_range = AutoRange()
         self.focus_range = AutoRange()
         self.started = time.monotonic()
+        # Off a head the lamps go dark, and once it stays off the run ends and
+        # the link is cut. Armed only once it has been on a head, or a Start
+        # pressed before putting it on would end before anyone got the chance.
+        self.was_on = False
+        self.off_for = 0.0
+        self.ended = False
 
     # notification handlers ------------------------------------------------
 
@@ -758,7 +767,22 @@ class Muse:
             self.packets = 0
             self.lost_window = 0
             self.pkt_mark = now
-        st = self.settle.update(now, dt, len(good) >= SETTLE_CONTACT, {
+
+        on_head = len(good) >= SETTLE_CONTACT
+        if on_head:
+            self.was_on = True
+            self.off_for = 0.0
+        elif self.was_on:
+            # counted in frames, not wall time, so a reconnect's dead air is
+            # not taken for the headband lying on a table
+            self.off_for += dt
+        worn = self.was_on and self.off_for < OFF_HEAD_HOLD
+        ending = None
+        if self.was_on and not worn and not args.soak:
+            ending = max(0.0, SESSION_DROP - self.off_for)
+            self.ended = ending == 0.0
+
+        st = self.settle.update(now, dt, on_head, {
             "still": self._stillness(),
             "emg":   self._emg(),
             "bpm":   bpm,
@@ -779,6 +803,8 @@ class Muse:
             "roll": round(roll, 1),
             "blink": blink,
             "contact": len(good),
+            "worn": worn,
+            "ending": None if ending is None else round(ending, 1),
             "pps": round(self.pkt_rate, 1),
             "loss": round(self.loss, 3),
             "lost": self.lost,
@@ -1070,6 +1096,10 @@ async def run_session(device, muse):
                 meters.draw(s)
             else:
                 writer.write(json.dumps(s) + "\n")
+            if muse.ended:
+                log.info("off a head for %.0fs — ending the session and cutting "
+                         "the link", SESSION_DROP)
+                break
     except asyncio.CancelledError:
         raise
     except Exception as e:
@@ -1082,8 +1112,10 @@ async def run_session(device, muse):
         await _teardown(client)
         muse.stability.disconnected(dropped=dropped.is_set())
 
-    muse.drops += 1
     muse.link_since = None
+    if muse.ended:
+        return
+    muse.drops += 1
     log.warning("headband disconnected after %.1fs (drop #%d this run)",
                 time.monotonic() - started, muse.drops)
 
@@ -1160,7 +1192,7 @@ async def _run(muse):
             raise
         except Exception as e:
             log.error("session failed: %s", e)
-        if args.no_reconnect:
+        if args.no_reconnect or muse.ended:
             return
         await asyncio.sleep(RETRY_DELAY)
 
