@@ -104,6 +104,11 @@ TEMPORAL = ("TP9", "TP10")
 
 SETTLE_CONTACT = 2      # electrodes needed before a session counts as running
 SESSION_DROP = 15.0     # seconds of bad contact before the visitor is gone
+# Seconds the link can be down before the visitor counts as gone. A reconnect
+# is a retry wait, a full scan, connect, four acked commands and a window of
+# fresh samples — 16-19s when it goes well, so SESSION_DROP reset everyone.
+# This covers one failed attempt on top of a good one.
+LINK_GRACE = 60.0
 ALPHA_INFLUENCE = 0.3   # how far the fakeable channels can move the score
 # Evidence needed to hold the level, where 0.5 is exactly how the visitor
 # arrived. Above 0.5 so the score is not a ratchet: drifting back to your
@@ -403,7 +408,7 @@ class Settle:
         # dropped connection, not a new person — only a long one starts over.
         gap = None if self.last_t is None else now - self.last_t
         self.last_t = now
-        if gap is not None and gap > SESSION_DROP and self.t0 is not None:
+        if gap is not None and gap > LINK_GRACE and self.t0 is not None:
             log.info("no data for %.0fs — starting a fresh visitor", gap)
             self.reset()
             self.last_t = now

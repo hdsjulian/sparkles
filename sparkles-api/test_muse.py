@@ -85,6 +85,18 @@ def settle():
     check("closing your eyes alone does not", run(eyes_closed, 180)["settle"] < 0.25)
     check("staying as you arrived earns nothing", run(arrival, 180)["settle"] < 0.15)
 
+    # a dropped link takes 16-19s to come back, and that is not a new visitor
+    s, t = muse.Settle(), 0.0
+    for _ in range(int(muse.args.anchor / 0.1) + 5):
+        t += 0.1
+        s.update(t, 0.1, True, arrival())
+    t += 20.0
+    out = s.update(t, 0.1, True, arrival())
+    check("a reconnect keeps the visitor", out["phase"] == "live", out["phase"])
+    t += muse.LINK_GRACE + 1
+    out = s.update(t, 0.1, True, arrival())
+    check("a long outage starts a new visitor", out["phase"] == "anchor", out["phase"])
+
 
 def control_packets(text):
     """Muse control replies: 20-byte packets, length byte then <=19 chars."""
