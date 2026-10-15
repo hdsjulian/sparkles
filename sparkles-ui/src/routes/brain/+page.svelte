@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { brainStart, brainStop, getBrainStatus, getBrainDevices } from '$lib/api.js';
+  import { brainStart, brainStop, brainReset, getBrainStatus, getBrainDevices } from '$lib/api.js';
   import { brainStatus } from '$lib/stores.js';
 
   let error = '';
@@ -83,7 +83,7 @@
 
   const phaseText = {
     waiting: 'waiting for the headband',
-    anchor:  'learning your baseline — lamps stay dark',
+    anchor:  'learning your baseline — lamps stay dim',
     live:    'listening',
     stopped: 'not running',
   };
@@ -132,6 +132,18 @@
     finally { busy = false; }
   }
 
+  // the score starts over too, and the chart's evidence was measured against
+  // the old baseline, so it goes as well
+  async function reset() {
+    error = ''; busy = true;
+    try {
+      const r = await brainReset();
+      if (r.status !== true) throw new Error(r.detail ?? 'reset failed');
+      history = [];
+    } catch (e) { error = e.message; }
+    finally { busy = false; }
+  }
+
   async function stop() {
     error = ''; busy = true;
     try {
@@ -168,6 +180,7 @@
   <div class="row">
     {#if running}
       <button class="stop" on:click={stop} disabled={busy}>Stop</button>
+      <button class="reset" on:click={reset} disabled={busy}>Reset baseline</button>
     {:else}
       <button class="start" on:click={start} disabled={busy}>Start</button>
     {/if}
@@ -297,6 +310,7 @@
   button:disabled { opacity: 0.5; cursor: default; }
   .start { background: #2d7d46; }
   .stop  { background: #9b3030; }
+  .reset { background: #444; }
   .phase { color: #888; }
   .headband {
     display: flex; align-items: center; gap: 0.6rem;

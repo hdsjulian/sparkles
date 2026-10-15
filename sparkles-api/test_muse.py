@@ -463,10 +463,10 @@ def shutdown():
         f.write(HARNESS % HERE)
     lock = os.path.join(work, "muse.lock")
 
-    def spawn(**env):
+    def spawn(stdin=None, **env):
         # a background job inherits SIGINT as ignored — reproduce that
         p = subprocess.Popen(
-            [sys.executable, "-u", harness], stdout=subprocess.DEVNULL,
+            [sys.executable, "-u", harness], stdin=stdin, stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE, text=True, env=dict(os.environ, LOCK=lock, **env),
             preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN))
         lines = []
@@ -532,6 +532,20 @@ def shutdown():
     released = open(btlog).read().split() if os.path.exists(btlog) else []
     check("stale link released before scanning", "00:55:DA:B8:36:70" in released, released)
     check("and logged", saw(d_lines, "still holding Muse-3670", 1))
+
+    # the page's Reset baseline: a line down the pipe main.py holds on stdin
+    r, r_lines = spawn(stdin=subprocess.PIPE)
+    saw(r_lines, "new session", 10)
+    r.stdin.write("reset\n")
+    r.stdin.flush()
+    check("reset on stdin learns the baseline again", saw(r_lines, "baseline reset by hand", 3))
+    end = time.time() + 3
+    while time.time() < end and sum("new session" in l for l in r_lines) < 2:
+        time.sleep(0.05)
+    check("and starts a new session", sum("new session" in l for l in r_lines) >= 2)
+    check("without touching the link", not any("FAKE disconnect" in l for l in r_lines))
+    r.send_signal(signal.SIGTERM)
+    r.wait(timeout=10)
 
 
 def bridge_reconnect():

@@ -319,6 +319,10 @@ export const brainStart = (params = {}) => {
 export const brainStop = () =>
   fetch(`${BASE}/brain/stop`, { method: 'POST' }).then(r => r.json());
 
+// learn the visitor's baseline again, keeping the headband connected
+export const brainReset = () =>
+  fetch(`${BASE}/brain/reset`, { method: 'POST' }).then(r => r.json());
+
 export const getBrainStatus = () =>
   fetch(`${BASE}/brain/status`).then(r => r.json());
 

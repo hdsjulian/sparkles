@@ -2004,9 +2004,12 @@ async def brain_start(
     cmd = "%s | %s" % (" ".join(shlex.quote(a) for a in muse),
                        " ".join(shlex.quote(a) for a in bridge_cmd))
 
+    # stdin reaches muse.py, the first command in the pipe, and carries the
+    # page's commands to it (brain_reset)
     try:
         proc = await asyncio.create_subprocess_shell(
-            cmd, stdout=asyncio.subprocess.PIPE, start_new_session=True)
+            cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            start_new_session=True)
     except Exception as exc:
         raise HTTPException(500, detail=f"could not start muse: {exc}")
 
@@ -2048,6 +2051,20 @@ async def brain_stop():
     _brain_lamps_off()
     logger.info("brain test stopped")
     return _ok("brain test stopped")
+
+
+@app.post("/brain/reset")
+async def brain_reset():
+    """Learn the visitor's baseline again, keeping the headband link."""
+    if not _brain_running():
+        raise HTTPException(409, detail="brain test not running")
+    try:
+        _brain["proc"].stdin.write(b"reset\n")
+        await _brain["proc"].stdin.drain()
+    except Exception as exc:
+        raise HTTPException(500, detail=f"could not reach muse: {exc}")
+    logger.info("brain baseline reset")
+    return _ok("baseline reset")
 
 
 @app.get("/brain/devices")

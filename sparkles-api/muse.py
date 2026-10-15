@@ -37,6 +37,8 @@ Run:
     python muse.py                 # live meters in the terminal
     python muse.py --json          # one JSON object per line, for piping
 
+Type `reset` and enter while it runs to learn the baseline again.
+
 The headband must not be connected to the Muse phone app at the same time, and
 on macOS the terminal needs Bluetooth permission (System Settings → Privacy).
 """
@@ -652,6 +654,13 @@ class Muse:
         self.lost_window = 0
         self.pkt_mark = time.monotonic()
 
+    def reset_baseline(self):
+        """Forget the visitor's arrival level and learn it again, link untouched.
+        The score starts over with it: a baseline it was not measured against
+        would make the current level meaningless."""
+        log.info("baseline reset by hand — learning it again")
+        self.settle.reset()
+
     def _emg(self):
         """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
         tension. The one 'not relaxed' signal a visitor cannot consciously fake,
@@ -1120,6 +1129,18 @@ async def run_session(device, muse):
                 time.monotonic() - started, muse.drops)
 
 
+def _read_commands(loop, muse, stream):
+    """One command per line on stdin: the Brain page sends them down the pipe
+    main.py holds, and by hand you can type them. Read on a thread, applied on
+    the loop that owns the score."""
+    for line in stream:
+        if line.strip() == "reset":
+            try:
+                loop.call_soon_threadsafe(muse.reset_baseline)
+            except RuntimeError:
+                return      # loop already closed, we are shutting down
+
+
 async def main():
     global writer
     writer = FrameWriter()
@@ -1156,6 +1177,8 @@ async def main():
     # baselines — losing the link for three seconds is not a new person, and
     # rebuilding this per session meant the anchor window could never finish.
     muse = Muse()
+    threading.Thread(target=_read_commands, args=(loop, muse, sys.stdin),
+                     daemon=True, name="commands").start()
     asyncio.create_task(_loop_lag_watch(muse.stability))
     asyncio.create_task(_stability_report(muse.stability))
     try:
