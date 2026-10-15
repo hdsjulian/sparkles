@@ -114,6 +114,7 @@ OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps go dark
 # fresh samples — 16-19s when it goes well, so SESSION_DROP reset everyone.
 # This covers one failed attempt on top of a good one.
 LINK_GRACE = 60.0
+SCORE_LOG = 10.0        # seconds between score lines in the log
 ALPHA_INFLUENCE = 0.3   # how far the fakeable channels can move the score
 # Evidence needed to hold the level, where 0.5 is exactly how the visitor
 # arrived. Above 0.5 so the score is not a ratchet: drifting back to your
@@ -349,17 +350,30 @@ class Baseline:
     Learned during the anchor window and then left alone. A baseline that kept
     chasing the signal would cancel out the very drift it exists to measure —
     settle down for five minutes and a rolling baseline would quietly decide
-    that was your normal and take the lights away again."""
+    that was your normal and take the lights away again.
 
-    def __init__(self, better_when_lower=True):
+    Power-like channels are compared as ratios (ratio=True): twice what the
+    visitor arrived with is one step tenser, half is one step calmer, whatever
+    the absolute level. A step is how much the channel wobbled while it was
+    learned, but never less than `floor`. Without that floor a measure that
+    barely moves over the anchor window — stillness is averaged over 12 s —
+    scored a breath more movement than at arrival as total tension, and
+    evidence sat at 0.1 for a whole session."""
+
+    def __init__(self, better_when_lower=True, ratio=False, floor=1.0):
         self.lower = better_when_lower
+        self.ratio = ratio
+        self.floor = floor          # in doublings when ratio, else in units
         self.samples = []
         self.med = None
         self.scale = 1.0
 
+    def _value(self, x):
+        return math.log2(max(float(x), 1e-12)) if self.ratio else float(x)
+
     def observe(self, x):
         if self.med is None and x is not None:
-            self.samples.append(float(x))
+            self.samples.append(self._value(x))
 
     def freeze(self) -> bool:
         if len(self.samples) < 5:
@@ -369,16 +383,23 @@ class Baseline:
         mad = float(np.median(np.abs(a - self.med)))
         # MAD, not stddev: one jaw clench during the anchor window shouldn't
         # define the scale for the whole visit.
-        self.scale = max(mad * 1.4826, abs(self.med) * 0.05, 1e-9)
+        self.scale = max(mad * 1.4826, self.floor, 1e-9)
         self.samples = []
         return True
+
+    def arrival(self):
+        """The learned level in the channel's own units, for the log."""
+        if self.med is None:
+            return None
+        return 2 ** self.med if self.ratio else self.med
 
     def score(self, x):
         """0..1, sitting at 0.5 when the visitor is exactly where they arrived
         and rising as they move the right way."""
         if self.med is None or x is None:
             return None
-        d = (self.med - x) if self.lower else (x - self.med)
+        v = self._value(x)
+        d = (self.med - v) if self.lower else (v - self.med)
         return 1.0 / (1.0 + math.exp(-max(-20.0, min(20.0, d / self.scale))))
 
 
@@ -393,6 +414,7 @@ class Settle:
 
     def __init__(self):
         self.last_t = None      # deliberately not cleared by reset()
+        self.last = {}          # the latest channel values, for describe()
         self.reset()
 
     def reset(self):
@@ -401,14 +423,27 @@ class Settle:
         self.frozen = False
         self.lost_since = None
         self.base = {
-            "still": Baseline(True),    # accelerometer variance
-            "emg":   Baseline(True),    # jaw / temple tension
-            "bpm":   Baseline(True),    # heart rate
-            "alpha": Baseline(False),   # fakeable, low weight
-            "beta":  Baseline(True),    # semi-honest, low weight
+            "still": Baseline(True, ratio=True),    # accelerometer spread
+            "emg":   Baseline(True, ratio=True),    # jaw / temple tension
+            "bpm":   Baseline(True, floor=5.0),     # heart rate, 5 bpm a step
+            "alpha": Baseline(False, ratio=True),   # fakeable, low weight
+            "beta":  Baseline(True, ratio=True),    # semi-honest, low weight
         }
 
+    def describe(self) -> str:
+        """Each channel's score with its value against arrival, for the log —
+        so a session that will not light up says which channel held it down."""
+        parts = []
+        for name, b in self.base.items():
+            x, base = self.last.get(name), b.arrival()
+            if x is None or base is None:
+                parts.append(f"{name} --")
+            else:
+                parts.append(f"{name} {b.score(x):.2f} ({x:.3g} vs {base:.3g})")
+        return "  ".join(parts)
+
     def update(self, now: float, dt: float, live: bool, ch: dict) -> dict:
+        self.last = ch
         # A gap in calls means the link was down. A few seconds of that is a
         # dropped connection, not a new person — only a long one starts over.
         gap = None if self.last_t is None else now - self.last_t
@@ -1095,6 +1130,7 @@ async def run_session(device, muse):
         next_at = time.monotonic()
         alive = asyncio.create_task(_keepalive(client))
         watch = asyncio.create_task(_first_data_watch(muse, time.monotonic()))
+        logged = time.monotonic()
         while not dropped.is_set():
             next_at += period
             await asyncio.sleep(max(0.0, next_at - time.monotonic()))
@@ -1105,6 +1141,11 @@ async def run_session(device, muse):
                 meters.draw(s)
             else:
                 writer.write(json.dumps(s) + "\n")
+            if time.monotonic() - logged >= SCORE_LOG:
+                logged = time.monotonic()
+                ev = "--" if s["evidence"] is None else f"{s['evidence']:.2f}"
+                log.info("%s  settle %.2f  evidence %s  contact %d/4  %s", s["phase"],
+                         s["settle"], ev, s["contact"], muse.settle.describe())
             if muse.ended:
                 log.info("off a head for %.0fs — ending the session and cutting "
                          "the link", SESSION_DROP)

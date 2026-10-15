@@ -98,6 +98,26 @@ def settle():
     check("a long outage starts a new visitor", out["phase"] == "anchor", out["phase"])
 
 
+def baselines():
+    print("baselines")
+    # stillness barely moves while it is learned, the way a 12 s average does
+    still = muse.Baseline(True, ratio=True)
+    for i in range(110):
+        still.observe(1.38e-3 + 1e-5 * math.sin(i))
+    still.freeze()
+    check("a breath more movement than at arrival is not total tension",
+          still.score(1.8e-3) > 0.3, f"{still.score(1.8e-3):.3f}")
+    check("twice the movement is one step tenser", abs(still.score(2.76e-3) - 0.269) < 0.01,
+          f"{still.score(2.76e-3):.3f}")
+    check("half the movement is one step calmer", abs(still.score(0.69e-3) - 0.731) < 0.01,
+          f"{still.score(0.69e-3):.3f}")
+    hr = muse.Baseline(True, floor=5.0)
+    for i in range(110):
+        hr.observe(70 + 0.5 * math.sin(i))
+    hr.freeze()
+    check("a few beats faster is not total tension", hr.score(76) > 0.2, f"{hr.score(76):.3f}")
+
+
 def control_packets(text):
     """Muse control replies: 20-byte packets, length byte then <=19 chars."""
     out = []
@@ -606,6 +626,7 @@ def bridge_reconnect():
 if __name__ == "__main__":
     decode()
     settle()
+    baselines()
     print("ble lifecycle")
     asyncio.run(lifecycle())
     asyncio.run(stability())
