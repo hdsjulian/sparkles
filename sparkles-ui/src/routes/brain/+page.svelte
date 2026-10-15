@@ -91,14 +91,19 @@
   // the pump's closing 'stopped' frame carries none of this, so remember the
   // last real one to say why a session ended without anyone pressing Stop
   let wasEnding = false;
+  let wasConnected = true;
   let notice = '';
-  $: if (running && s.phase !== 'stopped') wasEnding = s.ending != null;
+  $: if (running && s.phase !== 'stopped') {
+    wasEnding = s.ending != null;
+    wasConnected = s.connected ?? true;
+  }
 
   async function refresh() {
     try {
       const st = await getBrainStatus();
       if (running && !st.running && !busy)
         notice = wasEnding ? 'Session ended — the headband came off.'
+          : !wasConnected ? 'Session ended — the headband was out of reach for a minute (off, flat or too far).'
           : 'Session ended on its own — journalctl -u sparkles says why.';
       running = st.running;
       if (st.running) brainStatus.set(st);

@@ -137,6 +137,7 @@ def eeg_packet(idx, t0, ch, amp=40):
 class FakeClient:
     behaviour = {}
     last = None
+    races = 0                     # connects still to lose to BlueZ's race
 
     def __init__(self, device, disconnected_callback=None, timeout=None):
         self.cb = disconnected_callback
@@ -154,6 +155,9 @@ class FakeClient:
             raise RuntimeError("failed to discover services, device disconnected")
         if mode == "hang":
             await asyncio.sleep(3600)
+        if mode == "race" and FakeClient.races > 0:
+            FakeClient.races -= 1
+            raise RuntimeError("failed to discover services, device disconnected")
 
     async def disconnect(self):
         self.disconnect_calls += 1
@@ -436,6 +440,32 @@ async def off_head():
         check("never worn does not end the run", not m.ended and m.drops == 1)
     finally:
         muse.OFF_HEAD_HOLD, muse.SESSION_DROP = hold, drop
+
+    print("reconnects")
+    # three connects lost to BlueZ's race, then a link that drops, then a
+    # headband that is never seen again
+    scans.clear()
+
+    async def then_gone(address=None):
+        scans.append(1)
+        return [dev] if len(scans) == 1 else []
+    muse.find_muse = then_gone
+    grace = muse.LINK_GRACE
+    muse.LINK_GRACE = 1.0
+    try:
+        FakeClient.races = 3
+        FakeClient.behaviour = {"connect": "race", "preset_delay": 0.05,
+                                "s_delay": 0.05, "stream_for": 1.0}
+        m = muse.Muse()
+        muse.writer = Sink()
+        await asyncio.wait_for(muse._run(m), 20)
+        st = m.stability
+        check("lost races are retried at once, not rescanned",
+              st.attempts == 4 and len(st.sessions) == 1, f"attempts {st.attempts}, links {len(st.sessions)}")
+        check("a headband gone for a while ends the run", m.ended)
+    finally:
+        muse.LINK_GRACE = grace
+        FakeClient.races = 0
 
     print("bridge brightness")
     a = muse_bridge.args

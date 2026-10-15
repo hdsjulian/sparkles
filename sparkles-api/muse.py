@@ -19,6 +19,7 @@ starts a session; for the first --anchor seconds nothing happens while the
 visitor's own arrival level is learned, and after that the score integrates
 slowly toward 1 for as long as they keep genuinely calming down. Taking it off
 for SESSION_DROP seconds ends the run: the link is cut and the process exits.
+So does losing the headband altogether for LINK_GRACE seconds.
 
 It is deliberately hard to fake. Alpha is the one channel a visitor can spike
 on purpose — close your eyes and it jumps within a second — so alpha only
@@ -114,6 +115,7 @@ OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps go dark
 # fresh samples — 16-19s when it goes well, so SESSION_DROP reset everyone.
 # This covers one failed attempt on top of a good one.
 LINK_GRACE = 60.0
+QUICK_RETRIES = 5       # connects lost to BlueZ's race, retried without a rescan
 SCORE_LOG = 10.0        # seconds between score lines in the log
 ALPHA_INFLUENCE = 0.3   # how far the fakeable channels can move the score
 # Evidence needed to hold the level, where 0.5 is exactly how the visitor
@@ -581,6 +583,7 @@ class Muse:
         self.was_on = False
         self.off_for = 0.0
         self.ended = False
+        self.gone_since = None      # when the last link ended, None while up
 
     # notification handlers ------------------------------------------------
 
@@ -1115,6 +1118,7 @@ async def run_session(device, muse):
         raise
     log.info("connected to %s", device.address)
     muse.link_since = time.monotonic()
+    muse.gone_since = None
     muse.stability.connected()
 
     alive = None
@@ -1161,6 +1165,7 @@ async def run_session(device, muse):
                 task.cancel()
         await _teardown(client)
         muse.stability.disconnected(dropped=dropped.is_set())
+        muse.gone_since = time.monotonic()
 
     muse.link_since = None
     if muse.ended:
@@ -1238,8 +1243,33 @@ async def main():
         lock.close()
 
 
+async def _connect_racing(device, muse):
+    """BlueZ races itself on connect. When the headband's ATT channel comes up
+    before the kernel reports the link, it decides the device is 'already
+    connected', drops its own setup, and the connect fails about 3 s in with
+    'failed to discover services'. Which side wins is luck — five losses in a
+    row have been seen — so retry those at once with the device in hand rather
+    than paying a wait and a full rescan for each."""
+    for attempt in range(QUICK_RETRIES):
+        try:
+            return await run_session(device, muse)
+        except Exception as e:
+            if "failed to discover services" not in str(e) or attempt == QUICK_RETRIES - 1:
+                raise
+            log.info("lost BlueZ's connect race — trying again at once")
+            await asyncio.sleep(0.5)
+
+
 async def _run(muse):
     while True:
+        # A headband that has been out of reach this long is switched off,
+        # flat or gone, not reconnecting. Without this a run sat scanning for
+        # hours with the lamps held at whatever the last frame said.
+        if (muse.gone_since is not None and not args.soak
+                and time.monotonic() - muse.gone_since > LINK_GRACE):
+            log.info("headband gone for %.0fs — ending the session", LINK_GRACE)
+            muse.ended = True
+            return
         try:
             await _release_stale_link()
             # Rescan every attempt: a BLEDevice from a previous pass is stale
@@ -1251,7 +1281,7 @@ async def _run(muse):
                 continue
             device = found[0]
             log.info("found %s (%s)", device.name, device.address)
-            await run_session(device, muse)
+            await _connect_racing(device, muse)
         except asyncio.CancelledError:
             raise
         except Exception as e:
