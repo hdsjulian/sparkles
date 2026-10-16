@@ -12,6 +12,7 @@ Usage:
 """
 
 import asyncio
+import io
 import json
 import math
 import os
@@ -85,6 +86,45 @@ def settle():
     check("closing your eyes alone does not", run(eyes_closed, 180)["settle"] < 0.25)
     check("staying as you arrived earns nothing", run(arrival, 180)["settle"] < 0.15)
 
+    def anchored():
+        s, t, half = muse.Settle(), 0.0, None
+        for i in range(int(muse.args.anchor / 0.1) + 5):
+            t += 0.1
+            out = s.update(t, 0.1, True, arrival())
+            if i == int(muse.args.anchor / 0.2):
+                half = out["settle"]
+        return s, t, half, out["settle"]
+
+    # a session comes up to its starting level while the baseline is learned
+    s, t, half, level = anchored()
+    check("the lamps come up while the baseline is learned",
+          abs(half - muse.args.start / 2) < 0.02, f"{half:.3f} halfway through")
+    check("and a session starts at the chosen level",
+          abs(level - muse.args.start) < 0.01, f"{level:.3f}")
+
+    # from there the climb is quick at first, flattening toward full, read
+    # every 10 s of steady calm
+    levels = [level]
+    for _ in range(4):
+        for _ in range(100):
+            t += 0.1
+            out = s.update(t, 0.1, True, relaxed())
+        levels.append(out["settle"])
+    gains = [b - a for a, b in zip(levels, levels[1:])]
+    check("the climb is quick at first and flattens toward full",
+          all(a > b > 0 for a, b in zip(gains, gains[1:])) and levels[-1] < 1.0,
+          [round(v, 3) for v in levels])
+
+    # and getting tenser than you arrived dims it from the start
+    tense = lambda: {"still": n(0.030, .15), "emg": n(300.0, .15), "bpm": n(84.0, .04),
+                     "alpha": n(0.20, .10), "beta": n(0.30, .10)}
+    s, t, _, level = anchored()
+    for _ in range(100):
+        t += 0.1
+        out = s.update(t, 0.1, True, tense())
+    check("getting tenser than you arrived dims the lamps", out["settle"] < 0.6 * level,
+          f"{level:.2f} -> {out['settle']:.2f} in 10 s")
+
     # a dropped link takes 16-19s to come back, and that is not a new visitor
     s, t = muse.Settle(), 0.0
     for _ in range(int(muse.args.anchor / 0.1) + 5):
@@ -96,6 +136,24 @@ def settle():
     t += muse.LINK_GRACE + 1
     out = s.update(t, 0.1, True, arrival())
     check("a long outage starts a new visitor", out["phase"] == "anchor", out["phase"])
+
+
+async def commands():
+    print("live tuning")
+    m = muse.Muse()
+    m.settle.frozen, m.settle.level = True, 0.3
+    saved = (muse.args.start, muse.args.up, muse.args.down)
+    loop = asyncio.get_running_loop()
+    stream = io.StringIO("set up 0.25\nset start 0.5\nset bogus 1\nset down x\nnonsense\n")
+    await loop.run_in_executor(None, muse._read_commands, loop, m, stream)
+    await asyncio.sleep(0.05)
+    try:
+        check("set changes the curve under a running session",
+              muse.args.up == 0.25 and muse.args.down == saved[2], (muse.args.up, muse.args.down))
+        check("a new start level moves the lamps there now",
+              m.settle.level == 0.5 and muse.args.start == 0.5, m.settle.level)
+    finally:
+        muse.args.start, muse.args.up, muse.args.down = saved
 
 
 def baselines():
@@ -656,6 +714,7 @@ def bridge_reconnect():
 if __name__ == "__main__":
     decode()
     settle()
+    asyncio.run(commands())
     baselines()
     print("ble lifecycle")
     asyncio.run(lifecycle())

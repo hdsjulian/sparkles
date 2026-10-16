@@ -1979,8 +1979,9 @@ async def _brain_pump(proc):
 async def brain_start(
     ppg: bool = Query(default=True),
     anchor: float = Query(default=40.0, ge=5.0, le=300.0),
-    rise: float = Query(default=120.0, ge=5.0, le=1800.0),
-    fall: float = Query(default=40.0, ge=5.0, le=1800.0),
+    start: float = Query(default=0.3, ge=0.0, le=0.95),
+    up: float = Query(default=0.1, ge=0.005, le=2.0),
+    down: float = Query(default=0.15, ge=0.005, le=2.0),
     bias: float = Query(default=0.6, ge=0.3, le=0.9),
     minValue: int = Query(default=13, ge=0, le=254),
     maxValue: int = Query(default=200, ge=1, le=255),
@@ -1994,8 +1995,8 @@ async def brain_start(
         raise HTTPException(409, detail="brain test already running")
 
     muse = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--json",
-            "--anchor", str(anchor), "--rise", str(rise), "--fall", str(fall),
-            "--bias", str(bias)]
+            "--anchor", str(anchor), "--start", str(start), "--up", str(up),
+            "--down", str(down), "--bias", str(bias)]
     if ppg:
         muse.append("--ppg")
     bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
@@ -2065,6 +2066,25 @@ async def brain_reset():
         raise HTTPException(500, detail=f"could not reach muse: {exc}")
     logger.info("brain baseline reset")
     return _ok("baseline reset")
+
+
+@app.post("/brain/tune")
+async def brain_tune(
+    start: float | None = Query(default=None, ge=0.0, le=0.95),
+    up: float | None = Query(default=None, ge=0.005, le=2.0),
+    down: float | None = Query(default=None, ge=0.005, le=2.0),
+):
+    """Change the lamp curve of the running session, for the page's sliders."""
+    if not _brain_running():
+        raise HTTPException(409, detail="brain test not running")
+    lines = "".join(f"set {name} {value}\n" for name, value in
+                    (("start", start), ("up", up), ("down", down)) if value is not None)
+    try:
+        _brain["proc"].stdin.write(lines.encode())
+        await _brain["proc"].stdin.drain()
+    except Exception as exc:
+        raise HTTPException(500, detail=f"could not reach muse: {exc}")
+    return _ok("tuned")
 
 
 @app.get("/brain/devices")

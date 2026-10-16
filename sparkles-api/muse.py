@@ -38,7 +38,8 @@ Run:
     python muse.py                 # live meters in the terminal
     python muse.py --json          # one JSON object per line, for piping
 
-Type `reset` and enter while it runs to learn the baseline again.
+Type `reset` and enter while it runs to learn the baseline again, or
+`set up 0.2` (start, up or down) to change the lamp curve on the fly.
 
 The headband must not be connected to the Muse phone app at the same time, and
 on macOS the terminal needs Bluetooth permission (System Settings → Privacy).
@@ -155,11 +156,16 @@ parser.add_argument("--ppg",      action="store_true",
                     help="Also stream PPG and report heart rate")
 parser.add_argument("--anchor",   type=float, default=40.0,
                     help="Seconds of a new session spent learning the visitor's "
-                         "arrival level, during which settle stays 0 (default 40)")
-parser.add_argument("--rise",     type=float, default=120.0,
-                    help="Seconds of perfect evidence to go from 0 to full settle")
-parser.add_argument("--fall",     type=float, default=40.0,
-                    help="Seconds to fall back to 0 when the visitor tenses up")
+                         "arrival level, while settle comes up to --start (default 40)")
+parser.add_argument("--start",    type=float, default=0.3,
+                    help="Settle a session starts from once the baseline is learned, "
+                         "so getting tenser visibly dims the lamps too (default 0.3)")
+parser.add_argument("--up",       type=float, default=0.1,
+                    help="Increase factor: the share of the way to full closed per "
+                         "second at perfect evidence (default 0.1, halfway in 7 s)")
+parser.add_argument("--down",     type=float, default=0.15,
+                    help="Degradation factor: the share of the level lost per second "
+                         "at full tension (default 0.15, halved in 4.6 s)")
 parser.add_argument("--bias",     type=float, default=0.6,
                     help="Evidence needed to hold the level, where 0.5 is exactly "
                          "how they arrived (default 0.6 — lower is easier to earn)")
@@ -409,9 +415,9 @@ class Settle:
     """Turns the per-frame channels into one slow 0..1 score.
 
     Rises only while the honest evidence says the visitor is calmer than they
-    arrived, and falls roughly three times faster — fast enough that tensing up
-    is visibly punished within a few seconds, slow enough that nobody can sprint
-    it. The anti-gaming mechanism and the intended experience are the same
+    arrived, quickly at first and ever slower toward full, and falls the same
+    way toward dark — fast enough that tensing up is visibly punished within a
+    few seconds, slow enough that nobody can sprint it. The anti-gaming mechanism and the intended experience are the same
     mechanism: the only way to win is to be patient."""
 
     def __init__(self):
@@ -460,7 +466,7 @@ class Settle:
             # really gone, forget them so the next visitor starts clean.
             if self.lost_since is None:
                 self.lost_since = now
-            self.level = max(0.0, self.level - dt / args.fall)
+            self.level -= args.down * self.level * dt
             if now - self.lost_since > SESSION_DROP and self.t0 is not None:
                 log.info("session ended — baselines reset for the next visitor")
                 self.reset()
@@ -476,12 +482,15 @@ class Settle:
         if not self.frozen:
             for name, b in self.base.items():
                 b.observe(ch.get(name))
+            # bring the lamps up to the starting level while the baseline is
+            # learned, rather than jumping there when it is done
+            self.level = args.start * min(1.0, elapsed / max(args.anchor, 1e-9))
             if elapsed >= args.anchor:
                 got = [n for n, b in self.base.items() if b.freeze()]
                 self.frozen = True
                 log.info("baseline set from %s — the lamps start listening now",
                          ", ".join(got) or "nothing usable")
-            return {"settle": 0.0, "session": elapsed, "phase": "anchor"}
+            return {"settle": self.level, "session": elapsed, "phase": "anchor"}
 
         scored = {n: b.score(ch.get(n)) for n, b in self.base.items()}
         honest = [scored[n] for n in ("still", "emg", "bpm") if scored[n] is not None]
@@ -497,13 +506,19 @@ class Settle:
         e = sum(soft) / len(soft) if soft else 0.5
         evidence = h * (1.0 + ALPHA_INFLUENCE * (e - 0.5))
 
-        # Scaled so both ends saturate at ±1: fully settled rises in --rise
-        # seconds, fully agitated falls in --fall, and merely returning to the
-        # arrival state gives a gentle negative drift rather than nothing.
+        # Scaled so both ends saturate at ±1. Each way closes a share of the
+        # distance left rather than a fixed amount: the light answers a visitor
+        # who is settling straight away and the last of it is slow to earn, and
+        # tensing up dims a bright room fast but never quite to dark. --up and
+        # --down are those shares per second at full strength, and merely
+        # returning to the arrival state gives a gentle negative drift.
         gap = evidence - EVIDENCE_BIAS
         drift = gap / (1.0 - EVIDENCE_BIAS) if gap >= 0 else gap / EVIDENCE_BIAS
         drift = max(-1.0, min(1.0, drift))
-        self.level += drift * dt / (args.rise if drift >= 0 else args.fall)
+        if drift >= 0:
+            self.level += args.up * drift * (1.0 - self.level) * dt
+        else:
+            self.level += args.down * drift * self.level * dt
         self.level = max(0.0, min(1.0, self.level))
         return {"settle": self.level, "session": elapsed, "phase": "live",
                 "evidence": evidence,
@@ -698,6 +713,17 @@ class Muse:
         would make the current level meaningless."""
         log.info("baseline reset by hand — learning it again")
         self.settle.reset()
+
+    def tune(self, name, value):
+        """The lamp curve, changed under a running session from the Brain
+        page. A new start level also moves the lamps there now, so it can be
+        judged by eye instead of waiting out another baseline window."""
+        if name not in ("start", "up", "down"):
+            return
+        setattr(args, name, value)
+        log.info("%s set to %.2f", name, value)
+        if name == "start" and self.settle.frozen:
+            self.settle.level = value
 
     def _emg(self):
         """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
@@ -1180,11 +1206,20 @@ def _read_commands(loop, muse, stream):
     main.py holds, and by hand you can type them. Read on a thread, applied on
     the loop that owns the score."""
     for line in stream:
-        if line.strip() == "reset":
+        words = line.split()
+        if words == ["reset"]:
+            call = (muse.reset_baseline,)
+        elif len(words) == 3 and words[0] == "set":
             try:
-                loop.call_soon_threadsafe(muse.reset_baseline)
-            except RuntimeError:
-                return      # loop already closed, we are shutting down
+                call = (muse.tune, words[1], float(words[2]))
+            except ValueError:
+                continue
+        else:
+            continue
+        try:
+            loop.call_soon_threadsafe(*call)
+        except RuntimeError:
+            return          # loop already closed, we are shutting down
 
 
 async def main():

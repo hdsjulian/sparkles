@@ -323,6 +323,10 @@ export const brainStop = () =>
 export const brainReset = () =>
   fetch(`${BASE}/brain/reset`, { method: 'POST' }).then(r => r.json());
 
+// change the lamp curve under a running session: start, up and/or down
+export const brainTune = (params = {}) =>
+  fetch(`${BASE}/brain/tune?${new URLSearchParams(params)}`, { method: 'POST' }).then(r => r.json());
+
 export const getBrainStatus = () =>
   fetch(`${BASE}/brain/status`).then(r => r.json());
 

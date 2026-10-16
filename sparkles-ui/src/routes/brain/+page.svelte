@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { brainStart, brainStop, brainReset, getBrainStatus, getBrainDevices } from '$lib/api.js';
+  import { brainStart, brainStop, brainReset, brainTune, getBrainStatus, getBrainDevices } from '$lib/api.js';
   import { brainStatus } from '$lib/stores.js';
 
   let error = '';
@@ -14,18 +14,40 @@
   // setting that works survives the next session
   const SETTINGS_KEY = 'brain.settings';
   let anchor = 15;
-  let rise = 30;
-  let fall = 20;
   let bias = 0.5;
   // brightness on a head before they settle — not the old minValue, which also
   // lit the lamps with nobody wearing it, so a saved one is left behind
   let wornValue = 13;
   let maxValue = 200;
   let ppg = true;
+  // the lamp curve, live: where a session starts, and how fast it climbs and sinks
+  let startLevel = 0.3;
+  let up = 0.1;
+  let down = 0.15;
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
-    if (saved) ({ anchor, rise, fall, bias, wornValue, maxValue, ppg } = { anchor, rise, fall, bias, wornValue, maxValue, ppg, ...saved });
+    if (saved) ({ anchor, bias, wornValue, maxValue, ppg, startLevel, up, down } =
+      { anchor, bias, wornValue, maxValue, ppg, startLevel, up, down, ...saved });
   } catch { /* no storage here — defaults are fine */ }
+
+  function save() {
+    try {
+      localStorage.setItem(SETTINGS_KEY,
+        JSON.stringify({ anchor, bias, wornValue, maxValue, ppg, startLevel, up, down }));
+    } catch { /* not persisted, still works */ }
+  }
+
+  // a slider let go: remembered, and handed to a running session straight away
+  async function tune(params) {
+    save();
+    if (!running) return;
+    try {
+      const r = await brainTune(params);
+      if (r.status !== true) throw new Error(r.detail ?? 'tune failed');
+    } catch (e) { error = e.message; }
+  }
+
+  $: startLamp = Math.round(wornValue + (maxValue - wornValue) * startLevel);
 
   // last few minutes of evidence and settle, for the tuning chart
   const HISTORY_S = 180;
@@ -83,7 +105,7 @@
 
   const phaseText = {
     waiting: 'waiting for the headband',
-    anchor:  'learning your baseline — lamps stay dim',
+    anchor:  'learning your baseline — lamps coming up',
     live:    'listening',
     stopped: 'not running',
   };
@@ -124,13 +146,11 @@
   async function start() {
     error = ''; busy = true;
     try {
-      try {
-        localStorage.setItem(SETTINGS_KEY,
-          JSON.stringify({ anchor, rise, fall, bias, wornValue, maxValue, ppg }));
-      } catch { /* not persisted, still starts */ }
+      save();
       history = [];
       notice = '';
-      const r = await brainStart({ ppg, anchor, rise, fall, bias, minValue: wornValue, maxValue });
+      const r = await brainStart({ ppg, anchor, bias, minValue: wornValue, maxValue,
+                                   start: startLevel, up, down });
       if (r.status === false) throw new Error(r.detail ?? 'failed to start');
       running = true;
     } catch (e) { error = e.message; }
@@ -284,15 +304,39 @@
 </div>
 {/if}
 
+<div class="panel">
+  <h2>Lamp curve</h2>
+  <div class="sliders">
+    <span class="sname">Brightness at 0.50</span>
+    <input type="range" min="0" max="0.9" step="0.01" bind:value={startLevel}
+           on:change={() => tune({ start: startLevel })} />
+    <span class="sval">{startLevel.toFixed(2)}</span>
+    <span class="dim shint">where a session starts once the baseline is learned —
+      lamp {startLamp}/255{running ? ', moved there now to judge it' : ''}</span>
+
+    <span class="sname">Increase factor</span>
+    <input type="range" min="0.01" max="0.5" step="0.01" bind:value={up}
+           on:change={() => tune({ up })} />
+    <span class="sval">{up.toFixed(2)}</span>
+    <span class="dim shint">at full calm, halfway to full every {(Math.LN2 / up).toFixed(1)} s</span>
+
+    <span class="sname">Degradation factor</span>
+    <input type="range" min="0.01" max="0.5" step="0.01" bind:value={down}
+           on:change={() => tune({ down })} />
+    <span class="sval">{down.toFixed(2)}</span>
+    <span class="dim shint">at full tension, halves every {(Math.LN2 / down).toFixed(1)} s</span>
+  </div>
+  <p class="hint">Both ways are fast at first and flatten out: toward full when
+    calmer than you arrived, toward dark when tenser. These apply live.</p>
+</div>
+
 <fieldset class="panel" disabled={running}>
   <legend>Settings</legend>
   <label>Baseline window <input type="number" bind:value={anchor} min="5" max="300" /> s</label>
-  <label>Time to full <input type="number" bind:value={rise} min="5" max="1800" /> s</label>
-  <label>Time to dark <input type="number" bind:value={fall} min="5" max="1800" /> s</label>
   <label>Bias <input type="number" bind:value={bias} min="0.3" max="0.9" step="0.05" />
     <span class="dim">evidence needed to rise — lower is easier</span></label>
   <label>Brightness on a head <input type="number" bind:value={wornValue} min="0" max="254" />
-    <span class="dim">before they settle — 13 is about 5%, off a head is dark</span></label>
+    <span class="dim">the lamp at settle 0 — 13 is about 5%, off a head is dark</span></label>
   <label>Max brightness <input type="number" bind:value={maxValue} min="1" max="255" /></label>
   <label class="check"><input type="checkbox" bind:checked={ppg} /> Heart rate (PPG)</label>
   <p class="hint">Locked while running — stop first to change them.</p>
@@ -379,4 +423,10 @@
   .sfill { position: absolute; top: 0; bottom: 0; background: #d98080; border-radius: 3px; }
   .sfill.good { background: #7ec699; }
   .sval { color: #999; text-align: right; font-variant-numeric: tabular-nums; }
+  .sliders {
+    display: grid; grid-template-columns: auto 1fr 3rem; gap: 0.2rem 0.8rem;
+    align-items: center; font-size: 0.9rem;
+  }
+  .sliders input[type="range"] { width: 100%; }
+  .shint { grid-column: 1 / -1; font-size: 0.8rem; margin-bottom: 0.6rem; }
 </style>
