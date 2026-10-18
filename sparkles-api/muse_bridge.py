@@ -17,7 +17,9 @@ The mapping is kept dumb on purpose. Off a head the lamps are dark; on one they
 shimmer faintly at --min-value (about 5%) and climb straight with settle to
 --max-value. If a lamp is dark you know the headband is off, not that some
 animation curve ate it. When muse.py ends the run because the headband came
-off, its output ends, and that hands the lamps back as below.
+off, its output ends, and that hands the lamps back as below. While the
+headband is on a head, pitch detection and the keyboard are kept off the lamps
+(main.py tells serial_bridge, which lets only this bridge's frames through).
 
 Run by hand, lamps live and everything on screen (stdout carries the lamp
 stream, both scripts log to stderr, so one terminal shows the whole chain):
@@ -93,6 +95,9 @@ def _open_sock():
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(args.sock)
+            # named, so our frames still reach the lamps while serial_bridge is
+            # holding pitch detection and the keyboard off them
+            s.sendall(b'{"hello": "muse"}\n')
             with _sock_lock:
                 _sock = s
             log.info("Connected to music bridge at %s", args.sock)

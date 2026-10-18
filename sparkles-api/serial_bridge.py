@@ -186,6 +186,9 @@ class SerialBridge:
         self._last_frame_time: float = 0.0
         self._connected_since: float = 0.0  # when port was last opened successfully
         self._last_music_time: float = 0.0  # for the installation_active resume edge
+        # set by main.py while the Muse headband is on a head: the lamps are its
+        # then, so pitch detection and the keyboard are dropped
+        self.music_paused: bool = False
         # set to True to keep reader thread from reconnecting (e.g. during firmware flash)
         self._pause_reconnect: bool = False
         # outbound write queue — serial writes happen on the reader thread, never the event loop.
@@ -267,6 +270,7 @@ class SerialBridge:
 
     def _handle_music_client(self, conn: socket.socket):
         buf = b""
+        source = None       # only muse_bridge names itself, with a hello line
         try:
             while self._running:
                 data = conn.recv(4096)
@@ -276,8 +280,19 @@ class SerialBridge:
                 while b"\n" in buf:
                     raw, buf = buf.split(b"\n", 1)
                     line = raw.strip().decode("utf-8", errors="ignore")
-                    if line:
-                        self.send_line(self._stamp_music_colors(line))
+                    if not line:
+                        continue
+                    if line.startswith('{"hello"'):
+                        try:
+                            source = json.loads(line).get("hello")
+                        except ValueError:
+                            pass
+                        continue
+                    # dropped rather than queued, so taking the headband off
+                    # does not replay a backlog of notes
+                    if self.music_paused and source != "muse":
+                        continue
+                    self.send_line(self._stamp_music_colors(line))
         except Exception:
             pass
         finally:

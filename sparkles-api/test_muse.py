@@ -711,6 +711,44 @@ def bridge_reconnect():
     check("reconnects after a sparkles restart", any('"value": 3' in g for g in got))
 
 
+def music_gate():
+    print("music gate")
+    # importing builds the module's own bridge; keep it off the real serial log
+    os.environ["SPARKLES_SERIAL_LOG"] = os.path.join(tempfile.mkdtemp(), "serial.log")
+    import serial_bridge
+    b = serial_bridge.SerialBridge.__new__(serial_bridge.SerialBridge)
+    b._running, b.music_paused = True, False
+    b.colors = json.loads(json.dumps(serial_bridge._DEFAULT_COLORS))
+    sent = []
+    b.send_line = sent.append
+
+    def client(hello=None):
+        ours, theirs = socket.socketpair()
+        threading.Thread(target=b._handle_music_client, args=(theirs,), daemon=True).start()
+        if hello:
+            ours.sendall(hello)
+        return ours
+
+    def say(conn, cmd):
+        conn.sendall((json.dumps(cmd) + "\n").encode())
+        time.sleep(0.1)
+
+    muse_c = client(b'{"hello": "muse"}\n')
+    aubio = client()
+    b.music_paused = True                          # the headband goes on
+    say(aubio, {"cmd": "aubio_midi", "note": 60, "velocity": 90})
+    say(muse_c, {"cmd": "aubio_shimmer", "value": 40})
+    b.music_paused = False                         # and comes off
+    say(aubio, {"cmd": "aubio_midi", "note": 62, "velocity": 90})
+    muse_c.close()
+    aubio.close()
+    check("a headband on a head keeps pitch and keyboard off the lamps",
+          not any('"note": 60' in s for s in sent), sent)
+    check("while the Muse frames still get through", any('"value": 40' in s for s in sent), sent)
+    check("and they are back once it comes off", any('"note": 62' in s for s in sent), sent)
+    check("the bridge's hello never reaches the master", not any("hello" in s for s in sent), sent)
+
+
 if __name__ == "__main__":
     decode()
     settle()
@@ -722,6 +760,7 @@ if __name__ == "__main__":
     asyncio.run(off_head())
     shutdown()
     bridge_reconnect()
+    music_gate()
     print()
     if failures:
         print(f"{R}{len(failures)} failed{X}: {', '.join(failures)}")

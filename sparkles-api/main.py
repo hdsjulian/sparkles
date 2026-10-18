@@ -1966,13 +1966,25 @@ async def _brain_pump(proc):
             except ValueError:
                 continue
             _brain["status"] = frame
+            _brain_hold_music(bool(frame.get("worn")))
             bridge._dispatch(frame)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
         logger.warning("brain pump ended: %s", exc)
     finally:
+        _brain_hold_music(False)
         bridge._dispatch({"event": "brain_status", "phase": "stopped", "settle": 0.0})
+
+
+def _brain_hold_music(worn: bool):
+    """While the headband is on a head the lamps are its: pitch detection and
+    the keyboard are held off them. The pump ending, by Stop, the headband
+    coming off or a crash, always hands them back."""
+    if bridge.music_paused != worn:
+        bridge.music_paused = worn
+        logger.info("headband %s a head — pitch detection and keyboard %s",
+                    "on" if worn else "off", "held off the lamps" if worn else "back")
 
 
 @app.post("/brain/start")

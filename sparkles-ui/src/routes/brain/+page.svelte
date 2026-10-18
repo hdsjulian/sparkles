@@ -250,6 +250,9 @@
     {#if s.bpm}<span>{Math.round(s.bpm)} bpm</span>{/if}
     {#if s.battery}<span>headband {Math.round(s.battery)}%</span>{/if}
   </div>
+  {#if running && s.worn}
+    <p class="hint">Pitch detection and the keyboard are kept off the lamps while the headband is on a head.</p>
+  {/if}
 </div>
 
 {#if running}
