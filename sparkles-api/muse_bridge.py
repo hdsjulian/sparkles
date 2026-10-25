@@ -13,13 +13,13 @@ left alone too: serial_bridge stamps the configured shimmer hue onto every
 aubio_shimmer frame, and since we only touch `value` that works in our favour
 and nothing in the running system needs changing.
 
-The mapping is kept dumb on purpose. Off a head the lamps are dark; on one they
-shimmer faintly at --min-value (about 5%) and climb straight with settle to
---max-value. If a lamp is dark you know the headband is off, not that some
-animation curve ate it. When muse.py ends the run because the headband came
-off, its output ends, and that hands the lamps back as below. While the
-headband is on a head, pitch detection and the keyboard are kept off the lamps
-(main.py tells serial_bridge, which lets only this bridge's frames through).
+The mapping is kept dumb on purpose: on a head the lamps shimmer at --min-value
+(about 5%) plus settle's share of the way to --max-value. The lamps are only
+the headband's while someone wears it. Off a head this bridge sends nothing at
+all, the lamps fade out by themselves within half a second, and pitch
+detection and the keyboard have them as if the headband were not there. While
+it is worn they are held off the lamps instead (main.py tells serial_bridge,
+which lets only this bridge's frames through).
 
 Run by hand, lamps live and everything on screen (stdout carries the lamp
 stream, both scripts log to stderr, so one terminal shows the whole chain):
@@ -35,8 +35,9 @@ shows up there before the connection actually dies. Other modes:
     python muse.py --json --ppg | python muse_bridge.py           # quiet
     python muse.py --json | python muse_bridge.py --dry-run       # no lamps
 
-Ctrl-c sends animation_off so the idle animation loop takes the lamps back —
-BACKGROUND_SHIMMER is endless, and the loop will otherwise wait it out forever.
+Stopping just stops the frames. animation_off is not sent: it switches the
+master's idle animations off until someone starts them again, while silence
+brings them back on their own after a few minutes, as when the music stops.
 """
 
 import argparse
@@ -57,6 +58,7 @@ log = logging.getLogger("muse_bridge")
 
 RETRY_DELAY = 3.0
 RESEND_AFTER = 0.25   # force a frame this often even when nothing has changed
+HOLD_THROUGH = 30.0   # seconds a worn headband keeps the lamps through a lost link
 
 parser = argparse.ArgumentParser(description="Muse settling score → Sparkles lamps")
 parser.add_argument("--sock",       default=os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock"),
@@ -169,9 +171,17 @@ def _reader():
     running = False
 
 
+def _holding(s: dict, now: float) -> bool:
+    """The lamps are the headband's while someone is wearing it, and through a
+    lost link for about as long as a reconnect takes. Otherwise they are left
+    alone for the microphone and the keyboard rather than driven dark."""
+    seen = s.get("_seen")
+    return bool(s.get("worn")) and seen is not None and now - seen < HOLD_THROUGH
+
+
 def _target(s: dict) -> float:
-    """Off a head the lamps are dark. On one they never drop below min-value,
-    so a visitor who has not settled yet can still see the lamps listening."""
+    """On a head the lamps never drop below min-value, so a visitor who has not
+    settled yet can still see the lamps listening."""
     if not s.get("worn"):
         return 0.0
     settle = float(s.get("settle", 0.0) or 0.0)
@@ -192,6 +202,7 @@ def main():
     last_frame = None
     last_sent = 0.0
     last_status = 0.0
+    was_holding = False
 
     while running:
         next_at += period
@@ -203,23 +214,29 @@ def main():
         with state_lock:
             s = dict(state)
 
+        holding = _holding(s, now)
         settle = float(s.get("settle", 0.0) or 0.0)
-        target = _target(s)
-        # settle already moves over minutes; this only takes the stair-step out
-        # of the 10 Hz input so the lamps ramp instead of clicking.
-        a = 1.0 - math.exp(-dt / args.smooth) if args.smooth > 0 else 1.0
-        value += (target - value) * a
+        if holding:
+            # settle already moves over minutes; this only takes the stair-step
+            # out of the 10 Hz input so the lamps ramp instead of clicking.
+            a = 1.0 - math.exp(-dt / args.smooth) if args.smooth > 0 else 1.0
+            value += (_target(s) - value) * a
+        else:
+            value = 0.0             # the next visitor's lamps come up from dark
 
         frame = {"cmd": "aubio_shimmer", "value": int(round(max(0, min(255, value))))}
-        if frame != last_frame or now - last_sent > RESEND_AFTER:
+        if holding and (frame != last_frame or now - last_sent > RESEND_AFTER):
             _send(frame)
             last_frame = frame
             last_sent = now
             if args.dry_run:
                 print(json.dumps(frame), flush=True)
 
-        if now - last_status > 1.0:
+        # at once when the headband goes on or comes off, not on the next
+        # tick, since main.py holds the microphone off the lamps by it
+        if now - last_status > 1.0 or (args.status and holding != was_holding):
             last_status = now
+            was_holding = holding
             if args.status:
                 print(json.dumps({
                     "event":   "brain_status",
@@ -232,8 +249,8 @@ def main():
                     "phase":   s.get("phase", "waiting"),
                     "session": s.get("session", 0.0),
                     "contact": s.get("contact", 0),
-                    "worn":    bool(s.get("worn")),
-                    "ending":  s.get("ending"),
+                    # worn here means the lamps are the headband's right now
+                    "worn":    holding,
                     "bpm":     s.get("bpm"),
                     "battery": s.get("battery"),
                     # what settle is made of, so the page can show why it moves
@@ -259,8 +276,7 @@ def main():
                     f"{name} {'--' if uv is None else format(uv, '.0f')}"
                     for name, uv in (s.get("channels") or {}).items())
                 link = s.get("link", 0.0)
-                head = ("on" if s.get("worn") else "off"
-                        + ("" if s.get("ending") is None else f", ends in {s['ending']:.0f}s"))
+                head = "on" if holding else "off, lamps left to the mic"
                 print(f"lamp {frame['value']:3d}/255  settle {settle:.2f}  "
                       f"{s.get('phase', 'waiting'):<7} "
                       f"contact {s.get('contact', 0)}/4  head {head}  "
@@ -281,8 +297,7 @@ def main():
                          settle, frame["value"], s.get("phase", "waiting"),
                          s.get("contact", 0))
 
-    log.info("input ended — handing the lamps back to the idle loop")
-    _send({"cmd": "animation_off"})
+    log.info("input ended")
 
 
 if __name__ == "__main__":
@@ -290,6 +305,5 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         running = False
-        log.info("stopping — handing the lamps back to the idle loop")
-        _send({"cmd": "animation_off"})
+        log.info("stopping — the lamps fade out on their own")
         print()

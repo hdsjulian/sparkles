@@ -460,69 +460,72 @@ async def off_head():
     print("off a head")
     muse.RETRY_DELAY = 0.2
     muse.BLUETOOTHCTL = "no-such-bluetoothctl"
-    scans = []
-
-    async def one_muse(address=None):
-        scans.append(1)
-        return [dev]
-    muse.find_muse = one_muse
     hold, drop = muse.OFF_HEAD_HOLD, muse.SESSION_DROP
     muse.OFF_HEAD_HOLD, muse.SESSION_DROP = 0.5, 2.0
     try:
-        # worn for 3s, then taken off: dark, then the run ends on its own
+        # worn for 3s, then taken off and left lying there switched on
         FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
-                                "stream_for": 60, "off_after": 3.0}
+                                "stream_for": 8.0, "off_after": 3.0}
         m = muse.Muse()
         muse.writer = Sink()
         t0 = time.monotonic()
-        await asyncio.wait_for(muse._run(m), 20)
+        await asyncio.wait_for(muse.run_session(dev, m), 20)
         frames = muse.writer.frames
-        c = FakeClient.last
         check("worn while on a head", any(f["worn"] for f in frames))
         check("not worn once taken off", not frames[-1]["worn"], frames[-1])
-        check("counts down to the end", [f["ending"] for f in frames if f["ending"] is not None][-1] == 0)
-        check("the run ends without the headband hanging up",
-              m.ended and time.monotonic() - t0 < 15, f"{time.monotonic() - t0:.1f}s")
-        check("the link is cut", c.disconnect_calls >= 1 and any(cmd == "h" for _, cmd in c.writes))
-        check("and not reconnected", len(scans) == 1, f"{len(scans)} scans")
-        check("ending is not a drop", m.drops == 0 and m.stability.drops == 0, m.drops)
+        check("the link stays up while it lies there switched on",
+              time.monotonic() - t0 > 7.5 and m.drops == 1,
+              f"{time.monotonic() - t0:.1f}s, drops {m.drops}")
+        check("and the visitor is forgotten", m.settle.t0 is None)
 
-        # never put on: lamps stay dark, but nothing ends until someone has worn it
+        # never put on: nothing is worn and nobody is a visitor
         FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
                                 "stream_for": 5.0, "off_after": 0.0}
         m = muse.Muse()
         muse.writer = Sink()
         await muse.run_session(dev, m)
         frames = muse.writer.frames
-        check("never worn is dark", frames and not any(f["worn"] for f in frames))
-        check("never worn does not end the run", not m.ended and m.drops == 1)
+        check("never worn is not worn", frames and not any(f["worn"] for f in frames))
+        check("and starts no visitor", m.settle.t0 is None)
     finally:
         muse.OFF_HEAD_HOLD, muse.SESSION_DROP = hold, drop
 
     print("reconnects")
     # three connects lost to BlueZ's race, then a link that drops, then a
-    # headband that is never seen again
-    scans.clear()
+    # headband that is switched off and never seen again
+    scans = []
 
     async def then_gone(address=None):
         scans.append(1)
         return [dev] if len(scans) == 1 else []
     muse.find_muse = then_gone
-    grace = muse.LINK_GRACE
-    muse.LINK_GRACE = 1.0
+    records = []
+
+    class H(__import__("logging").Handler):
+        def emit(self, r):
+            records.append(r.getMessage())
+    h = H()
+    muse.log.addHandler(h)
     try:
         FakeClient.races = 3
         FakeClient.behaviour = {"connect": "race", "preset_delay": 0.05,
                                 "s_delay": 0.05, "stream_for": 1.0}
         m = muse.Muse()
         muse.writer = Sink()
-        await asyncio.wait_for(muse._run(m), 20)
+        try:
+            await asyncio.wait_for(muse._run(m), 5)
+            kept = False
+        except asyncio.TimeoutError:
+            kept = True
         st = m.stability
         check("lost races are retried at once, not rescanned",
               st.attempts == 4 and len(st.sessions) == 1, f"attempts {st.attempts}, links {len(st.sessions)}")
-        check("a headband gone for a while ends the run", m.ended)
+        check("a headband that goes away is scanned for, not given up on",
+              kept and len(scans) > 3, f"{len(scans)} scans")
+        missing = [r for r in records if r.startswith("no Muse in range")]
+        check("and said once, not on every scan", len(missing) == 1, missing)
     finally:
-        muse.LINK_GRACE = grace
+        muse.log.removeHandler(h)
         FakeClient.races = 0
 
     print("bridge brightness")
@@ -532,6 +535,14 @@ async def off_head():
     check("on a head, unsettled, is 5%", muse_bridge._target({"worn": True, "settle": 0.0}) == 13)
     check("on a head, settled, is full", muse_bridge._target({"worn": True, "settle": 1.0}) == 200)
     check("nothing heard yet is dark", muse_bridge._target({}) == 0)
+    now = 1000.0
+    held = muse_bridge._holding
+    check("worn, the lamps are the headband's", held({"worn": True, "_seen": now}, now))
+    check("off a head they are left to the mic", not held({"worn": False, "_seen": now}, now))
+    check("a lost link holds them for a reconnect",
+          held({"worn": True, "_seen": now - 20}, now))
+    check("but not for good", not held({"worn": True, "_seen": now - 31}, now))
+    check("and nothing heard yet holds nothing", not held({}, now))
 
 
 HARNESS = """
@@ -711,6 +722,41 @@ def bridge_reconnect():
     check("reconnects after a sparkles restart", any('"value": 3' in g for g in got))
 
 
+def bridge_holds():
+    print("bridge lamps only while worn (real process)")
+    p = subprocess.Popen([sys.executable, "-u", os.path.join(HERE, "muse_bridge.py"),
+                          "--dry-run", "--status"],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL, text=True)
+    out = []
+    threading.Thread(target=lambda: [out.append((time.time(), json.loads(l))) for l in p.stdout],
+                     daemon=True).start()
+
+    def feed(worn, secs):
+        t0 = time.time()
+        while time.time() - t0 < secs:
+            p.stdin.write(json.dumps({"worn": worn, "settle": 0.5, "phase": "live",
+                                      "contact": 4 if worn else 0}) + "\n")
+            p.stdin.flush()
+            time.sleep(0.1)
+        return t0
+
+    lying = feed(False, 1.0)
+    worn = feed(True, 1.0)
+    off = feed(False, 1.5)
+    p.stdin.close()
+    p.wait(timeout=5)
+    shimmer = [t for t, f in out if f.get("cmd") == "aubio_shimmer"]
+    told = [t for t, f in out if f.get("event") == "brain_status" and f.get("worn")]
+    check("lying around, nothing is sent to the lamps",
+          not any(lying <= t < worn for t in shimmer), len(shimmer))
+    check("worn, the lamps are driven", any(worn <= t < off for t in shimmer))
+    check("and main.py hears of it at once, not on the next tick",
+          told and told[0] - worn < 0.4, f"{(told[0] - worn) if told else None}")
+    check("taken off, the frames stop and the lamps fade by themselves",
+          not any(t > off + 0.3 for t in shimmer))
+
+
 def music_gate():
     print("music gate")
     # importing builds the module's own bridge; keep it off the real serial log
@@ -760,6 +806,7 @@ if __name__ == "__main__":
     asyncio.run(off_head())
     shutdown()
     bridge_reconnect()
+    bridge_holds()
     music_gate()
     print()
     if failures:

@@ -37,10 +37,10 @@
     } catch { /* not persisted, still works */ }
   }
 
-  // a slider let go: remembered, and handed to a running session straight away
+  // a slider let go: kept here and on the pi, and handed to a running
+  // session straight away
   async function tune(params) {
     save();
-    if (!running) return;
     try {
       const r = await brainTune(params);
       if (r.status !== true) throw new Error(r.detail ?? 'tune failed');
@@ -97,36 +97,33 @@
   $: contact = s.contact ?? 0;
   $: connected = s.connected ?? false;
   $: channels = s.channels ?? {};
-  $: statusText = !running ? 'not running'
-    : !connected ? 'connecting…'
-    : s.ending != null ? `headband off — session ends in ${Math.ceil(s.ending)}s`
-    : contact < 2 ? `connected, but only ${contact}/4 electrodes — adjust the fit`
+  $: statusText = !running ? 'not listening'
+    : !connected ? (s.worn ? 'link lost — reconnecting, the lamps hold'
+                           : 'listening — switch the headband on')
+    : !s.worn ? 'headband on, nobody wearing it — the microphone has the lamps'
+    : contact < 2 ? `only ${contact}/4 electrodes — adjust the fit`
     : (phaseText[phase] ?? phase);
 
   const phaseText = {
     waiting: 'waiting for the headband',
     anchor:  'learning your baseline — lamps coming up',
     live:    'listening',
-    stopped: 'not running',
+    stopped: 'not listening',
   };
 
-  // the pump's closing 'stopped' frame carries none of this, so remember the
-  // last real one to say why a session ended without anyone pressing Stop
-  let wasEnding = false;
-  let wasConnected = true;
-  let notice = '';
-  $: if (running && s.phase !== 'stopped') {
-    wasEnding = s.ending != null;
-    wasConnected = s.connected ?? true;
-  }
+  // the pi keeps the settings it listens with; take them once, so a page
+  // opened in another browser shows what the lamps are really doing
+  let synced = false;
 
   async function refresh() {
     try {
       const st = await getBrainStatus();
-      if (running && !st.running && !busy)
-        notice = wasEnding ? 'Session ended — the headband came off.'
-          : !wasConnected ? 'Session ended — the headband was out of reach for a minute (off, flat or too far).'
-          : 'Session ended on its own — journalctl -u sparkles says why.';
+      if (!synced && st.settings) {
+        const p = st.settings;
+        ppg = p.ppg; anchor = p.anchor; bias = p.bias; wornValue = p.minValue;
+        maxValue = p.maxValue; startLevel = p.start; up = p.up; down = p.down;
+        synced = true;
+      }
       running = st.running;
       if (st.running) brainStatus.set(st);
     } catch { /* the page is useful even if a poll misses */ }
@@ -148,7 +145,6 @@
     try {
       save();
       history = [];
-      notice = '';
       const r = await brainStart({ ppg, anchor, bias, minValue: wornValue, maxValue,
                                    start: startLevel, up, down });
       if (r.status === false) throw new Error(r.detail ?? 'failed to start');
@@ -191,23 +187,23 @@
 <h1>Brain (test)</h1>
 
 <p class="blurb">
-  Settling score straight to brightness on every lamp that is powered on.
-  No positions, no distance, no animation curve. On a head the lamps shimmer
-  faintly and climb as you settle; off a head they go dark, and after a while
-  the session ends and lets go of the headband. Put it on, wait out the
-  baseline window, then actually relax.
+  Settling score straight to brightness on every lamp that is powered on,
+  whenever someone wears the headband. Once started the pi listens all the
+  time, through restarts and reboots, until Stop. Switch the headband on and
+  put it on: the microphone and keyboard step back, the lamps come up while
+  your baseline is learned, then follow you. Take it off and the lamps go back
+  to the microphone.
 </p>
 
 {#if error}<div class="error">{error}</div>{/if}
-{#if notice && !running}<div class="notice">{notice}</div>{/if}
 
 <div class="panel">
   <div class="row">
     {#if running}
-      <button class="stop" on:click={stop} disabled={busy}>Stop</button>
+      <button class="stop" on:click={stop} disabled={busy}>Stop listening</button>
       <button class="reset" on:click={reset} disabled={busy}>Reset baseline</button>
     {:else}
-      <button class="start" on:click={start} disabled={busy}>Start</button>
+      <button class="start" on:click={start} disabled={busy}>Start listening</button>
     {/if}
     <span class="phase" class:live={phase === 'live' && contact >= 2}
           class:warn={connected && contact < 2}>{statusText}</span>
@@ -217,7 +213,7 @@
     {#if scanning}
       <span class="dim">scanning…</span>
     {:else if running && !connected}
-      <span class="dim">connecting… (scan takes ~8s, then it subscribes)</span>
+      <span class="dim">listening — the headband connects within about 15 s of being switched on</span>
     {:else if running}
       <span class="found">● connected</span>
       {#each Object.entries(channels) as [ch, uv]}
@@ -342,14 +338,13 @@
     <span class="dim">the lamp at settle 0 — 13 is about 5%, off a head is dark</span></label>
   <label>Max brightness <input type="number" bind:value={maxValue} min="1" max="255" /></label>
   <label class="check"><input type="checkbox" bind:checked={ppg} /> Heart rate (PPG)</label>
-  <p class="hint">Locked while running — stop first to change them.</p>
+  <p class="hint">Locked while listening — stop, change, then start again.</p>
 </fieldset>
 
 <style>
   h1 { margin-bottom: 0.2rem; }
   .blurb { color: #999; max-width: 46rem; margin-top: 0; }
   .error { color: #f44336; font-size: 0.9rem; }
-  .notice { color: #d9a441; font-size: 0.9rem; margin-bottom: 0.6rem; }
   .panel {
     background: #1b1b1b; border: 1px solid #333; border-radius: 8px;
     padding: 1rem; margin-bottom: 1rem; max-width: 46rem;

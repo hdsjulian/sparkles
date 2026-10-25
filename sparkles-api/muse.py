@@ -12,14 +12,15 @@ second:
   blink                         frontal blink event, good for a one-off flash
   bpm                           heart rate from the PPG sensor (--ppg)
   contact                       how many of the 4 electrodes look attached
-  worn / ending                 on a head right now; seconds until the run ends
+  worn                          on a head right now, with a short hold
 
 `settle` is the one meant to drive an installation. Putting the headband on
-starts a session; for the first --anchor seconds nothing happens while the
-visitor's own arrival level is learned, and after that the score integrates
-slowly toward 1 for as long as they keep genuinely calming down. Taking it off
-for SESSION_DROP seconds ends the run: the link is cut and the process exits.
-So does losing the headband altogether for LINK_GRACE seconds.
+starts a session; for the first --anchor seconds the visitor's own arrival
+level is learned, and after that the score follows them for as long as they
+keep genuinely calming down. Taking it off for SESSION_DROP seconds forgets
+them. The run itself never ends: it scans for the headband, stays connected
+while it is switched on, and connects again when it comes back, so switching
+the headband on and putting it on is all a visitor has to do.
 
 It is deliberately hard to fake. Alpha is the one channel a visitor can spike
 on purpose — close your eyes and it jumps within a second — so alpha only
@@ -109,8 +110,8 @@ EMG_BAND = (30.0, 45.0)
 TEMPORAL = ("TP9", "TP10")
 
 SETTLE_CONTACT = 2      # electrodes needed before a session counts as running
-SESSION_DROP = 15.0     # seconds off a head before the visitor is gone and the run ends
-OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps go dark
+SESSION_DROP = 15.0     # seconds off a head before the visitor is forgotten
+OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps are let go
 # Seconds the link can be down before the visitor counts as gone. A reconnect
 # is a retry wait, a full scan, connect, four acked commands and a window of
 # fresh samples — 16-19s when it goes well, so SESSION_DROP reset everyone.
@@ -294,7 +295,9 @@ class Stability:
 
 
 async def _stability_report(stability, every=60.0):
-    """One line a minute, so a long run shows its trend as it goes."""
+    """One line a minute, so a long run shows its trend as it goes — but only
+    a minute in which a link dropped or a connect failed. The run never ends
+    now, and a steady minute, up or scanning, says nothing new."""
     last_t = time.monotonic()
     last_up, last_drops, last_fail = 0.0, 0, 0
     while True:
@@ -302,6 +305,9 @@ async def _stability_report(stability, every=60.0):
         now = time.monotonic()
         up = stability.up_total(now)
         fails = sum(stability.failures.values())
+        if stability.drops == last_drops and fails == last_fail:
+            last_t, last_up = now, up
+            continue
         log.info("stability: link up %.0fs of the last %.0fs, %d drop(s), %d failed connect(s)",
                  up - last_up, now - last_t, stability.drops - last_drops, fails - last_fail)
         last_t, last_up, last_drops, last_fail = now, up, stability.drops, fails
@@ -417,8 +423,9 @@ class Settle:
     Rises only while the honest evidence says the visitor is calmer than they
     arrived, quickly at first and ever slower toward full, and falls the same
     way toward dark — fast enough that tensing up is visibly punished within a
-    few seconds, slow enough that nobody can sprint it. The anti-gaming mechanism and the intended experience are the same
-    mechanism: the only way to win is to be patient."""
+    few seconds, slow enough that nobody can sprint it. The anti-gaming
+    mechanism and the intended experience are the same mechanism: the only way
+    to win is to be patient."""
 
     def __init__(self):
         self.last_t = None      # deliberately not cleared by reset()
@@ -592,13 +599,9 @@ class Muse:
         self.calm_range = AutoRange()
         self.focus_range = AutoRange()
         self.started = time.monotonic()
-        # Off a head the lamps go dark, and once it stays off the run ends and
-        # the link is cut. Armed only once it has been on a head, or a Start
-        # pressed before putting it on would end before anyone got the chance.
-        self.was_on = False
-        self.off_for = 0.0
-        self.ended = False
-        self.gone_since = None      # when the last link ended, None while up
+        # seconds of data with the headband off a head; starts past the hold
+        # so a headband nobody has put on yet is not worn
+        self.off_for = OFF_HEAD_HOLD
 
     # notification handlers ------------------------------------------------
 
@@ -843,17 +846,12 @@ class Muse:
 
         on_head = len(good) >= SETTLE_CONTACT
         if on_head:
-            self.was_on = True
             self.off_for = 0.0
-        elif self.was_on:
+        else:
             # counted in frames, not wall time, so a reconnect's dead air is
             # not taken for the headband lying on a table
             self.off_for += dt
-        worn = self.was_on and self.off_for < OFF_HEAD_HOLD
-        ending = None
-        if self.was_on and not worn and not args.soak:
-            ending = max(0.0, SESSION_DROP - self.off_for)
-            self.ended = ending == 0.0
+        worn = self.off_for < OFF_HEAD_HOLD
 
         st = self.settle.update(now, dt, on_head, {
             "still": self._stillness(),
@@ -877,7 +875,6 @@ class Muse:
             "blink": blink,
             "contact": len(good),
             "worn": worn,
-            "ending": None if ending is None else round(ending, 1),
             "pps": round(self.pkt_rate, 1),
             "loss": round(self.loss, 3),
             "lost": self.lost,
@@ -1022,7 +1019,7 @@ async def find_muse(address: str = None):
     it to a dbus path of its own accord, and the Muse only advertises in bursts —
     by the time it looks, the cache has gone cold and you get "Device with
     address ... was not found" despite the scan having just seen it."""
-    log.info("scanning for a Muse…")
+    log.debug("scanning for a Muse…")
     if address:
         device = await BleakScanner.find_device_by_address(address, timeout=8.0)
         return [device] if device else []
@@ -1144,7 +1141,6 @@ async def run_session(device, muse):
         raise
     log.info("connected to %s", device.address)
     muse.link_since = time.monotonic()
-    muse.gone_since = None
     muse.stability.connected()
 
     alive = None
@@ -1171,15 +1167,13 @@ async def run_session(device, muse):
                 meters.draw(s)
             else:
                 writer.write(json.dumps(s) + "\n")
-            if time.monotonic() - logged >= SCORE_LOG:
+            # only while worn: a headband left switched on would otherwise
+            # fill the log with empty lines all day
+            if s["worn"] and time.monotonic() - logged >= SCORE_LOG:
                 logged = time.monotonic()
                 ev = "--" if s["evidence"] is None else f"{s['evidence']:.2f}"
                 log.info("%s  settle %.2f  evidence %s  contact %d/4  %s", s["phase"],
                          s["settle"], ev, s["contact"], muse.settle.describe())
-            if muse.ended:
-                log.info("off a head for %.0fs — ending the session and cutting "
-                         "the link", SESSION_DROP)
-                break
     except asyncio.CancelledError:
         raise
     except Exception as e:
@@ -1191,11 +1185,8 @@ async def run_session(device, muse):
                 task.cancel()
         await _teardown(client)
         muse.stability.disconnected(dropped=dropped.is_set())
-        muse.gone_since = time.monotonic()
 
     muse.link_since = None
-    if muse.ended:
-        return
     muse.drops += 1
     log.warning("headband disconnected after %.1fs (drop #%d this run)",
                 time.monotonic() - started, muse.drops)
@@ -1296,24 +1287,23 @@ async def _connect_racing(device, muse):
 
 
 async def _run(muse):
+    # Scanning with the headband switched off is the normal state now, so say
+    # it once when it goes rather than on every scan all day.
+    missing = False
     while True:
-        # A headband that has been out of reach this long is switched off,
-        # flat or gone, not reconnecting. Without this a run sat scanning for
-        # hours with the lamps held at whatever the last frame said.
-        if (muse.gone_since is not None and not args.soak
-                and time.monotonic() - muse.gone_since > LINK_GRACE):
-            log.info("headband gone for %.0fs — ending the session", LINK_GRACE)
-            muse.ended = True
-            return
         try:
             await _release_stale_link()
             # Rescan every attempt: a BLEDevice from a previous pass is stale
             # once the link drops, and the headband has usually moved on anyway.
             found = await find_muse(args.address)
             if not found:
-                log.warning("no Muse found — is it on and out of the phone app?")
+                if not missing:
+                    log.info("no Muse in range — scanning until one is switched on "
+                             "(and out of the phone app)")
+                    missing = True
                 await asyncio.sleep(RETRY_DELAY)
                 continue
+            missing = False
             device = found[0]
             log.info("found %s (%s)", device.name, device.address)
             await _connect_racing(device, muse)
@@ -1321,7 +1311,7 @@ async def _run(muse):
             raise
         except Exception as e:
             log.error("session failed: %s", e)
-        if args.no_reconnect or muse.ended:
+        if args.no_reconnect:
             return
         await asyncio.sleep(RETRY_DELAY)
 

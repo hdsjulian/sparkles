@@ -129,15 +129,24 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_heap_low_watcher())
     asyncio.create_task(_mesh_event_watcher())
     asyncio.create_task(_map_measurement_collector())
+    if _brain_config["listening"]:
+        _brain_listen()
     yield
     # Take the pipeline with us: systemd sends SIGTERM here, and without this
     # the headband stays held by a process nothing is tracking any more.
+    # Listening stays on in brain.json, so the next start picks it up again.
+    task = _brain["task"]
+    if task and not task.done():
+        task.cancel()
+        try:
+            await asyncio.wait_for(task, timeout=8)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
     if _brain_running():
-        logger.info("stopping brain test before shutdown")
         try:
             os.killpg(os.getpgid(_brain["proc"].pid), signal.SIGTERM)
         except Exception as exc:
-            logger.warning("could not stop brain test: %s", exc)
+            logger.warning("could not stop the muse pipeline: %s", exc)
     bridge.stop()
 
 
@@ -1945,14 +1954,47 @@ async def keyboard_event(request: Request):
 # ---------------------------------------------------------------------------
 
 _MUSE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Whether the pi listens for the headband, and with what settings. On disk so
+# that listening survives a restart or a reboot: switching the headband on and
+# putting it on is all a visitor should have to do.
+_BRAIN_PATH = os.environ.get("SPARKLES_BRAIN", os.path.join(_MUSE_DIR, "brain.json"))
+_BRAIN_DEFAULTS = {"ppg": True, "anchor": 40.0, "start": 0.3, "up": 0.1, "down": 0.15,
+                   "bias": 0.6, "minValue": 13, "maxValue": 200}
 # proc is the shell running `muse.py | muse_bridge.py`, so it owns two children
-# and has to be killed by process group, not pid.
+# and has to be killed by process group, not pid. task keeps it running.
 _brain = {"proc": None, "task": None, "status": {}, "started": 0.0}
 
 
+def _brain_load() -> dict:
+    try:
+        with open(_BRAIN_PATH) as f:
+            saved = json.load(f)
+    except Exception:
+        saved = {}
+    return {"listening": bool(saved.get("listening", False)),
+            "settings": {**_BRAIN_DEFAULTS, **saved.get("settings", {})}}
+
+
+def _brain_save():
+    try:
+        with open(_BRAIN_PATH, "w") as f:
+            json.dump(_brain_config, f, indent=2)
+    except Exception as exc:
+        logger.warning("could not save %s: %s", _BRAIN_PATH, exc)
+
+
+_brain_config = _brain_load()
+
+
 def _brain_running() -> bool:
+    """The pipeline is up right now, so commands can reach it."""
     p = _brain["proc"]
     return bool(p and p.returncode is None)
+
+
+def _brain_listening() -> bool:
+    t = _brain["task"]
+    return bool(t and not t.done())
 
 
 async def _brain_pump(proc):
@@ -1987,6 +2029,73 @@ def _brain_hold_music(worn: bool):
                     "on" if worn else "off", "held off the lamps" if worn else "back")
 
 
+async def _brain_spawn():
+    s = _brain_config["settings"]
+    muse = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--json",
+            "--anchor", str(s["anchor"]), "--start", str(s["start"]), "--up", str(s["up"]),
+            "--down", str(s["down"]), "--bias", str(s["bias"])]
+    if s["ppg"]:
+        muse.append("--ppg")
+    bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
+                  "--status", "--min-value", str(s["minValue"]),
+                  "--max-value", str(max(s["maxValue"], s["minValue"] + 1))]
+    cmd = "%s | %s" % (" ".join(shlex.quote(a) for a in muse),
+                       " ".join(shlex.quote(a) for a in bridge_cmd))
+    # stdin reaches muse.py, the first command in the pipe, and carries the
+    # page's commands to it (brain_reset, brain_tune)
+    proc = await asyncio.create_subprocess_shell(
+        cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        start_new_session=True)
+    _brain.update(proc=proc, started=time.monotonic(),
+                  status={"event": "brain_status", "phase": "waiting", "settle": 0.0})
+    logger.info("listening for the headband: %s", cmd)
+    return proc
+
+
+async def _brain_kill(proc):
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+async def _brain_supervise():
+    """Keep the pipeline up for as long as listening is on. It never ends by
+    itself, so an exit is a crash, or a hand run holding the headband's lock,
+    and is restarted, backing off while it keeps dying straight away."""
+    delay = 5.0
+    while True:
+        try:
+            proc = await _brain_spawn()
+        except Exception as exc:
+            logger.warning("could not start muse: %s — trying again in %.0fs", exc, delay)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 60.0)
+            continue
+        started = time.monotonic()
+        pump = asyncio.create_task(_brain_pump(proc))
+        try:
+            await proc.wait()
+            await pump
+        except asyncio.CancelledError:
+            await _brain_kill(proc)
+            pump.cancel()
+            raise
+        ran = time.monotonic() - started
+        delay = 5.0 if ran > 60 else min(delay * 2, 60.0)
+        logger.warning("muse pipeline exited (%s) after %.0fs — restarting in %.0fs",
+                       proc.returncode, ran, delay)
+        await asyncio.sleep(delay)
+
+
+def _brain_listen():
+    _brain["task"] = asyncio.create_task(_brain_supervise())
+
+
 @app.post("/brain/start")
 async def brain_start(
     ppg: bool = Query(default=True),
@@ -1998,79 +2107,46 @@ async def brain_start(
     minValue: int = Query(default=13, ge=0, le=254),
     maxValue: int = Query(default=200, ge=1, le=255),
 ):
-    """Start the Muse test rig: settling score → brightness on every lamp.
+    """Listen for the headband: whenever someone wears it, their settling score
+    drives every lamp's brightness, and the microphone and keyboard wait.
 
-    No positions, no distance — one broadcast, whatever is powered on lights up.
-    Ends by itself once the headband has been off a head for a while.
+    Stays on through restarts and reboots until Stop. No positions, no
+    distance — one broadcast, whatever is powered on lights up.
     """
-    if _brain_running():
-        raise HTTPException(409, detail="brain test already running")
-
-    muse = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--json",
-            "--anchor", str(anchor), "--start", str(start), "--up", str(up),
-            "--down", str(down), "--bias", str(bias)]
-    if ppg:
-        muse.append("--ppg")
-    bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
-                  "--status", "--min-value", str(minValue),
-                  "--max-value", str(max(maxValue, minValue + 1))]
-    cmd = "%s | %s" % (" ".join(shlex.quote(a) for a in muse),
-                       " ".join(shlex.quote(a) for a in bridge_cmd))
-
-    # stdin reaches muse.py, the first command in the pipe, and carries the
-    # page's commands to it (brain_reset)
-    try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            start_new_session=True)
-    except Exception as exc:
-        raise HTTPException(500, detail=f"could not start muse: {exc}")
-
-    _brain.update(proc=proc, started=time.monotonic(),
-                  status={"event": "brain_status", "phase": "waiting", "settle": 0.0})
-    _brain["task"] = asyncio.create_task(_brain_pump(proc))
-    logger.info("brain test started: %s", cmd)
-    return _ok("brain test started")
-
-
-def _brain_lamps_off():
-    """Best effort — killing the process must not depend on the master being up,
-    or an unplugged serial cable leaves a Muse process with no way to stop it."""
-    try:
-        _send({"cmd": "animation_off"})
-    except Exception as exc:
-        logger.warning("could not turn lamps off after brain stop: %s", exc)
+    if _brain_listening():
+        raise HTTPException(409, detail="already listening")
+    _brain_config.update(listening=True, settings={
+        "ppg": ppg, "anchor": anchor, "start": start, "up": up, "down": down,
+        "bias": bias, "minValue": minValue, "maxValue": max(maxValue, minValue + 1)})
+    _brain_save()
+    _brain_listen()
+    return _ok("listening for the headband")
 
 
 @app.post("/brain/stop")
 async def brain_stop():
-    proc = _brain["proc"]
-    if not _brain_running():
-        _brain_lamps_off()
-        return _ok("not running")
+    """Stop listening, and stay stopped through restarts. The lamps are not
+    sent anything: without frames they fade out on their own."""
+    _brain_config["listening"] = False
+    _brain_save()
+    task = _brain["task"]
+    if not _brain_listening():
+        return _ok("not listening")
+    task.cancel()
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        except asyncio.TimeoutError:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except ProcessLookupError:
+        await task
+    except asyncio.CancelledError:
         pass
-    if _brain["task"]:
-        _brain["task"].cancel()
     _brain.update(proc=None, task=None, status={})
-    # SIGTERM doesn't give muse_bridge a chance to tidy up, and shimmer is an
-    # endless animation the idle loop will otherwise wait out forever.
-    _brain_lamps_off()
-    logger.info("brain test stopped")
-    return _ok("brain test stopped")
+    logger.info("stopped listening for the headband")
+    return _ok("stopped listening")
 
 
 @app.post("/brain/reset")
 async def brain_reset():
     """Learn the visitor's baseline again, keeping the headband link."""
     if not _brain_running():
-        raise HTTPException(409, detail="brain test not running")
+        raise HTTPException(409, detail="not listening for the headband right now")
     try:
         _brain["proc"].stdin.write(b"reset\n")
         await _brain["proc"].stdin.drain()
@@ -2086,11 +2162,15 @@ async def brain_tune(
     up: float | None = Query(default=None, ge=0.005, le=2.0),
     down: float | None = Query(default=None, ge=0.005, le=2.0),
 ):
-    """Change the lamp curve of the running session, for the page's sliders."""
+    """Change the lamp curve, for the page's sliders: kept for every later
+    start, and handed to the running pipeline at once if there is one."""
+    changed = {name: value for name, value in (("start", start), ("up", up), ("down", down))
+               if value is not None}
+    _brain_config["settings"].update(changed)
+    _brain_save()
     if not _brain_running():
-        raise HTTPException(409, detail="brain test not running")
-    lines = "".join(f"set {name} {value}\n" for name, value in
-                    (("start", start), ("up", up), ("down", down)) if value is not None)
+        return _ok("saved")
+    lines = "".join(f"set {name} {value}\n" for name, value in changed.items())
     try:
         _brain["proc"].stdin.write(lines.encode())
         await _brain["proc"].stdin.drain()
@@ -2140,14 +2220,17 @@ async def brain_devices(timeout: float = Query(default=5.0, ge=1.0, le=15.0)):
 
 @app.get("/brain/status")
 async def brain_status():
-    running = _brain_running()
+    # running is whether the pi listens for the headband, which is what the
+    # page's Start/Stop shows; the pipeline itself may be restarting
+    running = _brain_listening()
     # Pass the whole last frame through rather than hand-picking fields. Every
     # field muse_bridge adds otherwise needs plumbing here as well, and when
     # that is missed the page just sees undefined and draws something wrong --
     # which is exactly how "connecting..." survived an active connection.
-    st = dict(_brain["status"]) if running else {}
+    st = dict(_brain["status"]) if _brain_running() else {}
     st.pop("event", None)
     st["running"] = running
+    st["settings"] = _brain_config["settings"]
     st["uptime"] = round(time.monotonic() - _brain["started"], 1) if running else 0.0
     for key, default in (("settle", 0.0), ("value", 0), ("session", 0.0),
                          ("contact", 0), ("connected", False), ("channels", {}),
