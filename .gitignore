@@ -7,6 +7,7 @@ sparkles-api/speaker.json
 sparkles-api/air.json
 sparkles-api/clock_trust.json
 sparkles-api/brain.json
+sparkles-api/recordings/
 __pycache__/
 # pi's live credentials, set aside by update.sh across a pull
 auth_config.local.yaml

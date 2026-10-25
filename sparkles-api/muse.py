@@ -574,6 +574,92 @@ def _heart_rate(ppg: np.ndarray):
     return float(k * PPG_FS / len(x) * 60.0)
 
 
+RECORD_DIR = os.environ.get("SPARKLES_RECORDINGS",
+                            os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings"))
+RECORD_LIMIT = 180.0    # seconds a test waits for a steady signal and its baseline
+
+
+class Recording:
+    """One guided test, written to disk raw enough to be scored again offline.
+
+    The baseline is learned afresh first, the same way for every test (eyes
+    open, sitting calmly), then the condition runs for `secs` from the moment
+    the baseline is set. Every eeg, accelerometer and ppg packet goes in as it
+    arrives, and every frame with the scores the lamps used, so a new rule can
+    be tried on the same minutes of somebody's head instead of a new session."""
+
+    def __init__(self, label, secs):
+        os.makedirs(RECORD_DIR, exist_ok=True)
+        self.name = f"{time.strftime('%Y-%m-%d_%H-%M-%S')}_{label}.jsonl"
+        self.f = open(os.path.join(RECORD_DIR, self.name), "w")
+        self.label, self.secs = label, secs
+        self.t0 = time.monotonic()
+        self.stage = "baseline"
+        self.since = None           # when the condition began
+        self.frames = []            # the condition's frames, for the summary
+        self.write({"type": "meta", "label": label, "seconds": secs,
+                    "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "settings": {k: getattr(args, k) for k in
+                                 ("anchor", "start", "up", "down", "bias", "window", "smooth")},
+                    "steady": {"channels": STEADY_CHANNELS, "for": STEADY_FOR,
+                               "drift": STEADY_DRIFT}})
+        log.info("recording a %s test to %s", label, self.name)
+
+    def write(self, rec):
+        rec["t"] = round(time.monotonic() - self.t0, 3)
+        self.f.write(json.dumps(rec) + "\n")
+
+    def frame(self, out):
+        """Keep a frame and move the test along; the outcome once it is over."""
+        now = time.monotonic()
+        self.write({"type": "frame", "stage": self.stage, **out})
+        if self.stage == "baseline":
+            if out["phase"] == "live":
+                self.stage, self.since = "condition", now
+                self.write({"type": "mark", "stage": "condition"})
+                log.info("%s test: baseline set, %.0fs of the condition now",
+                         self.label, self.secs)
+            elif now - self.t0 > RECORD_LIMIT:
+                return "no steady signal"
+        else:
+            self.frames.append(out)
+            if now - self.since >= self.secs:
+                return "done"
+        return None
+
+    def progress(self, now):
+        left = None if self.since is None else max(0.0, self.secs - (now - self.since))
+        return {"label": self.label, "stage": self.stage,
+                "left": None if left is None else round(left)}
+
+    def finish(self, outcome):
+        summary = self.summary(outcome)
+        self.write({"type": "summary", **summary})
+        self.f.close()
+        log.info("%s test %s: %s", self.label, outcome, json.dumps(summary))
+        return summary
+
+    def summary(self, outcome):
+        fr = self.frames
+        mean = lambda xs: round(float(np.mean(xs)), 3) if xs else None
+        ev = [f["evidence"] for f in fr if f.get("evidence") is not None]
+        bias = fr[0]["bias"] if fr else EVIDENCE_BIAS
+        scores = {}
+        for f in fr:
+            for k, v in (f.get("scores") or {}).items():
+                if v is not None:
+                    scores.setdefault(k, []).append(v)
+        return {"label": self.label, "outcome": outcome, "file": self.name,
+                "seconds": round(time.monotonic() - self.since) if self.since else 0,
+                "evidence": mean(ev), "bias": bias,
+                "above_bias": mean([1.0 if e > bias else 0.0 for e in ev]),
+                "settle": ({"start": fr[0]["settle"], "end": fr[-1]["settle"],
+                            "max": max(f["settle"] for f in fr)} if fr else None),
+                "scores": {k: mean(v) for k, v in scores.items()},
+                "bands": {b: mean([f[b] for f in fr]) for b in BANDS} if fr else {},
+                "contact": mean([f["contact"] for f in fr])}
+
+
 class Muse:
     def __init__(self):
         n_eeg = int(EEG_FS * max(args.window, 0.5))
@@ -614,6 +700,8 @@ class Muse:
         # (time, electrodes in contact, their median level) for the last few
         # seconds, to tell a steady brain signal from one still settling
         self.signal = deque()
+        self.recording = None       # a guided test under way
+        self.recorded = None        # the last test's summary, for the page
 
     # notification handlers ------------------------------------------------
 
@@ -644,6 +732,9 @@ class Muse:
             self.packets += 1
             self.total_packets += 1
             buf.extend(samples)
+            if self.recording:
+                self.recording.write({"type": "eeg", "ch": channel, "i": index,
+                                      "v": [round(v, 2) for v in samples]})
             if channel in FRONTAL:
                 self._check_blink(samples)
         return handler
@@ -686,11 +777,17 @@ class Muse:
         self.accel = samples[-1]
         for x, y, z in samples:
             self.acc_mag.append(math.sqrt(x * x + y * y + z * z))
+        if self.recording:
+            self.recording.write({"type": "acc",
+                                  "v": [[round(c, 4) for c in s] for s in samples]})
 
     def on_ppg(self, _sender, data: bytearray):
         if len(data) < 20:
             return
-        self.ppg.extend(_unpack_ppg(bytes(data)))
+        samples = _unpack_ppg(bytes(data))
+        self.ppg.extend(samples)
+        if self.recording:
+            self.recording.write({"type": "ppg", "v": samples})
 
     def on_telemetry(self, _sender, data: bytearray):
         if len(data) < 10:
@@ -757,6 +854,19 @@ class Muse:
         log.info("%s set to %.2f", name, value)
         if name == "start" and self.settle.frozen:
             self.settle.level = value
+
+    def record(self, label, secs):
+        """A guided test: the baseline is learned again first, the same way for
+        every test, then `secs` of the condition are recorded."""
+        if self.recording:
+            self.recorded = self.recording.finish("replaced")
+        self.recording = Recording(label, secs)
+        self.settle.reset()
+
+    def stop_recording(self):
+        if self.recording:
+            self.recorded = self.recording.finish("stopped")
+            self.recording = None
 
     def _emg(self):
         """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
@@ -925,6 +1035,15 @@ class Muse:
             out["bpm"] = round(bpm, 1)
         if self.battery is not None:
             out["battery"] = round(self.battery, 1)
+        if self.recording:
+            outcome = self.recording.frame(out)
+            if outcome:
+                self.recorded = self.recording.finish(outcome)
+                self.recording = None
+            else:
+                out["recording"] = self.recording.progress(now)
+        if self.recorded:
+            out["recorded"] = self.recorded
         return out
 
 
@@ -1175,6 +1294,8 @@ async def run_session(device, muse):
         raise
     log.info("connected to %s", device.address)
     muse.link_since = time.monotonic()
+    if muse.recording:
+        muse.recording.write({"type": "link", "up": True})
     muse.stability.connected()
 
     alive = None
@@ -1222,6 +1343,8 @@ async def run_session(device, muse):
                 task.cancel()
         await _teardown(client)
         muse.stability.disconnected(dropped=dropped.is_set())
+        if muse.recording:
+            muse.recording.write({"type": "link", "up": False})
 
     muse.link_since = None
     muse.drops += 1
@@ -1240,6 +1363,14 @@ def _read_commands(loop, muse, stream):
         elif len(words) == 3 and words[0] == "set":
             try:
                 call = (muse.tune, words[1], float(words[2]))
+            except ValueError:
+                continue
+        elif words == ["record", "stop"]:
+            call = (muse.stop_recording,)
+        elif (len(words) == 3 and words[0] == "record"
+              and re.fullmatch(r"[a-z_-]{1,20}", words[1])):
+            try:
+                call = (muse.record, words[1], float(words[2]))
             except ValueError:
                 continue
         else:
@@ -1302,6 +1433,7 @@ async def main():
     except asyncio.CancelledError:
         log.info("stopping — link torn down")
     finally:
+        muse.stop_recording()       # a test cut short still leaves its file whole
         muse.stability.summary()
         lock.close()
 

@@ -327,6 +327,18 @@ export const brainReset = () =>
 export const brainTune = (params = {}) =>
   fetch(`${BASE}/brain/tune?${new URLSearchParams(params)}`, { method: 'POST' }).then(r => r.json());
 
+// guided tests: meditation, desk or talk, recorded raw on the pi
+export const brainRecord = (label, seconds) =>
+  fetch(`${BASE}/brain/record?${new URLSearchParams({ label, seconds })}`, { method: 'POST' }).then(r => r.json());
+
+export const brainRecordStop = () =>
+  fetch(`${BASE}/brain/record/stop`, { method: 'POST' }).then(r => r.json());
+
+export const getBrainRecordings = () =>
+  fetch(`${BASE}/brain/recordings`).then(r => r.json());
+
+export const brainRecordingUrl = (name) => `${BASE}/brain/recordings/${encodeURIComponent(name)}`;
+
 export const getBrainStatus = () =>
   fetch(`${BASE}/brain/status`).then(r => r.json());
 

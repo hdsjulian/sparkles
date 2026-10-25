@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { brainStart, brainStop, brainReset, brainTune, getBrainStatus, getBrainDevices } from '$lib/api.js';
+  import { brainStart, brainStop, brainReset, brainTune, getBrainStatus, getBrainDevices,
+           brainRecord, brainRecordStop, getBrainRecordings, brainRecordingUrl } from '$lib/api.js';
   import { brainStatus } from '$lib/stores.js';
 
   let error = '';
@@ -177,7 +178,49 @@
     finally { busy = false; }
   }
 
+  // guided tests: each learns the baseline again (eyes open, sitting calmly),
+  // then records a condition, so the scoring can be judged and re-run offline
+  const tests = [
+    { label: 'meditation', name: 'Meditation',
+      task: 'Close your eyes. Breathe slowly and let thoughts pass without following them.' },
+    { label: 'desk', name: 'Desk work',
+      task: 'Work at the computer: read, type, browse, or play something like GeoGuessr.' },
+    { label: 'talk', name: 'Talk & move',
+      task: 'Talk with someone, look around, gesture, laugh. Be lively, but keep the headband on.' },
+  ];
+  const testName = Object.fromEntries(tests.map(t => [t.label, t]));
+  let testMinutes = 3;
+  let recordings = [];
+  let lastFile = null;
+
+  $: rec = s.recording ?? null;
+  $: result = s.recorded ?? null;
+  $: if (result?.file && result.file !== lastFile) { lastFile = result.file; loadRecordings(); }
+
+  async function loadRecordings() {
+    try { recordings = await getBrainRecordings(); } catch { /* listed next time */ }
+  }
+
+  async function runTest(label) {
+    error = ''; busy = true;
+    try {
+      const r = await brainRecord(label, testMinutes * 60);
+      if (r.status !== true) throw new Error(r.detail ?? 'could not start the test');
+      history = [];
+    } catch (e) { error = e.message; }
+    finally { busy = false; }
+  }
+
+  async function stopTest() {
+    try { await brainRecordStop(); } catch (e) { error = e.message; }
+  }
+
+  const clock = secs => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  const pct = x => x == null ? '—' : `${Math.round(x * 100)}%`;
+  const num = x => x == null ? '—' : x.toFixed(2);
+
   onMount(() => {
+    loadRecordings();
     refresh();
     scan();
     poll = setInterval(refresh, 3000);
@@ -249,6 +292,63 @@
   </div>
   {#if running && s.worn}
     <p class="hint">Pitch detection and the keyboard are kept off the lamps while the headband is on a head.</p>
+  {/if}
+</div>
+
+<div class="panel">
+  <h2>Tests</h2>
+  {#if rec}
+    <div class="test-run">
+      <strong>{testName[rec.label]?.name ?? rec.label}</strong>
+      {#if rec.stage === 'baseline'}
+        <p>Sit comfortably with your eyes open and look calmly at one spot.
+          <span class="dim">{phase === 'settling' ? 'Waiting for a steady brain signal…'
+            : phase === 'anchor' ? 'Learning your baseline…' : 'Put the headband on.'}</span></p>
+      {:else}
+        <p class="task">{testName[rec.label]?.task}</p>
+        <p><span class="big">{clock(rec.left ?? 0)}</span> <span class="dim">left</span></p>
+      {/if}
+      <button class="reset" on:click={stopTest}>Stop test</button>
+    </div>
+  {:else}
+    <div class="tests">
+      {#each tests as t}
+        <button class="reset" on:click={() => runTest(t.label)} disabled={!running || busy}>{t.name}</button>
+        <span class="dim">{t.task}</span>
+      {/each}
+    </div>
+    <label class="dim">Length <select bind:value={testMinutes}>
+      <option value={2}>2</option><option value={3}>3</option><option value={5}>5</option>
+    </select> minutes, after the baseline is learned again with your eyes open</label>
+  {/if}
+
+  {#if result}
+    <div class="result">
+      <strong>{testName[result.label]?.name ?? result.label}</strong>
+      {#if result.outcome === 'no steady signal'}
+        — no steady brain signal within 3 minutes; check the fit and try again.
+      {:else}
+        {result.outcome === 'done' ? '' : `(${result.outcome} after ${clock(result.seconds)})`}
+        <div>Evidence {num(result.evidence)} on average, above the bias ({num(result.bias)})
+          {pct(result.above_bias)} of the time.</div>
+        {#if result.settle}
+          <div>Lamp {num(result.settle.start)} → {num(result.settle.end)}, highest {num(result.settle.max)}.</div>
+        {/if}
+        <div class="dim">
+          {#each Object.entries(result.scores ?? {}) as [k, v]}{scoreName[k] ?? k} {num(v)}&ensp;{/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  {#if recordings.length}
+    <details>
+      <summary class="dim">{recordings.length} recording{recordings.length === 1 ? '' : 's'} on the pi</summary>
+      {#each recordings as r}
+        <div><a href={brainRecordingUrl(r.name)} download>{r.name}</a>
+          <span class="dim">{(r.bytes / 1e6).toFixed(1)} MB</span></div>
+      {/each}
+    </details>
   {/if}
 </div>
 
@@ -428,4 +528,17 @@
   }
   .sliders input[type="range"] { width: 100%; }
   .shint { grid-column: 1 / -1; font-size: 0.8rem; margin-bottom: 0.6rem; }
+  .tests {
+    display: grid; grid-template-columns: 9rem 1fr; gap: 0.5rem 0.8rem;
+    align-items: center; margin-bottom: 0.8rem; font-size: 0.9rem;
+  }
+  .tests button, .test-run button { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
+  .test-run .task { font-size: 1.1rem; color: #eee; }
+  .test-run .big { font-size: 1.6rem; color: #eee; font-variant-numeric: tabular-nums; }
+  .result {
+    margin-top: 0.8rem; padding-top: 0.6rem; border-top: 1px solid #333;
+    color: #ccc; font-size: 0.9rem; line-height: 1.5;
+  }
+  details { margin-top: 0.8rem; font-size: 0.85rem; }
+  details a { color: #6b9bd1; }
 </style>

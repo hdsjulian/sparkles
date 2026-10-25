@@ -165,7 +165,10 @@ def _reader():
             msg = json.loads(line)
         except ValueError:
             continue
+        # every frame is whole, so take it whole: merged, a field that drops
+        # out (a test's progress once it ends, a lost heart rate) went stale
         with state_lock:
+            state.clear()
             state.update(msg)
             state["_seen"] = time.monotonic()
     running = False
@@ -257,6 +260,9 @@ def main():
                     "evidence": s.get("evidence"),
                     "bias":    s.get("bias"),
                     "scores":  s.get("scores", {}),
+                    # a guided test under way, and the last one's result
+                    "recording": s.get("recording"),
+                    "recorded": s.get("recorded"),
                 }), flush=True)
             elif args.diag and (now - s.get("_seen", 0.0)) > 2.0:
                 # Say so rather than reprinting the last good frame forever --

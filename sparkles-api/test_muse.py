@@ -502,7 +502,7 @@ async def off_head():
     try:
         # worn for 3s, then taken off and left lying there switched on
         FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
-                                "stream_for": 8.0, "off_after": 3.0}
+                                "stream_for": 10.0, "off_after": 3.0}
         m = muse.Muse()
         muse.writer = Sink()
         t0 = time.monotonic()
@@ -511,7 +511,7 @@ async def off_head():
         check("worn while on a head", any(f["worn"] for f in frames))
         check("not worn once taken off", not frames[-1]["worn"], frames[-1])
         check("the link stays up while it lies there switched on",
-              time.monotonic() - t0 > 7.5 and m.drops == 1,
+              time.monotonic() - t0 > 9.5 and m.drops == 1,
               f"{time.monotonic() - t0:.1f}s, drops {m.drops}")
         check("a steady signal started a visitor", len(began) == 1, len(began))
         check("and taking it off forgets them", m.settle.t0 is None)
@@ -762,6 +762,45 @@ def bridge_reconnect():
     check("reconnects after a sparkles restart", any('"value": 3' in g for g in got))
 
 
+async def recording():
+    print("guided test recording")
+    saved = (muse.RECORD_DIR, muse.STEADY_FOR, muse.args.anchor)
+    muse.RECORD_DIR = tempfile.mkdtemp()
+    muse.STEADY_FOR, muse.args.anchor = 0.5, 1.0
+    try:
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 8.0}
+        m = muse.Muse()
+        muse.writer = Sink()
+        m.record("desk", 2.0)
+        await muse.run_session(dev, m)
+        frames = muse.writer.frames
+        stages = [f["recording"]["stage"] for f in frames if "recording" in f]
+        check("a test learns the baseline first, then runs the condition",
+              stages and stages[0] == "baseline" and "condition" in stages, sorted(set(stages)))
+        check("and sums itself up when the time is out",
+              m.recording is None and m.recorded and m.recorded["outcome"] == "done", m.recorded)
+        check("the page gets the result", frames and frames[-1].get("recorded", {}).get("label") == "desk")
+        lines = [json.loads(l) for l in open(os.path.join(muse.RECORD_DIR, m.recorded["file"]))]
+        kinds = {r["type"] for r in lines}
+        check("the file holds raw eeg, accelerometer and every frame",
+              {"meta", "eeg", "acc", "frame", "mark", "summary"} <= kinds, sorted(kinds))
+        check("with the condition marked", any(r["type"] == "mark" and r["stage"] == "condition"
+                                               for r in lines))
+
+        stream = io.StringIO("record desk 60\nrecord ../etc 60\nrecord stop\n")
+        calls = []
+        fake = __import__("types").SimpleNamespace(
+            record=lambda *a: calls.append(("record",) + a),
+            stop_recording=lambda: calls.append(("stop",)))
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, muse._read_commands, loop, fake, stream)
+        await asyncio.sleep(0.05)
+        check("tests start and stop from stdin, odd labels refused",
+              calls == [("record", "desk", 60.0), ("stop",)], calls)
+    finally:
+        muse.RECORD_DIR, muse.STEADY_FOR, muse.args.anchor = saved
+
+
 def bridge_holds():
     print("bridge lamps only while worn (real process)")
     p = subprocess.Popen([sys.executable, "-u", os.path.join(HERE, "muse_bridge.py"),
@@ -845,6 +884,7 @@ if __name__ == "__main__":
     asyncio.run(lifecycle())
     asyncio.run(stability())
     asyncio.run(off_head())
+    asyncio.run(recording())
     shutdown()
     bridge_reconnect()
     bridge_holds()

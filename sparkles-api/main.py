@@ -2179,6 +2179,60 @@ async def brain_tune(
     return _ok("tuned")
 
 
+# guided tests, recorded by muse.py into this directory for scoring offline
+_BRAIN_RECORDINGS = os.environ.get("SPARKLES_RECORDINGS", os.path.join(_MUSE_DIR, "recordings"))
+_BRAIN_TESTS = ("meditation", "desk", "talk")
+
+
+async def _brain_command(line: str):
+    if not _brain_running():
+        raise HTTPException(409, detail="not listening for the headband right now")
+    try:
+        _brain["proc"].stdin.write(line.encode())
+        await _brain["proc"].stdin.drain()
+    except Exception as exc:
+        raise HTTPException(500, detail=f"could not reach muse: {exc}")
+
+
+@app.post("/brain/record")
+async def brain_record(label: str = Query(...),
+                       seconds: float = Query(default=180.0, ge=30.0, le=900.0)):
+    """A guided test: baseline learned again, then `seconds` of the condition,
+    everything recorded raw and summed up at the end."""
+    if label not in _BRAIN_TESTS:
+        raise HTTPException(400, detail=f"label must be one of {', '.join(_BRAIN_TESTS)}")
+    await _brain_command(f"record {label} {seconds:.0f}\n")
+    logger.info("brain %s test started, %.0fs", label, seconds)
+    return _ok("recording")
+
+
+@app.post("/brain/record/stop")
+async def brain_record_stop():
+    await _brain_command("record stop\n")
+    return _ok("stopped")
+
+
+@app.get("/brain/recordings")
+async def brain_recordings():
+    try:
+        names = sorted((n for n in os.listdir(_BRAIN_RECORDINGS) if n.endswith(".jsonl")),
+                       reverse=True)
+    except FileNotFoundError:
+        names = []
+    return [{"name": n, "bytes": os.path.getsize(os.path.join(_BRAIN_RECORDINGS, n))}
+            for n in names]
+
+
+@app.get("/brain/recordings/{name}")
+async def brain_recording(name: str):
+    if "/" in name or not name.endswith(".jsonl"):
+        raise HTTPException(400, detail="bad recording name")
+    path = os.path.join(_BRAIN_RECORDINGS, name)
+    if not os.path.isfile(path):
+        raise HTTPException(404, detail="no such recording")
+    return FileResponse(path, media_type="application/x-ndjson", filename=name)
+
+
 @app.get("/brain/devices")
 async def brain_devices(timeout: float = Query(default=5.0, ge=1.0, le=15.0)):
     """Is the headband on and reachable right now?
