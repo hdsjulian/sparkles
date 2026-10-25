@@ -96,6 +96,10 @@ GYRO_SCALE   = 0.0074768    # deg/s per count
 # against what your own headband actually reports.
 FLAT_UV    = 5.0    # below this the electrode isn't on skin
 RAILED_UV  = 900.0  # above it something is very wrong with the contact
+# 30-45 Hz power (channel_noise) above which an electrode is in the air. Measured
+# at the temporal electrodes: 1e4-5e4 on a head, 2.5e5 with the jaw clenched,
+# 2.6e6-2.7e7 with the headband lying on a table.
+NOISY_POWER = 1e6
 BLINK_UV   = 110.0  # frontal excursion that counts as a blink
 BLINK_HOLD = 0.30   # refractory, seconds
 
@@ -183,6 +187,9 @@ parser.add_argument("--flat-uv",  type=float, default=FLAT_UV,
                          f"detached (default {FLAT_UV})")
 parser.add_argument("--railed-uv", type=float, default=RAILED_UV,
                     help=f"Above this it counts as bad contact (default {RAILED_UV})")
+parser.add_argument("--noisy",    type=float, default=NOISY_POWER,
+                    help=f"30-45 Hz power above which an electrode is in the air, "
+                         f"not on skin (default {NOISY_POWER:.0e})")
 parser.add_argument("--preset",   default=None,
                     help="Override the headband preset (default p50 with --ppg, else p21)")
 parser.add_argument("--no-reconnect", action="store_true",
@@ -196,6 +203,7 @@ PRESET = args.preset or ("p50" if args.ppg else "p21")
 EVIDENCE_BIAS = args.bias
 FLAT_UV = args.flat_uv
 RAILED_UV = args.railed_uv
+NOISY_POWER = args.noisy
 
 
 def _cmd(text: str) -> bytes:
@@ -868,23 +876,29 @@ class Muse:
             self.recorded = self.recording.finish("stopped")
             self.recording = None
 
-    def _emg(self):
-        """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
-        tension. The one 'not relaxed' signal a visitor cannot consciously fake,
-        and the reason closing your eyes doesn't light the room."""
+    def channel_noise(self):
+        """Per-channel 30-45 Hz power. On a head that is jaw and temple muscle;
+        an electrode in the air picks up a hundred times more, which is what
+        tells it from skin when its overall level looks normal."""
         need = int(EEG_FS * args.window)
-        vals = []
-        for ch in TEMPORAL:
-            buf = self.eeg[ch]
+        out = {}
+        for ch, buf in self.eeg.items():
             if len(buf) < need:
+                out[ch] = None
                 continue
             x = np.asarray(buf, dtype=float)[-need:]
             x = x - x.mean()
             spec = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
             freqs = np.fft.rfftfreq(len(x), 1.0 / EEG_FS)
             mask = (freqs >= EMG_BAND[0]) & (freqs < EMG_BAND[1])
-            if mask.any():
-                vals.append(float(spec[mask].mean()))
+            out[ch] = float(spec[mask].mean()) if mask.any() else None
+        return out
+
+    def _emg(self, noise=None):
+        """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
+        tension, which can hold the light back."""
+        noise = self.channel_noise() if noise is None else noise
+        vals = [noise[ch] for ch in TEMPORAL if noise.get(ch) is not None]
         return float(np.mean(vals)) if vals else None
 
     def _stillness(self):
@@ -920,11 +934,15 @@ class Muse:
             out[ch] = float(band.max() - band.min())
         return out
 
-    def _contact(self, amps=None):
-        """Channels whose in-band amplitude looks like skin rather than air."""
+    def _contact(self, amps=None, noise=None):
+        """Channels that look like skin rather than air: a plausible level, and
+        not the muscle-band noise of an electrode hanging free. The level alone
+        let a headband lying on the table read 4/4 on a head."""
         amps = self.channel_amplitude() if amps is None else amps
+        noise = {} if noise is None else noise
         return [ch for ch, a in amps.items()
-                if a is not None and FLAT_UV < a < RAILED_UV]
+                if a is not None and FLAT_UV < a < RAILED_UV
+                and (noise.get(ch) is None or noise[ch] < NOISY_POWER)]
 
     def sample(self):
         """One frame of light-ready values, or None until the buffers fill."""
@@ -934,7 +952,8 @@ class Muse:
             return None
 
         amps = self.channel_amplitude()
-        good = set(self._contact(amps))
+        noise = self.channel_noise()
+        good = set(self._contact(amps, noise))
         use = [ch for ch in ready if ch in good] or ready   # fall back rather than stall
 
         totals = {b: 0.0 for b in BANDS}
@@ -1001,7 +1020,7 @@ class Muse:
         st = self.settle.update(now, dt, on_head, {
             "brain": rel["alpha"] / max(rel["beta"], 1e-9),
             "still": self._stillness(),
-            "emg":   self._emg(),
+            "emg":   self._emg(noise),
             "bpm":   bpm,
         }, steady=self._steady(now))
 
@@ -1018,6 +1037,9 @@ class Muse:
             "roll": round(roll, 1),
             "blink": blink,
             "contact": len(good),
+            "good": sorted(good),
+            "noise": {ch: (None if v is None else float(f"{v:.3g}"))
+                      for ch, v in noise.items()},
             "worn": worn,
             "pps": round(self.pkt_rate, 1),
             "loss": round(self.loss, 3),
@@ -1327,9 +1349,14 @@ async def run_session(device, muse):
             if s["worn"] and time.monotonic() - logged >= SCORE_LOG:
                 logged = time.monotonic()
                 ev = "--" if s["evidence"] is None else f"{s['evidence']:.2f}"
-                uv = " ".join(f"{c} {'?' if a is None else f'{a:.0f}'}"
-                              for c, a in s["channels"].items())
-                log.info("%s  settle %.2f  evidence %s  contact %d/4 (%s uV)  %s",
+                # each electrode's level in uV and 30-45 Hz noise, to tune the
+                # steady and in-the-air rules against real heads
+                noise = s["noise"]
+                uv = " ".join(
+                    f"{c} {'?' if a is None else round(a)}/"
+                    f"{'?' if noise.get(c) is None else format(noise[c], '.0e')}"
+                    for c, a in s["channels"].items())
+                log.info("%s  settle %.2f  evidence %s  contact %d/4 (%s uV/noise)  %s",
                          s["phase"], s["settle"], ev, s["contact"], uv,
                          muse.settle.describe())
     except asyncio.CancelledError:

@@ -99,7 +99,7 @@
   $: connected = s.connected ?? false;
   $: channels = s.channels ?? {};
   $: statusText = !running ? 'not listening'
-    : !connected ? (s.worn ? 'link lost — reconnecting, the lamps hold'
+    : !connected ? (s.worn ? 'link lost — reconnecting'
                            : 'listening — switch the headband on')
     : !s.worn ? 'headband on, nobody wearing it — the microphone has the lamps'
     : contact < 2 ? `only ${contact}/4 electrodes — adjust the fit`
@@ -261,7 +261,7 @@
     {:else if running}
       <span class="found">● connected</span>
       {#each Object.entries(channels) as [ch, uv]}
-        <span class:bad={uv === null || uv < 5 || uv > 900} class="dim">
+        <span class:bad={s.good ? !s.good.includes(ch) : (uv === null || uv < 5 || uv > 900)} class="dim">
           {ch} {uv === null ? '?' : Math.round(uv)}µV
         </span>
       {/each}

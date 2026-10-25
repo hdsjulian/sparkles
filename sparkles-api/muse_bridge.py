@@ -58,7 +58,7 @@ log = logging.getLogger("muse_bridge")
 
 RETRY_DELAY = 3.0
 RESEND_AFTER = 0.25   # force a frame this often even when nothing has changed
-HOLD_THROUGH = 30.0   # seconds a worn headband keeps the lamps through a lost link
+HOLD_THROUGH = 3.0    # seconds without frames before the lamps are let go
 
 parser = argparse.ArgumentParser(description="Muse settling score → Sparkles lamps")
 parser.add_argument("--sock",       default=os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock"),
@@ -175,9 +175,9 @@ def _reader():
 
 
 def _holding(s: dict, now: float) -> bool:
-    """The lamps are the headband's while someone is wearing it, and through a
-    lost link for about as long as a reconnect takes. Otherwise they are left
-    alone for the microphone and the keyboard rather than driven dark."""
+    """The lamps are the headband's while someone is wearing it. With no word
+    from the electrodes for HOLD_THROUGH seconds, a lost link included, they
+    are let go: they fade out, and the microphone and keyboard have them."""
     seen = s.get("_seen")
     return bool(s.get("worn")) and seen is not None and now - seen < HOLD_THROUGH
 
@@ -252,6 +252,7 @@ def main():
                     "phase":   s.get("phase", "waiting"),
                     "session": s.get("session", 0.0),
                     "contact": s.get("contact", 0),
+                    "good":    s.get("good", []),
                     # worn here means the lamps are the headband's right now
                     "worn":    holding,
                     "bpm":     s.get("bpm"),

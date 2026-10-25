@@ -213,9 +213,12 @@ def control_packets(text):
         out.append(bytearray([len(chunk)]) + chunk + b"\x00" * (19 - len(chunk)))
     return out
 
-def eeg_packet(idx, t0, ch, amp=40):
+def eeg_packet(idx, t0, ch, amp=40, noise=None):
+    """A 10 Hz wave; with noise, an electrode in the air instead: ~125 uV of
+    broadband hiss, inside the level an electrode on skin shows."""
     vals = [2048 + int(amp * math.sin(2 * math.pi * 10 * (t0 + k / 256.0) + ch))
-            for k in range(12)]
+            + (int(noise.gauss(0, 256)) if noise else 0) for k in range(12)]
+    vals = [min(4095, max(0, v)) for v in vals]
     bits = 0
     for v in vals:
         bits = (bits << 12) | (v & 0xFFF)
@@ -280,17 +283,21 @@ class FakeClient:
         idx = {ch: 100 for ch in muse.EEG_CHANS}
         skip = self.b.get("skip_every")        # drop every Nth packet on TP9
         off_after = self.b.get("off_after")    # taken off a head: ~2uV, not ~40
+        # or lying on a table picking up hiss, which the level alone missed
+        air_rng = __import__("random").Random(1) if self.b.get("air") else None
         n = 0
         t = 0.0
         started = time.monotonic()
         try:
             while time.monotonic() - started < self.b.get("stream_for", 4.0):
-                amp = 2 if off_after is not None and t >= off_after else 40
+                off = off_after is not None and t >= off_after
+                amp = 2 if off else 40
+                air = air_rng if off and air_rng else None
                 for i, (ch, uuid) in enumerate(muse.EEG_CHANS.items()):
                     idx[ch] = (idx[ch] + 1) & 0xFFFF
                     if skip and ch == "TP9" and n % skip == 0:
                         continue                   # the headband sent it; we lost it
-                    self.notify[uuid](None, eeg_packet(idx[ch], t, i, amp))
+                    self.notify[uuid](None, eeg_packet(idx[ch], t, i, amp, air))
                 acc = (0).to_bytes(2, "big") + b"".join(
                     int(v).to_bytes(2, "big", signed=True) for v in (0, 0, 16384) * 3)
                 self.notify[muse.ACCEL](None, bytearray(acc))
@@ -516,6 +523,16 @@ async def off_head():
         check("a steady signal started a visitor", len(began) == 1, len(began))
         check("and taking it off forgets them", m.settle.t0 is None)
 
+        # taken off and left lying on the table, hissing within a normal level
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
+                                "stream_for": 8.0, "off_after": 3.0, "air": True}
+        m = muse.Muse()
+        muse.writer = Sink()
+        await muse.run_session(dev, m)
+        last = muse.writer.frames[-1]
+        check("electrodes in the air are not on a head",
+              not last["worn"] and last["contact"] == 0, (last["contact"], last["noise"]))
+
         # never put on: nothing is worn and nobody is a visitor
         FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
                                 "stream_for": 5.0, "off_after": 0.0}
@@ -578,9 +595,9 @@ async def off_head():
     held = muse_bridge._holding
     check("worn, the lamps are the headband's", held({"worn": True, "_seen": now}, now))
     check("off a head they are left to the mic", not held({"worn": False, "_seen": now}, now))
-    check("a lost link holds them for a reconnect",
-          held({"worn": True, "_seen": now - 20}, now))
-    check("but not for good", not held({"worn": True, "_seen": now - 31}, now))
+    check("a moment's silence keeps them", held({"worn": True, "_seen": now - 2}, now))
+    check("but 3 s without the electrodes lets them go",
+          not held({"worn": True, "_seen": now - 4}, now))
     check("and nothing heard yet holds nothing", not held({}, now))
 
 
