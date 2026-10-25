@@ -900,11 +900,13 @@ class Muse:
             out[ch] = float(spec[mask].mean()) if mask.any() else None
         return out
 
-    def _emg(self, noise=None):
-        """Absolute 30-45 Hz power at the temporal electrodes — jaw and temple
-        tension, which can hold the light back."""
+    def _emg(self, noise=None, good=None):
+        """Absolute 30-45 Hz power at the temporal electrodes in contact — jaw
+        and temple tension, which can hold the light back. A lifted one hisses
+        like a clenched jaw and held the lamps back for nothing."""
         noise = self.channel_noise() if noise is None else noise
-        vals = [noise[ch] for ch in TEMPORAL if noise.get(ch) is not None]
+        vals = [noise[ch] for ch in TEMPORAL
+                if noise.get(ch) is not None and (good is None or ch in good)]
         return float(np.mean(vals)) if vals else None
 
     def _stillness(self):
@@ -1039,7 +1041,7 @@ class Muse:
         st = self.settle.update(now, dt, on_head, {
             "brain": rel["alpha"] / max(rel["beta"], 1e-9),
             "still": self._stillness(),
-            "emg":   self._emg(noise),
+            "emg":   self._emg(noise, good),
             "bpm":   bpm,
         }, steady=self._steady(now))
 

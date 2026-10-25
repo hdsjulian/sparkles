@@ -161,6 +161,8 @@ def contact():
            {"TP9": 6e4, "AF7": 6e6, "AF8": 1e6, "TP10": 4e6})
     check("one ear on is enough to trust the forehead",
           sorted(m._contact(*one)) == ["AF7", "AF8", "TP9"], m._contact(*one))
+    check("and the lifted ear's hiss is not taken for a clenched jaw",
+          m._emg(one[1], m._contact(*one)) == 6e4, m._emg(one[1], m._contact(*one)))
 
 
 def steady():
