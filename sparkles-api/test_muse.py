@@ -143,6 +143,22 @@ def settle():
     check("a long outage starts a new visitor", out["phase"] == "anchor", out["phase"])
 
 
+def contact():
+    print("contact, with numbers from a real head and a real table")
+    m = muse.Muse()
+    on = ({"TP9": 220, "AF7": 595, "AF8": 331, "TP10": 214},       # firmly on, at a screen
+          {"TP9": 6e4, "AF7": 6e6, "AF8": 1e6, "TP10": 6e4})
+    check("a frowning forehead is still on a head",
+          sorted(m._contact(*on)) == sorted(muse.EEG_CHANS), m._contact(*on))
+    table = ({"TP9": 484, "AF7": 449, "AF8": 374, "TP10": 524},    # lying there, hissing
+             {"TP9": 5e6, "AF7": 2.9e6, "AF8": 3.6e6, "TP10": 4e6})
+    check("lying on the table nothing is", m._contact(*table) == [], m._contact(*table))
+    one = ({"TP9": 220, "AF7": 595, "AF8": 331, "TP10": 300},      # hair under one ear
+           {"TP9": 6e4, "AF7": 6e6, "AF8": 1e6, "TP10": 4e6})
+    check("one ear on is enough to trust the forehead",
+          sorted(m._contact(*one)) == ["AF7", "AF8", "TP9"], m._contact(*one))
+
+
 def steady():
     print("steady brain signal")
     m, t = muse.Muse(), 100.0
@@ -894,6 +910,7 @@ def music_gate():
 if __name__ == "__main__":
     decode()
     settle()
+    contact()
     steady()
     asyncio.run(commands())
     baselines()

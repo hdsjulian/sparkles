@@ -96,9 +96,9 @@ GYRO_SCALE   = 0.0074768    # deg/s per count
 # against what your own headband actually reports.
 FLAT_UV    = 5.0    # below this the electrode isn't on skin
 RAILED_UV  = 900.0  # above it something is very wrong with the contact
-# 30-45 Hz power (channel_noise) above which an electrode is in the air. Measured
-# at the temporal electrodes: 1e4-5e4 on a head, 2.5e5 with the jaw clenched,
-# 2.6e6-2.7e7 with the headband lying on a table.
+# 30-45 Hz power (channel_noise) above which a temporal electrode is in the air:
+# 1e4-2.5e5 on a head, jaw clenched included, 2.6e6-2.7e7 lying on a table.
+# Not used on the forehead, which reads 1e4-1e7 on a head with the frontalis.
 NOISY_POWER = 1e6
 BLINK_UV   = 110.0  # frontal excursion that counts as a blink
 BLINK_HOLD = 0.30   # refractory, seconds
@@ -935,14 +935,18 @@ class Muse:
         return out
 
     def _contact(self, amps=None, noise=None):
-        """Channels that look like skin rather than air: a plausible level, and
-        not the muscle-band noise of an electrode hanging free. The level alone
-        let a headband lying on the table read 4/4 on a head."""
+        """Channels that look like skin rather than air. The level alone let a
+        headband lying on the table read 4/4 on a head; the 30-45 Hz noise of
+        an electrode hanging free gives it away, but only behind the ears. On
+        the forehead the frontalis muscle is as loud as air, so the forehead
+        electrodes go by their level, and only count while an ear one is on."""
         amps = self.channel_amplitude() if amps is None else amps
         noise = {} if noise is None else noise
-        return [ch for ch, a in amps.items()
+        good = [ch for ch, a in amps.items()
                 if a is not None and FLAT_UV < a < RAILED_UV
-                and (noise.get(ch) is None or noise[ch] < NOISY_POWER)]
+                and (ch not in TEMPORAL or noise.get(ch) is None
+                     or noise[ch] < NOISY_POWER)]
+        return good if any(ch in TEMPORAL for ch in good) else []
 
     def sample(self):
         """One frame of light-ready values, or None until the buffers fill."""
