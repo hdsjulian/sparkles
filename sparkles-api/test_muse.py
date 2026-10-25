@@ -153,6 +153,10 @@ def contact():
     table = ({"TP9": 484, "AF7": 449, "AF8": 374, "TP10": 524},    # lying there, hissing
              {"TP9": 5e6, "AF7": 2.9e6, "AF8": 3.6e6, "TP10": 4e6})
     check("lying on the table nothing is", m._contact(*table) == [], m._contact(*table))
+    tonight = ({"TP9": 205, "AF7": 1106, "AF8": 367, "TP10": 407},  # firmly on, read 2/4
+               {"TP9": 7e4, "AF7": 1e6, "AF8": 2e5, "TP10": 1e6})
+    check("a loud left forehead and a noisy right ear still make 4/4",
+          sorted(m._contact(*tonight)) == sorted(muse.EEG_CHANS), m._contact(*tonight))
     one = ({"TP9": 220, "AF7": 595, "AF8": 331, "TP10": 300},      # hair under one ear
            {"TP9": 6e4, "AF7": 6e6, "AF8": 1e6, "TP10": 4e6})
     check("one ear on is enough to trust the forehead",

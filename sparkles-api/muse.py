@@ -96,10 +96,12 @@ GYRO_SCALE   = 0.0074768    # deg/s per count
 # against what your own headband actually reports.
 FLAT_UV    = 5.0    # below this the electrode isn't on skin
 RAILED_UV  = 900.0  # above it something is very wrong with the contact
-# 30-45 Hz power (channel_noise) above which a temporal electrode is in the air:
-# 1e4-2.5e5 on a head, jaw clenched included, 2.6e6-2.7e7 lying on a table.
-# Not used on the forehead, which reads 1e4-1e7 on a head with the frontalis.
+# 30-45 Hz power (channel_noise) under which an ear electrode means a head: 5e4-
+# 2.5e5 on one, jaw clenched included, 2.6e6-2.7e7 lying on a table. The second
+# ear may read up to three times this and still count (1e6 has been seen on a
+# head, 4e6 lifted). Not used on the forehead, which reads 1e4-1e7 on a head.
 NOISY_POWER = 1e6
+FOREHEAD_UV = 1500.0    # forehead level limit; 1100 uV seen there on a head
 BLINK_UV   = 110.0  # frontal excursion that counts as a blink
 BLINK_HOLD = 0.30   # refractory, seconds
 
@@ -941,16 +943,25 @@ class Muse:
     def _contact(self, amps=None, noise=None):
         """Channels that look like skin rather than air. The level alone let a
         headband lying on the table read 4/4 on a head; the 30-45 Hz noise of
-        an electrode hanging free gives it away, but only behind the ears. On
-        the forehead the frontalis muscle is as loud as air, so the forehead
-        electrodes go by their level, and only count while an ear one is on."""
+        an electrode hanging free gives it away, but only behind the ears. So a
+        quiet ear electrode says the headband is on a head at all, and then
+        each one counts by a looser bar: the forehead is as loud as air with
+        the frontalis and reads up to 1100 uV, and the second ear can be noisy
+        too. Firmly on, the tight bar for every electrode read 2/4."""
         amps = self.channel_amplitude() if amps is None else amps
         noise = {} if noise is None else noise
-        good = [ch for ch, a in amps.items()
-                if a is not None and FLAT_UV < a < RAILED_UV
-                and (ch not in TEMPORAL or noise.get(ch) is None
-                     or noise[ch] < NOISY_POWER)]
-        return good if any(ch in TEMPORAL for ch in good) else []
+
+        def level(ch):
+            a = amps.get(ch)
+            return a is not None and FLAT_UV < a < (RAILED_UV if ch in TEMPORAL else FOREHEAD_UV)
+
+        def quiet(ch, limit):
+            return noise.get(ch) is None or noise[ch] < limit
+
+        if not any(level(ch) and quiet(ch, NOISY_POWER) for ch in TEMPORAL):
+            return []
+        return [ch for ch in amps
+                if level(ch) and (ch not in TEMPORAL or quiet(ch, 3 * NOISY_POWER))]
 
     def sample(self):
         """One frame of light-ready values, or None until the buffers fill."""
