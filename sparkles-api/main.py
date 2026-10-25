@@ -2230,7 +2230,10 @@ async def brain_status():
     st = dict(_brain["status"]) if _brain_running() else {}
     st.pop("event", None)
     st["running"] = running
-    st["settings"] = _brain_config["settings"]
+    # only settings the pi has actually saved: its defaults, sent before the
+    # first Start, overwrote what the page had been tuned to
+    if os.path.exists(_BRAIN_PATH):
+        st["settings"] = _brain_config["settings"]
     st["uptime"] = round(time.monotonic() - _brain["started"], 1) if running else 0.0
     for key, default in (("settle", 0.0), ("value", 0), ("session", 0.0),
                          ("contact", 0), ("connected", False), ("channels", {}),

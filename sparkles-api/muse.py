@@ -22,14 +22,17 @@ them. The run itself never ends: it scans for the headband, stays connected
 while it is switched on, and connects again when it comes back, so switching
 the headband on and putting it on is all a visitor has to do.
 
-It is deliberately hard to fake. Alpha is the one channel a visitor can spike
-on purpose — close your eyes and it jumps within a second — so alpha only
-modulates the score by ±15%. What actually drives it is the evidence nobody can
-fake by wanting to: jaw and temple tension (EMG), physical stillness, and heart
-rate against their own arrival baseline. Those are combined with a geometric
-mean, so one strong channel cannot carry the others. Closing your eyes moves
-almost nothing; closing your eyes and truly settling moves everything, which is
-the correct answer.
+Brain waves decide: the ratio of alpha (relaxed wakefulness) to beta (active
+thinking), against the visitor's own arrival level. The body can only hold the
+light back — fidgeting, a clenched jaw or a racing heart against arrival — and
+never lights it on its own. Body signals used to carry the score, and sitting
+still while concentrating on a game read as calm. Closing your eyes does raise
+alpha, and so the light; that is a real brain-wave effect, not a trick.
+
+The baseline is only learned once the brain signal is steady: enough
+electrodes in contact for a while, their level no longer falling as they
+settle onto the skin. Learned straight away it caught the headband going on,
+and anything after that looked calm.
 
 Install:
     pip install bleak numpy
@@ -119,7 +122,12 @@ OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps are let go
 LINK_GRACE = 60.0
 QUICK_RETRIES = 5       # connects lost to BlueZ's race, retried without a rescan
 SCORE_LOG = 10.0        # seconds between score lines in the log
-ALPHA_INFLUENCE = 0.3   # how far the fakeable channels can move the score
+# A steady brain signal, before the baseline is learned: this many electrodes
+# in contact for this long, their level within STEADY_DRIFT between the two
+# halves of it rather than still falling as they settle onto the skin.
+STEADY_CHANNELS = 3
+STEADY_FOR = 10.0
+STEADY_DRIFT = 1.25
 # Evidence needed to hold the level, where 0.5 is exactly how the visitor
 # arrived. Above 0.5 so the score is not a ratchet: drifting back to your
 # arrival state has to let the light recede, or the room stays lit for someone
@@ -420,12 +428,11 @@ class Baseline:
 class Settle:
     """Turns the per-frame channels into one slow 0..1 score.
 
-    Rises only while the honest evidence says the visitor is calmer than they
+    Rises only while the visitor's brain waves are calmer than when they
     arrived, quickly at first and ever slower toward full, and falls the same
     way toward dark — fast enough that tensing up is visibly punished within a
-    few seconds, slow enough that nobody can sprint it. The anti-gaming
-    mechanism and the intended experience are the same mechanism: the only way
-    to win is to be patient."""
+    few seconds, slow enough that nobody can sprint it. The only way to win is
+    to be patient."""
 
     def __init__(self):
         self.last_t = None      # deliberately not cleared by reset()
@@ -438,11 +445,10 @@ class Settle:
         self.frozen = False
         self.lost_since = None
         self.base = {
+            "brain": Baseline(False, ratio=True),   # alpha / beta, what decides
             "still": Baseline(True, ratio=True),    # accelerometer spread
             "emg":   Baseline(True, ratio=True),    # jaw / temple tension
             "bpm":   Baseline(True, floor=5.0),     # heart rate, 5 bpm a step
-            "alpha": Baseline(False, ratio=True),   # fakeable, low weight
-            "beta":  Baseline(True, ratio=True),    # semi-honest, low weight
         }
 
     def describe(self) -> str:
@@ -457,7 +463,8 @@ class Settle:
                 parts.append(f"{name} {b.score(x):.2f} ({x:.3g} vs {base:.3g})")
         return "  ".join(parts)
 
-    def update(self, now: float, dt: float, live: bool, ch: dict) -> dict:
+    def update(self, now: float, dt: float, live: bool, ch: dict,
+               steady: bool = True) -> dict:
         self.last = ch
         # A gap in calls means the link was down. A few seconds of that is a
         # dropped connection, not a new person — only a long one starts over.
@@ -481,8 +488,12 @@ class Settle:
 
         self.lost_since = None
         if self.t0 is None:
-            log.info("new session — holding still for %.0fs to learn their baseline",
-                     args.anchor)
+            # on a head, but the electrodes are still settling: nothing learned
+            # yet, the lamps stay at their faint glow
+            if not steady:
+                return {"settle": self.level, "session": 0.0, "phase": "settling"}
+            log.info("new session — brain signal steady, learning their baseline "
+                     "for %.0fs", args.anchor)
             self.t0 = now
         elapsed = now - self.t0
 
@@ -500,18 +511,16 @@ class Settle:
             return {"settle": self.level, "session": elapsed, "phase": "anchor"}
 
         scored = {n: b.score(ch.get(n)) for n, b in self.base.items()}
-        honest = [scored[n] for n in ("still", "emg", "bpm") if scored[n] is not None]
-        if not honest:
+        if scored["brain"] is None:
             return {"settle": self.level, "session": elapsed, "phase": "live",
                     "evidence": None, "scores": {}}
 
-        # Geometric mean, not a sum: a visitor sitting perfectly still with a
-        # clenched jaw should not be able to average their way to a lit room.
-        h = math.exp(sum(math.log(max(s, 1e-6)) for s in honest) / len(honest))
-
-        soft = [scored[n] for n in ("alpha", "beta") if scored[n] is not None]
-        e = sum(soft) / len(soft) if soft else 0.5
-        evidence = h * (1.0 + ALPHA_INFLUENCE * (e - 0.5))
+        # Brain waves decide. The body can only hold the light back: below its
+        # arrival level it scales evidence down, above it adds nothing, so
+        # sitting still while concentrating hard cannot light the room.
+        body = [scored[n] for n in ("still", "emg", "bpm") if scored[n] is not None]
+        b = math.exp(sum(math.log(max(s, 1e-6)) for s in body) / len(body)) if body else 0.5
+        evidence = scored["brain"] * min(1.0, b / 0.5)
 
         # Scaled so both ends saturate at ±1. Each way closes a share of the
         # distance left rather than a fixed amount: the light answers a visitor
@@ -602,6 +611,9 @@ class Muse:
         # seconds of data with the headband off a head; starts past the hold
         # so a headband nobody has put on yet is not worn
         self.off_for = OFF_HEAD_HOLD
+        # (time, electrodes in contact, their median level) for the last few
+        # seconds, to tell a steady brain signal from one still settling
+        self.signal = deque()
 
     # notification handlers ------------------------------------------------
 
@@ -709,6 +721,24 @@ class Muse:
         self.packets = 0
         self.lost_window = 0
         self.pkt_mark = time.monotonic()
+        self.signal.clear()
+
+    def _steady(self, now) -> bool:
+        """Brain activity is being measured, not the headband going on: at
+        least STEADY_CHANNELS electrodes in contact for all of the last
+        STEADY_FOR seconds, and their level about the same in both halves of
+        it. Freshly placed electrodes start noisy and quieten over a minute or
+        so as they settle onto the skin, and a baseline learned through that
+        made everything afterwards look calm."""
+        if not self.signal or now - self.signal[0][0] < STEADY_FOR:
+            return False
+        recent = [(t, n, a) for t, n, a in self.signal if now - t <= STEADY_FOR]
+        if any(n < STEADY_CHANNELS or a is None for _, n, a in recent):
+            return False
+        half = now - STEADY_FOR / 2
+        older = float(np.median([a for t, _, a in recent if t < half]))
+        newer = float(np.median([a for t, _, a in recent if t >= half]))
+        return 1.0 / STEADY_DRIFT <= newer / max(older, 1e-9) <= STEADY_DRIFT
 
     def reset_baseline(self):
         """Forget the visitor's arrival level and learn it again, link untouched.
@@ -853,13 +883,17 @@ class Muse:
             self.off_for += dt
         worn = self.off_for < OFF_HEAD_HOLD
 
+        levels = [amps[c] for c in good]
+        self.signal.append((now, len(good), float(np.median(levels)) if levels else None))
+        while self.signal and now - self.signal[0][0] > STEADY_FOR + 1.0:
+            self.signal.popleft()
+
         st = self.settle.update(now, dt, on_head, {
+            "brain": rel["alpha"] / max(rel["beta"], 1e-9),
             "still": self._stillness(),
             "emg":   self._emg(),
             "bpm":   bpm,
-            "alpha": rel["alpha"],
-            "beta":  rel["beta"],
-        })
+        }, steady=self._steady(now))
 
         out = {
             "t": round(now - self.started, 2),
@@ -1172,8 +1206,11 @@ async def run_session(device, muse):
             if s["worn"] and time.monotonic() - logged >= SCORE_LOG:
                 logged = time.monotonic()
                 ev = "--" if s["evidence"] is None else f"{s['evidence']:.2f}"
-                log.info("%s  settle %.2f  evidence %s  contact %d/4  %s", s["phase"],
-                         s["settle"], ev, s["contact"], muse.settle.describe())
+                uv = " ".join(f"{c} {'?' if a is None else f'{a:.0f}'}"
+                              for c, a in s["channels"].items())
+                log.info("%s  settle %.2f  evidence %s  contact %d/4 (%s uV)  %s",
+                         s["phase"], s["settle"], ev, s["contact"], uv,
+                         muse.settle.describe())
     except asyncio.CancelledError:
         raise
     except Exception as e:

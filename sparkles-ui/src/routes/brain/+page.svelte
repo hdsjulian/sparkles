@@ -88,7 +88,7 @@
     : settle > 0 ? 'falling' : 'holding at dark';
 
   const scoreName = {
-    still: 'stillness', emg: 'jaw / temple', bpm: 'heart rate', alpha: 'alpha', beta: 'beta',
+    brain: 'brain waves (alpha / beta)', still: 'stillness', emg: 'jaw / temple', bpm: 'heart rate',
   };
 
   $: s = $brainStatus ?? {};
@@ -106,6 +106,7 @@
 
   const phaseText = {
     waiting: 'waiting for the headband',
+    settling: 'settling in — waiting for a steady brain signal',
     anchor:  'learning your baseline — lamps coming up',
     live:    'listening',
     stopped: 'not listening',
@@ -294,8 +295,8 @@
     </div>
     <p class="hint">
       0.50 is exactly how you were when you sat down. Green is calmer than that,
-      red is tenser. Stillness, jaw and heart rate carry the score; alpha and
-      beta can only nudge it. Set the bias just under where evidence sits once
+      red is tenser. Brain waves decide whether the lamps rise; stillness, jaw
+      and heart rate can only hold them back. Set the bias just under where evidence sits once
       you have genuinely settled. Watching this closely is itself enough to
       keep you tense, so glance rather than stare.
     </p>

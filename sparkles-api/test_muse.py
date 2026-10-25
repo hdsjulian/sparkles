@@ -61,15 +61,17 @@ def settle():
     import random
     rng = random.Random(0)
     n = lambda v, p: v * (1 + rng.uniform(-p, p))
-    arrival = lambda: {"still": n(0.010, .15), "emg": n(100.0, .15), "bpm": n(74.0, .04),
-                       "alpha": n(0.20, .10), "beta": n(0.30, .10)}
-    relaxed = lambda: {"still": n(0.003, .15), "emg": n(30.0, .15), "bpm": n(63.0, .04),
-                       "alpha": n(0.34, .10), "beta": n(0.20, .10)}
-
-    def eyes_closed():
-        f = arrival()
-        f["alpha"], f["beta"] = 0.75, 0.22
-        return f
+    # brain is alpha over beta: 0.20 / 0.30 at arrival, 0.34 / 0.20 relaxed
+    arrival = lambda: {"brain": n(0.667, .15), "still": n(0.010, .15),
+                       "emg": n(100.0, .15), "bpm": n(74.0, .04)}
+    relaxed = lambda: {"brain": n(1.7, .15), "still": n(0.003, .15),
+                       "emg": n(30.0, .15), "bpm": n(63.0, .04)}
+    # a game: sitting stiller and looser-jawed than on arrival, mind working
+    gaming = lambda: {"brain": n(0.4, .15), "still": n(0.003, .15),
+                      "emg": n(30.0, .15), "bpm": n(74.0, .04)}
+    body_only = lambda: {**relaxed(), "brain": n(0.667, .15)}
+    fidgeting = lambda: {"brain": n(1.7, .15), "still": n(0.030, .15),
+                         "emg": n(300.0, .15), "bpm": n(84.0, .04)}
 
     def run(frames, secs):
         s, t = muse.Settle(), 0.0
@@ -83,7 +85,10 @@ def settle():
         return out
 
     check("genuine settling lights up", run(relaxed, 150)["settle"] > 0.8)
-    check("closing your eyes alone does not", run(eyes_closed, 180)["settle"] < 0.25)
+    check("sitting still while concentrating does not", run(gaming, 180)["settle"] < 0.15)
+    check("nor does a calm body on its own", run(body_only, 180)["settle"] < 0.15)
+    check("calm brain waves in a fidgeting body are held back",
+          run(fidgeting, 180)["settle"] < 0.15)
     check("staying as you arrived earns nothing", run(arrival, 180)["settle"] < 0.15)
 
     def anchored():
@@ -116,8 +121,8 @@ def settle():
           [round(v, 3) for v in levels])
 
     # and getting tenser than you arrived dims it from the start
-    tense = lambda: {"still": n(0.030, .15), "emg": n(300.0, .15), "bpm": n(84.0, .04),
-                     "alpha": n(0.20, .10), "beta": n(0.30, .10)}
+    tense = lambda: {"brain": n(0.4, .15), "still": n(0.030, .15),
+                     "emg": n(300.0, .15), "bpm": n(84.0, .04)}
     s, t, _, level = anchored()
     for _ in range(100):
         t += 0.1
@@ -136,6 +141,30 @@ def settle():
     t += muse.LINK_GRACE + 1
     out = s.update(t, 0.1, True, arrival())
     check("a long outage starts a new visitor", out["phase"] == "anchor", out["phase"])
+
+
+def steady():
+    print("steady brain signal")
+    m, t = muse.Muse(), 100.0
+
+    def fill(n, level):
+        m.signal.clear()
+        for i in range(120):
+            m.signal.append((t + i * 0.1, n, level(i)))
+
+    fill(4, lambda i: 400 - 2.5 * i)
+    check("electrodes still settling onto the skin are not steady", not m._steady(t + 12))
+    fill(4, lambda i: 50 + i % 3)
+    check("a level that holds on enough electrodes is", m._steady(t + 12))
+    fill(2, lambda i: 50)
+    check("two electrodes are not enough", not m._steady(t + 12))
+    fill(4, lambda i: 50)
+    check("nor is a few seconds of it", not m._steady(t + 5))
+
+    s = muse.Settle()
+    out = s.update(1.0, 0.1, True, {"brain": 1.0}, steady=False)
+    check("no baseline is learned before then", out["phase"] == "settling" and s.t0 is None,
+          out["phase"])
 
 
 async def commands():
@@ -460,8 +489,16 @@ async def off_head():
     print("off a head")
     muse.RETRY_DELAY = 0.2
     muse.BLUETOOTHCTL = "no-such-bluetoothctl"
-    hold, drop = muse.OFF_HEAD_HOLD, muse.SESSION_DROP
-    muse.OFF_HEAD_HOLD, muse.SESSION_DROP = 0.5, 2.0
+    hold, drop, steady_for = muse.OFF_HEAD_HOLD, muse.SESSION_DROP, muse.STEADY_FOR
+    muse.OFF_HEAD_HOLD, muse.SESSION_DROP, muse.STEADY_FOR = 0.5, 2.0, 0.5
+    began = []
+
+    class Began(__import__("logging").Handler):
+        def emit(self, r):
+            if r.getMessage().startswith("new session"):
+                began.append(r)
+    log_began = Began()
+    muse.log.addHandler(log_began)
     try:
         # worn for 3s, then taken off and left lying there switched on
         FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
@@ -476,7 +513,8 @@ async def off_head():
         check("the link stays up while it lies there switched on",
               time.monotonic() - t0 > 7.5 and m.drops == 1,
               f"{time.monotonic() - t0:.1f}s, drops {m.drops}")
-        check("and the visitor is forgotten", m.settle.t0 is None)
+        check("a steady signal started a visitor", len(began) == 1, len(began))
+        check("and taking it off forgets them", m.settle.t0 is None)
 
         # never put on: nothing is worn and nobody is a visitor
         FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05,
@@ -488,7 +526,8 @@ async def off_head():
         check("never worn is not worn", frames and not any(f["worn"] for f in frames))
         check("and starts no visitor", m.settle.t0 is None)
     finally:
-        muse.OFF_HEAD_HOLD, muse.SESSION_DROP = hold, drop
+        muse.OFF_HEAD_HOLD, muse.SESSION_DROP, muse.STEADY_FOR = hold, drop, steady_for
+        muse.log.removeHandler(log_began)
 
     print("reconnects")
     # three connects lost to BlueZ's race, then a link that drops, then a
@@ -553,6 +592,7 @@ from test_muse import muse, FakeClient, dev
 muse.LOCK_PATH = os.environ["LOCK"]
 muse.LOCK_WAIT = float(os.environ.get("LOCK_WAIT", "12"))
 muse.BLUETOOTHCTL = os.environ.get("BTCTL", "no-such-bluetoothctl")
+muse.STEADY_FOR = 1.0
 muse.RETRY_DELAY = 0.2
 FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 600}
 async def one(address=None):
@@ -798,6 +838,7 @@ def music_gate():
 if __name__ == "__main__":
     decode()
     settle()
+    steady()
     asyncio.run(commands())
     baselines()
     print("ble lifecycle")
