@@ -244,6 +244,7 @@ class FakeClient:
     behaviour = {}
     last = None
     races = 0                     # connects still to lose to BlueZ's race
+    setup_races = 0               # links that come up half-made
 
     def __init__(self, device, disconnected_callback=None, timeout=None):
         self.cb = disconnected_callback
@@ -271,6 +272,9 @@ class FakeClient:
             self.streaming.cancel()
 
     async def start_notify(self, uuid, handler):
+        if FakeClient.setup_races > 0 and not self.notify:
+            FakeClient.setup_races -= 1
+            raise RuntimeError("Service Discovery has not been performed yet")
         self.notify[uuid] = handler
 
     async def write_gatt_char(self, uuid, data, response=False):
@@ -579,7 +583,7 @@ async def off_head():
     h = H()
     muse.log.addHandler(h)
     try:
-        FakeClient.races = 3
+        FakeClient.races, FakeClient.setup_races = 2, 2
         FakeClient.behaviour = {"connect": "race", "preset_delay": 0.05,
                                 "s_delay": 0.05, "stream_for": 1.0}
         m = muse.Muse()
@@ -590,15 +594,15 @@ async def off_head():
         except asyncio.TimeoutError:
             kept = True
         st = m.stability
-        check("lost races are retried at once, not rescanned",
-              st.attempts == 4 and len(st.sessions) == 1, f"attempts {st.attempts}, links {len(st.sessions)}")
+        check("lost races, in connect or in setup, are retried at once, not rescanned",
+              st.attempts == 5 and st.drops == 1, f"attempts {st.attempts}, drops {st.drops}")
         check("a headband that goes away is scanned for, not given up on",
               kept and len(scans) > 3, f"{len(scans)} scans")
         missing = [r for r in records if r.startswith("no Muse in range")]
         check("and said once, not on every scan", len(missing) == 1, missing)
     finally:
         muse.log.removeHandler(h)
-        FakeClient.races = 0
+        FakeClient.races = FakeClient.setup_races = 0
 
     print("bridge brightness")
     a = muse_bridge.args

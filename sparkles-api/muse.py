@@ -125,6 +125,10 @@ OFF_HEAD_HOLD = 3.0     # seconds off a head before the lamps are let go
 # This covers one failed attempt on top of a good one.
 LINK_GRACE = 60.0
 QUICK_RETRIES = 5       # connects lost to BlueZ's race, retried without a rescan
+# What a lost race looks like from here. The first comes out of connect; the
+# other two out of setup a moment later, when the link came up half-made.
+RACE_ERRORS = ("failed to discover services",
+               "Service Discovery has not been performed", "Unlikely Error")
 SCORE_LOG = 10.0        # seconds between score lines in the log
 # A steady brain signal, before the baseline is learned: this many electrodes
 # in contact for this long, their level within STEADY_DRIFT between the two
@@ -1480,7 +1484,7 @@ async def _connect_racing(device, muse):
         try:
             return await run_session(device, muse)
         except Exception as e:
-            if "failed to discover services" not in str(e) or attempt == QUICK_RETRIES - 1:
+            if not any(m in str(e) for m in RACE_ERRORS) or attempt == QUICK_RETRIES - 1:
                 raise
             log.info("lost BlueZ's connect race — trying again at once")
             await asyncio.sleep(0.5)
