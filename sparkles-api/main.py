@@ -1959,7 +1959,9 @@ _MUSE_DIR = os.path.dirname(os.path.abspath(__file__))
 # putting it on is all a visitor should have to do.
 _BRAIN_PATH = os.environ.get("SPARKLES_BRAIN", os.path.join(_MUSE_DIR, "brain.json"))
 _BRAIN_DEFAULTS = {"ppg": True, "anchor": 40.0, "start": 0.3, "up": 0.1, "down": 0.15,
-                   "bias": 0.6, "minValue": 13, "maxValue": 200}
+                   "bias": 0.6, "minValue": 13, "maxValue": 200,
+                   # the TP-Link dongle: built-in Bluetooth is off in config.txt
+                   "adapter": "hci0"}
 # proc is the shell running `muse.py | muse_bridge.py`, so it owns two children
 # and has to be killed by process group, not pid. task keeps it running.
 _brain = {"proc": None, "task": None, "status": {}, "started": 0.0}
@@ -2036,6 +2038,8 @@ async def _brain_spawn():
             "--down", str(s["down"]), "--bias", str(s["bias"])]
     if s["ppg"]:
         muse.append("--ppg")
+    if s.get("adapter"):
+        muse += ["--adapter", s["adapter"]]
     bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
                   "--status", "--min-value", str(s["minValue"]),
                   "--max-value", str(max(s["maxValue"], s["minValue"] + 1))]
@@ -2115,7 +2119,9 @@ async def brain_start(
     """
     if _brain_listening():
         raise HTTPException(409, detail="already listening")
-    _brain_config.update(listening=True, settings={
+    # merged, not replaced: the page does not send everything (the adapter)
+    _brain_config["listening"] = True
+    _brain_config["settings"].update({
         "ppg": ppg, "anchor": anchor, "start": start, "up": up, "down": down,
         "bias": bias, "minValue": minValue, "maxValue": max(maxValue, minValue + 1)})
     _brain_save()
@@ -2248,6 +2254,8 @@ async def brain_devices(timeout: float = Query(default=5.0, ge=1.0, le=15.0)):
                 "contact": st.get("contact", 0), "phase": st.get("phase", "waiting")}
 
     cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse.py"), "--scan", "--json"]
+    if _brain_config["settings"].get("adapter"):
+        cmd += ["--adapter", _brain_config["settings"]["adapter"]]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

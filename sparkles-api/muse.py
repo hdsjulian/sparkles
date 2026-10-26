@@ -199,6 +199,9 @@ parser.add_argument("--noisy",    type=float, default=NOISY_POWER,
                          f"not on skin (default {NOISY_POWER:.0e})")
 parser.add_argument("--preset",   default=None,
                     help="Override the headband preset (default p50 with --ppg, else p21)")
+parser.add_argument("--adapter",  default=None,
+                    help="Bluetooth adapter to use, e.g. hci0 (default: the first "
+                         "powered one, which can change from start to start)")
 parser.add_argument("--no-reconnect", action="store_true",
                     help="Exit on disconnect instead of retrying")
 parser.add_argument("--soak",     type=float, default=None, metavar="MINUTES",
@@ -1136,11 +1139,17 @@ class Meters:
         self.lines = len(rows)
 
 
+def _bluez():
+    """The adapter to use, when one is named. With two powered, bleak takes the
+    first it lists, which was the weak built-in radio as often as the dongle."""
+    return {"adapter": args.adapter} if args.adapter else {}
+
+
 async def scan_report(timeout: float = 5.0):
     """Every Muse in range, with signal strength. RSSI is the point: the drops
     look like a marginal link, and a number beats guessing. Roughly, -60 is
     comfortable, -80 is where a steady EEG stream starts to struggle."""
-    found = await BleakScanner.discover(timeout=timeout, return_adv=True)
+    found = await BleakScanner.discover(timeout=timeout, return_adv=True, bluez=_bluez())
     out = []
     for device, adv in found.values():
         if device.name and device.name.lower().startswith("muse"):
@@ -1218,9 +1227,10 @@ async def find_muse(address: str = None):
     address ... was not found" despite the scan having just seen it."""
     log.debug("scanning for a Muse…")
     if address:
-        device = await BleakScanner.find_device_by_address(address, timeout=8.0)
+        device = await BleakScanner.find_device_by_address(address, timeout=8.0,
+                                                            bluez=_bluez())
         return [device] if device else []
-    devices = await BleakScanner.discover(timeout=8.0)
+    devices = await BleakScanner.discover(timeout=8.0, bluez=_bluez())
     return [d for d in devices if d.name and d.name.lower().startswith("muse")]
 
 
@@ -1319,6 +1329,7 @@ async def run_session(device, muse):
     muse.drop_stale_signal()
 
     client = BleakClient(device, disconnected_callback=lambda _c: dropped.set(),
+                         bluez=_bluez(),
                          timeout=CONNECT_TIMEOUT)
     # Every step is bounded. BlueZ will happily block forever on a stale link,
     # and hanging with nothing in the log is the worst way for this to fail —

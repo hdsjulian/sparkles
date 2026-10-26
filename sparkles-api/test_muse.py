@@ -252,7 +252,7 @@ class FakeClient:
     races = 0                     # connects still to lose to BlueZ's race
     setup_races = 0               # links that come up half-made
 
-    def __init__(self, device, disconnected_callback=None, timeout=None):
+    def __init__(self, device, disconnected_callback=None, timeout=None, **kw):
         self.cb = disconnected_callback
         self.notify = {}
         self.writes = []          # (t, cmd)
