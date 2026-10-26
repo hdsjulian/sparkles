@@ -1960,8 +1960,8 @@ _MUSE_DIR = os.path.dirname(os.path.abspath(__file__))
 _BRAIN_PATH = os.environ.get("SPARKLES_BRAIN", os.path.join(_MUSE_DIR, "brain.json"))
 _BRAIN_DEFAULTS = {"ppg": True, "anchor": 40.0, "start": 0.3, "up": 0.1, "down": 0.15,
                    "bias": 0.6, "minValue": 13, "maxValue": 200,
-                   # the TP-Link dongle: built-in Bluetooth is off in config.txt
-                   "adapter": "hci0"}
+                   # a USB dongle whenever one is plugged in, else the built-in
+                   "adapter": "auto"}
 # proc is the shell running `muse.py | muse_bridge.py`, so it owns two children
 # and has to be killed by process group, not pid. task keeps it running.
 _brain = {"proc": None, "task": None, "status": {}, "started": 0.0}

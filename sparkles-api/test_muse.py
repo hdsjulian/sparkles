@@ -143,6 +143,32 @@ def settle():
     check("a long outage starts a new visitor", out["phase"] == "anchor", out["phase"])
 
 
+def adapters():
+    print("which Bluetooth radio")
+    root = tempfile.mkdtemp()
+
+    def radio(name, bus, blocked=False):
+        os.makedirs(os.path.join(root, "devices", bus, name))
+        os.makedirs(os.path.join(root, "bt", name, "rfkill0"))
+        os.symlink(os.path.join(root, "devices", bus, name), os.path.join(root, "bt", name, "device"))
+        for flag in ("soft", "hard"):
+            open(os.path.join(root, "bt", name, "rfkill0", flag), "w").write("1" if blocked and flag == "soft" else "0")
+
+    saved = (muse.SYS_BLUETOOTH, muse.args.adapter, muse.adapter)
+    muse.SYS_BLUETOOTH, muse.args.adapter = os.path.join(root, "bt"), "auto"
+    try:
+        radio("hci0", "serial0")                      # built-in, first in the list
+        os.makedirs(os.path.join(root, "bt", "hci0:16"))   # a connection, not a radio
+        check("without a dongle, the built-in radio", muse._choose_adapter() == "hci0")
+        radio("hci1", "usb3/3-1")
+        check("a dongle plugged in always wins", muse._choose_adapter() == "hci1")
+        open(os.path.join(root, "bt", "hci1", "rfkill0", "soft"), "w").write("1")
+        check("but not while it is switched off", muse._choose_adapter() == "hci0")
+        check("and the choice goes to bleak", muse._bluez() == {"adapter": "hci0"})
+    finally:
+        muse.SYS_BLUETOOTH, muse.args.adapter, muse.adapter = saved
+
+
 def contact():
     print("contact, with numbers from a real head and a real table")
     m = muse.Muse()
@@ -744,9 +770,11 @@ def shutdown():
     btlog = os.path.join(work, "bt.log")
     btctl = os.path.join(work, "bluetoothctl")
     with open(btctl, "w") as f:
-        f.write('#!/bin/sh\n'
-                'if [ "$1" = devices ]; then echo "Device 00:55:DA:B8:36:70 Muse-3670"; fi\n'
-                f'if [ "$1" = disconnect ]; then echo "$2" >> {btlog}; fi\n')
+        f.write('#!/bin/sh\n'                        # commands arrive on stdin
+                'while read cmd arg; do case "$cmd" in\n'
+                '  devices) echo "Device 00:55:DA:B8:36:70 Muse-3670";;\n'
+                f'  disconnect) echo "$arg" >> {btlog};;\n'
+                'esac; done\n')
     os.chmod(btctl, 0o755)
     d, d_lines = spawn(BTCTL=btctl)
     saw(d_lines, "streaming", 10)
@@ -941,6 +969,7 @@ def music_gate():
 if __name__ == "__main__":
     decode()
     settle()
+    adapters()
     contact()
     steady()
     asyncio.run(commands())

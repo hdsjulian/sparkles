@@ -52,6 +52,7 @@ on macOS the terminal needs Bluetooth permission (System Settings → Privacy).
 import argparse
 import asyncio
 import fcntl
+import glob
 import json
 import logging
 import math
@@ -61,6 +62,7 @@ import re
 import shutil
 import signal
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -199,9 +201,9 @@ parser.add_argument("--noisy",    type=float, default=NOISY_POWER,
                          f"not on skin (default {NOISY_POWER:.0e})")
 parser.add_argument("--preset",   default=None,
                     help="Override the headband preset (default p50 with --ppg, else p21)")
-parser.add_argument("--adapter",  default=None,
-                    help="Bluetooth adapter to use, e.g. hci0 (default: the first "
-                         "powered one, which can change from start to start)")
+parser.add_argument("--adapter",  default="auto",
+                    help="Bluetooth adapter to use, e.g. hci0, or auto (default): a "
+                         "USB dongle whenever one is plugged in, else the built-in")
 parser.add_argument("--no-reconnect", action="store_true",
                     help="Exit on disconnect instead of retrying")
 parser.add_argument("--soak",     type=float, default=None, metavar="MINUTES",
@@ -1139,13 +1141,82 @@ class Meters:
         self.lines = len(rows)
 
 
+adapter = None          # the radio in use, chosen by _choose_adapter
+SYS_BLUETOOTH = "/sys/class/bluetooth"
+
+
+def _blocked(path):
+    """rfkill on: a radio that is there but switched off, as a new one was."""
+    for kill in glob.glob(os.path.join(path, "rfkill*")):
+        for flag in ("soft", "hard"):
+            try:
+                if open(os.path.join(kill, flag)).read().strip() == "1":
+                    return True
+            except OSError:
+                pass
+    return False
+
+
+def _choose_adapter():
+    """A USB Bluetooth adapter whenever one is plugged in and not blocked,
+    the built-in radio only without. Left to bleak, which takes the first
+    powered one it lists, the headband went to the weak built-in radio as
+    often as to the dongle. Chosen again before every scan, so plugging the
+    dongle in or pulling it out takes effect at the next connect."""
+    global adapter
+    pick = args.adapter
+    if pick == "auto":
+        usb, other = [], []
+        for path in sorted(glob.glob(os.path.join(SYS_BLUETOOTH, "hci*"))):
+            name = os.path.basename(path)
+            if ":" in name or _blocked(path):
+                continue            # hciN:M are connections, not radios
+            dev = os.path.realpath(os.path.join(path, "device"))
+            (usb if "/usb" in dev else other).append(name)
+        pick = (usb + other or [None])[0]
+        kind = "USB dongle" if pick in usb else "built-in"
+    else:
+        kind = "as asked"
+    if pick != adapter:
+        log.info("using Bluetooth adapter %s (%s)", pick or "bleak's default", kind)
+        adapter = pick
+    return pick
+
+
 def _bluez():
-    """The adapter to use, when one is named. With two powered, bleak takes the
-    first it lists, which was the weak built-in radio as often as the dongle."""
-    return {"adapter": args.adapter} if args.adapter else {}
+    return {"adapter": adapter} if adapter else {}
+
+
+def _controller_address():
+    """bluetoothctl knows controllers by address, not by hciN."""
+    if not adapter or not shutil.which("hcitool"):
+        return None
+    try:
+        out = subprocess.run(["hcitool", "dev"], capture_output=True, text=True,
+                             timeout=3).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == adapter:
+            return parts[1]
+    return None
+
+
+async def _bluetoothctl(*commands, wait=5.0):
+    """Commands piped into bluetoothctl, aimed at the radio in use: its command
+    line cannot pick a controller, but select on its input can."""
+    ctrl = _controller_address()
+    script = "".join(f"{c}\n" for c in ([f"select {ctrl}"] if ctrl else []) + list(commands))
+    proc = await asyncio.create_subprocess_exec(
+        BLUETOOTHCTL, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    out, _ = await asyncio.wait_for(proc.communicate(script.encode()), wait)
+    return out.decode(errors="replace")
 
 
 async def scan_report(timeout: float = 5.0):
+    _choose_adapter()
     """Every Muse in range, with signal strength. RSSI is the point: the drops
     look like a marginal link, and a number beats guessing. Roughly, -60 is
     comfortable, -80 is where a steady EEG stream starts to struggle."""
@@ -1198,22 +1269,16 @@ async def _release_stale_link():
     if not shutil.which(BLUETOOTHCTL):
         return
     try:
-        proc = await asyncio.create_subprocess_exec(
-            BLUETOOTHCTL, "devices", "Connected",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        out, _ = await asyncio.wait_for(proc.communicate(), 5.0)
+        out = await _bluetoothctl("devices Connected")
     except Exception:
         return
-    for line in out.decode(errors="replace").splitlines():
+    for line in out.splitlines():
         parts = re.sub(r"\x1b\[[0-9;]*m", "", line).split(None, 2)
         if len(parts) == 3 and parts[0] == "Device" and parts[2].lower().startswith("muse"):
             log.warning("BlueZ is still holding %s from a run that did not tear "
                         "down — releasing it", parts[2])
             try:
-                p = await asyncio.create_subprocess_exec(
-                    BLUETOOTHCTL, "disconnect", parts[1],
-                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-                await asyncio.wait_for(p.wait(), 10.0)
+                await _bluetoothctl(f"disconnect {parts[1]}", wait=10.0)
             except Exception:
                 pass
 
@@ -1525,6 +1590,7 @@ async def _run(muse):
     while True:
         try:
             if device is None:
+                _choose_adapter()
                 await _release_stale_link()
                 found = await find_muse(args.address)
                 if not found:
