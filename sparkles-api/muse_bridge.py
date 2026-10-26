@@ -59,6 +59,7 @@ log = logging.getLogger("muse_bridge")
 RETRY_DELAY = 3.0
 RESEND_AFTER = 0.25   # force a frame this often even when nothing has changed
 HOLD_THROUGH = 3.0    # seconds without frames before the lamps are let go
+RECONNECT_HOLD = 30.0 # ...unless the link dropped on a head: held this long
 
 parser = argparse.ArgumentParser(description="Muse settling score → Sparkles lamps")
 parser.add_argument("--sock",       default=os.environ.get("SPARKLES_MUSIC_SOCK", "/tmp/music.sock"),
@@ -175,11 +176,19 @@ def _reader():
 
 
 def _holding(s: dict, now: float) -> bool:
-    """The lamps are the headband's while someone is wearing it. With no word
-    from the electrodes for HOLD_THROUGH seconds, a lost link included, they
-    are let go: they fade out, and the microphone and keyboard have them."""
+    """The lamps are the headband's while someone is wearing it, and are let
+    go, to fade out for the microphone and keyboard, HOLD_THROUGH seconds
+    after the frames stop. Except when they stop with the electrodes on skin:
+    people take the headband off before they switch it off, so that is a
+    glitch in the link, and the lamps hold while muse.py reconnects. Nothing
+    back after RECONNECT_HOLD means a flat battery or a switch after all."""
     seen = s.get("_seen")
-    return bool(s.get("worn")) and seen is not None and now - seen < HOLD_THROUGH
+    if not s.get("worn") or seen is None:
+        return False
+    quiet = now - seen
+    if quiet < HOLD_THROUGH:
+        return True
+    return s.get("contact", 0) >= 2 and quiet < RECONNECT_HOLD
 
 
 def _target(s: dict) -> float:

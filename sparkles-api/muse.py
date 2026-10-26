@@ -132,6 +132,7 @@ QUICK_RETRIES = 5       # connects lost to BlueZ's race, retried without a resca
 RACE_ERRORS = ("failed to discover services",
                "Service Discovery has not been performed", "Unlikely Error")
 SCORE_LOG = 10.0        # seconds between score lines in the log
+GLITCH_AFTER = 10.0     # a link up this long that drops is reconnected at once
 # A steady brain signal, before the baseline is learned: this many electrodes
 # in contact for this long, their level within STEADY_DRIFT between the two
 # halves of it rather than still falling as they settle onto the skin.
@@ -1394,10 +1395,12 @@ async def run_session(device, muse):
         if muse.recording:
             muse.recording.write({"type": "link", "up": False})
 
+    lasted = time.monotonic() - muse.link_since
     muse.link_since = None
     muse.drops += 1
     log.warning("headband disconnected after %.1fs (drop #%d this run)",
                 time.monotonic() - started, muse.drops)
+    return lasted
 
 
 def _read_commands(loop, muse, stream):
@@ -1507,27 +1510,36 @@ async def _run(muse):
     # Scanning with the headband switched off is the normal state now, so say
     # it once when it goes rather than on every scan all day.
     missing = False
+    device = None       # the headband in hand, kept across a glitch in the link
     while True:
         try:
-            await _release_stale_link()
-            # Rescan every attempt: a BLEDevice from a previous pass is stale
-            # once the link drops, and the headband has usually moved on anyway.
-            found = await find_muse(args.address)
-            if not found:
-                if not missing:
-                    log.info("no Muse in range — scanning until one is switched on "
-                             "(and out of the phone app)")
-                    missing = True
-                await asyncio.sleep(RETRY_DELAY)
+            if device is None:
+                await _release_stale_link()
+                found = await find_muse(args.address)
+                if not found:
+                    if not missing:
+                        log.info("no Muse in range — scanning until one is switched "
+                                 "on (and out of the phone app)")
+                        missing = True
+                    await asyncio.sleep(RETRY_DELAY)
+                    continue
+                missing = False
+                device = found[0]
+                log.info("found %s (%s)", device.name, device.address)
+            lasted = await _connect_racing(device, muse)
+            # A link that had been working went quiet: a glitch, not someone
+            # leaving, and the headband is advertising again at once. Straight
+            # back to it, no wait and no 8 s scan, while the lamps hold. If it
+            # was switched off after all, the connect times out and we scan.
+            if lasted is not None and lasted >= GLITCH_AFTER and not args.no_reconnect:
+                log.info("reconnecting to %s straight away", device.address)
                 continue
-            missing = False
-            device = found[0]
-            log.info("found %s (%s)", device.name, device.address)
-            await _connect_racing(device, muse)
+            device = None
         except asyncio.CancelledError:
             raise
         except Exception as e:
             log.error("session failed: %s", e)
+            device = None
         if args.no_reconnect:
             return
         await asyncio.sleep(RETRY_DELAY)

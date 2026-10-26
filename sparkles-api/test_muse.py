@@ -606,6 +606,22 @@ async def off_head():
               kept and len(scans) > 3, f"{len(scans)} scans")
         missing = [r for r in records if r.startswith("no Muse in range")]
         check("and said once, not on every scan", len(missing) == 1, missing)
+        # a link that had been working drops: straight back to the same
+        # headband, without the wait or a rescan
+        scans.clear()
+        glitch = muse.GLITCH_AFTER
+        muse.GLITCH_AFTER = 0.5
+        FakeClient.behaviour = {"preset_delay": 0.05, "s_delay": 0.05, "stream_for": 1.0}
+        m = muse.Muse()
+        try:
+            await asyncio.wait_for(muse._run(m), 4.5)
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            muse.GLITCH_AFTER = glitch
+        check("a dropped link comes straight back to the same headband",
+              len(scans) == 1 and m.stability.drops >= 2,
+              f"{len(scans)} scans, {m.stability.drops} drops")
     finally:
         muse.log.removeHandler(h)
         FakeClient.races = FakeClient.setup_races = 0
@@ -621,9 +637,14 @@ async def off_head():
     held = muse_bridge._holding
     check("worn, the lamps are the headband's", held({"worn": True, "_seen": now}, now))
     check("off a head they are left to the mic", not held({"worn": False, "_seen": now}, now))
-    check("a moment's silence keeps them", held({"worn": True, "_seen": now - 2}, now))
-    check("but 3 s without the electrodes lets them go",
-          not held({"worn": True, "_seen": now - 4}, now))
+    check("a moment's silence keeps them",
+          held({"worn": True, "contact": 4, "_seen": now - 2}, now))
+    check("a link lost on a head holds them while it reconnects",
+          held({"worn": True, "contact": 4, "_seen": now - 20}, now))
+    check("but not once it must be flat or switched off",
+          not held({"worn": True, "contact": 4, "_seen": now - 31}, now))
+    check("lost just after taking it off, they go after 3 s",
+          not held({"worn": True, "contact": 0, "_seen": now - 4}, now))
     check("and nothing heard yet holds nothing", not held({}, now))
 
 

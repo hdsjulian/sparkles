@@ -99,7 +99,7 @@
   $: connected = s.connected ?? false;
   $: channels = s.channels ?? {};
   $: statusText = !running ? 'not listening'
-    : !connected ? (s.worn ? 'link lost — reconnecting'
+    : !connected ? (s.worn ? 'link lost — reconnecting, the lamps hold'
                            : 'listening — no headband connected (switched off, or reconnecting)')
     : !s.worn ? 'headband on, nobody wearing it — the microphone has the lamps'
     : contact < 2 ? `only ${contact}/4 electrodes — adjust the fit`
