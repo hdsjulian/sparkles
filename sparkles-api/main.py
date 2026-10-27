@@ -1958,10 +1958,22 @@ _MUSE_DIR = os.path.dirname(os.path.abspath(__file__))
 # that listening survives a restart or a reboot: switching the headband on and
 # putting it on is all a visitor should have to do.
 _BRAIN_PATH = os.environ.get("SPARKLES_BRAIN", os.path.join(_MUSE_DIR, "brain.json"))
+# How much each signal counts toward the lamps, as Brain page presets. Saved
+# ones join them in brain.json; these cannot be overwritten or deleted.
+_BRAIN_SIGNALS = ("alpha", "beta", "theta", "bpm", "still", "emg")
+_BRAIN_PRESETS = {
+    # a calm body alone must not light the room: it averages 0.57 here, under
+    # the 0.6 bias, while relaxing for real reaches 0.70
+    "Brain waves":      {"alpha": 2, "beta": 2, "theta": 0, "bpm": 0.5, "still": 0.25, "emg": 0.25},
+    "Deep meditation":  {"alpha": 2, "beta": 1, "theta": 2, "bpm": 0.5, "still": 0.25, "emg": 0.25},
+    "Calm body":        {"alpha": 0.5, "beta": 0.5, "theta": 0, "bpm": 2, "still": 1, "emg": 2},
+    "Everything equal": {"alpha": 1, "beta": 1, "theta": 1, "bpm": 1, "still": 1, "emg": 1},
+}
 _BRAIN_DEFAULTS = {"ppg": True, "anchor": 40.0, "start": 0.3, "up": 0.1, "down": 0.15,
                    "bias": 0.6, "minValue": 13, "maxValue": 200,
                    # a USB dongle whenever one is plugged in, else the built-in
-                   "adapter": "auto"}
+                   "adapter": "auto",
+                   "weights": dict(_BRAIN_PRESETS["Brain waves"])}
 # proc is the shell running `muse.py | muse_bridge.py`, so it owns two children
 # and has to be killed by process group, not pid. task keeps it running.
 _brain = {"proc": None, "task": None, "status": {}, "started": 0.0}
@@ -1973,8 +1985,10 @@ def _brain_load() -> dict:
             saved = json.load(f)
     except Exception:
         saved = {}
-    return {"listening": bool(saved.get("listening", False)),
-            "settings": {**_BRAIN_DEFAULTS, **saved.get("settings", {})}}
+    settings = {**_BRAIN_DEFAULTS, **saved.get("settings", {})}
+    settings["weights"] = {**_BRAIN_DEFAULTS["weights"], **settings.get("weights", {})}
+    return {"listening": bool(saved.get("listening", False)), "settings": settings,
+            "presets": saved.get("presets", {})}
 
 
 def _brain_save():
@@ -2040,6 +2054,7 @@ async def _brain_spawn():
         muse.append("--ppg")
     if s.get("adapter"):
         muse += ["--adapter", s["adapter"]]
+    muse += ["--weights", ",".join(f"{k}={v}" for k, v in s["weights"].items())]
     bridge_cmd = [sys.executable, "-u", os.path.join(_MUSE_DIR, "muse_bridge.py"),
                   "--status", "--min-value", str(s["minValue"]),
                   "--max-value", str(max(s["maxValue"], s["minValue"] + 1))]
@@ -2160,6 +2175,59 @@ async def brain_reset():
         raise HTTPException(500, detail=f"could not reach muse: {exc}")
     logger.info("brain baseline reset")
     return _ok("baseline reset")
+
+
+def _brain_weights_from(body) -> dict:
+    if not isinstance(body, dict) or not body:
+        raise HTTPException(400, detail="weights: a {signal: weight} object")
+    weights = {}
+    for name, value in body.items():
+        if name not in _BRAIN_SIGNALS:
+            raise HTTPException(400, detail=f"unknown signal {name!r}")
+        try:
+            weights[name] = round(min(3.0, max(0.0, float(value))), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(400, detail=f"weight for {name} is not a number")
+    return weights
+
+
+@app.post("/brain/weights")
+async def brain_weights(request: Request):
+    """How much each signal counts, from the page's sliders or a preset: kept
+    for every later start, and handed to the running pipeline at once."""
+    weights = _brain_weights_from(await request.json())
+    _brain_config["settings"]["weights"].update(weights)
+    _brain_save()
+    if _brain_running():
+        await _brain_command("".join(f"set weight {k} {v}\n" for k, v in weights.items()))
+    return _ok("weighted")
+
+
+@app.get("/brain/presets")
+async def brain_presets():
+    return {"builtin": _BRAIN_PRESETS, "saved": _brain_config["presets"]}
+
+
+@app.post("/brain/presets")
+async def brain_preset_save(request: Request):
+    body = await request.json()
+    name = str(body.get("name", "")).strip() if isinstance(body, dict) else ""
+    if not 0 < len(name) <= 40:
+        raise HTTPException(400, detail="a preset needs a name of up to 40 characters")
+    if name in _BRAIN_PRESETS:
+        raise HTTPException(409, detail=f"{name!r} is a built-in preset")
+    weights = _brain_weights_from(body.get("weights"))
+    _brain_config["presets"][name] = {**dict.fromkeys(_BRAIN_SIGNALS, 0.0), **weights}
+    _brain_save()
+    return _ok("saved")
+
+
+@app.delete("/brain/presets/{name}")
+async def brain_preset_delete(name: str):
+    if _brain_config["presets"].pop(name, None) is None:
+        raise HTTPException(404, detail="no such saved preset")
+    _brain_save()
+    return _ok("deleted")
 
 
 @app.post("/brain/tune")

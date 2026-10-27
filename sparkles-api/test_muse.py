@@ -61,16 +61,17 @@ def settle():
     import random
     rng = random.Random(0)
     n = lambda v, p: v * (1 + rng.uniform(-p, p))
-    # brain is alpha over beta: 0.20 / 0.30 at arrival, 0.34 / 0.20 relaxed
-    arrival = lambda: {"brain": n(0.667, .15), "still": n(0.010, .15),
+    calm_brain = lambda: {"alpha": n(0.34, .10), "beta": n(0.20, .10), "theta": n(0.20, .10)}
+    arrival_brain = lambda: {"alpha": n(0.20, .10), "beta": n(0.30, .10), "theta": n(0.20, .10)}
+    arrival = lambda: {**arrival_brain(), "still": n(0.010, .15),
                        "emg": n(100.0, .15), "bpm": n(74.0, .04)}
-    relaxed = lambda: {"brain": n(1.7, .15), "still": n(0.003, .15),
+    relaxed = lambda: {**calm_brain(), "still": n(0.003, .15),
                        "emg": n(30.0, .15), "bpm": n(63.0, .04)}
     # a game: sitting stiller and looser-jawed than on arrival, mind working
-    gaming = lambda: {"brain": n(0.4, .15), "still": n(0.003, .15),
-                      "emg": n(30.0, .15), "bpm": n(74.0, .04)}
-    body_only = lambda: {**relaxed(), "brain": n(0.667, .15)}
-    fidgeting = lambda: {"brain": n(1.7, .15), "still": n(0.030, .15),
+    gaming = lambda: {"alpha": n(0.12, .10), "beta": n(0.40, .10), "theta": n(0.20, .10),
+                      "still": n(0.003, .15), "emg": n(30.0, .15), "bpm": n(74.0, .04)}
+    body_only = lambda: {**relaxed(), **arrival_brain()}
+    fidgeting = lambda: {**calm_brain(), "still": n(0.030, .15),
                          "emg": n(300.0, .15), "bpm": n(84.0, .04)}
 
     def run(frames, secs):
@@ -90,6 +91,16 @@ def settle():
     check("calm brain waves in a fidgeting body are held back",
           run(fidgeting, 180)["settle"] < 0.15)
     check("staying as you arrived earns nothing", run(arrival, 180)["settle"] < 0.15)
+
+    # the weights decide what counts: weighted to the body alone, a calm body
+    # does light the room
+    saved_weights = dict(muse.WEIGHTS)
+    muse.WEIGHTS.update(alpha=0, beta=0, theta=0, bpm=2, still=1, emg=2)
+    try:
+        check("weighted to the body, a calm body lights it", run(body_only, 150)["settle"] > 0.8)
+    finally:
+        muse.WEIGHTS.clear()
+        muse.WEIGHTS.update(saved_weights)
 
     def anchored():
         s, t, half = muse.Settle(), 0.0, None
@@ -121,8 +132,8 @@ def settle():
           [round(v, 3) for v in levels])
 
     # and getting tenser than you arrived dims it from the start
-    tense = lambda: {"brain": n(0.4, .15), "still": n(0.030, .15),
-                     "emg": n(300.0, .15), "bpm": n(84.0, .04)}
+    tense = lambda: {"alpha": n(0.12, .10), "beta": n(0.40, .10), "theta": n(0.20, .10),
+                     "still": n(0.030, .15), "emg": n(300.0, .15), "bpm": n(84.0, .04)}
     s, t, _, level = anchored()
     for _ in range(100):
         t += 0.1
@@ -225,7 +236,7 @@ def steady():
     check("nor is a few seconds of it", not m._steady(t + 5))
 
     s = muse.Settle()
-    out = s.update(1.0, 0.1, True, {"brain": 1.0}, steady=False)
+    out = s.update(1.0, 0.1, True, {"alpha": 0.2}, steady=False)
     check("no baseline is learned before then", out["phase"] == "settling" and s.t0 is None,
           out["phase"])
 
@@ -236,7 +247,9 @@ async def commands():
     m.settle.frozen, m.settle.level = True, 0.3
     saved = (muse.args.start, muse.args.up, muse.args.down)
     loop = asyncio.get_running_loop()
-    stream = io.StringIO("set up 0.25\nset start 0.5\nset bogus 1\nset down x\nnonsense\n")
+    stream = io.StringIO("set up 0.25\nset start 0.5\nset bogus 1\nset down x\nnonsense\n"
+                         "set weight alpha 1.5\nset weight nonsense 2\n")
+    saved_weights = dict(muse.WEIGHTS)
     await loop.run_in_executor(None, muse._read_commands, loop, m, stream)
     await asyncio.sleep(0.05)
     try:
@@ -244,8 +257,12 @@ async def commands():
               muse.args.up == 0.25 and muse.args.down == saved[2], (muse.args.up, muse.args.down))
         check("a new start level moves the lamps there now",
               m.settle.level == 0.5 and muse.args.start == 0.5, m.settle.level)
+        check("a weight changes under a running session, unknown signals ignored",
+              muse.WEIGHTS["alpha"] == 1.5 and "nonsense" not in muse.WEIGHTS, muse.WEIGHTS)
     finally:
         muse.args.start, muse.args.up, muse.args.down = saved
+        muse.WEIGHTS.clear()
+        muse.WEIGHTS.update(saved_weights)
 
 
 def baselines():

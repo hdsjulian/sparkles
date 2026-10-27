@@ -22,12 +22,13 @@ them. The run itself never ends: it scans for the headband, stays connected
 while it is switched on, and connects again when it comes back, so switching
 the headband on and putting it on is all a visitor has to do.
 
-Brain waves decide: the ratio of alpha (relaxed wakefulness) to beta (active
-thinking), against the visitor's own arrival level. The body can only hold the
-light back — fidgeting, a clenched jaw or a racing heart against arrival — and
-never lights it on its own. Body signals used to carry the score, and sitting
-still while concentrating on a game read as calm. Closing your eyes does raise
-alpha, and so the light; that is a real brain-wave effect, not a trick.
+Each signal is scored against the visitor's own arrival level — alpha (relaxed
+wakefulness), beta (active thinking), theta (deep meditation), heart rate,
+stillness and jaw tension — and evidence is their average, weighted from the
+Brain page: the calmer, the brighter. Weighting brain waves over the body
+matters, since sitting still while concentrating on a game reads as calm to
+stillness and the jaw. Closing your eyes raises alpha, and so the light; that
+is a real brain-wave effect, not a trick.
 
 The baseline is only learned once the brain signal is steady: enough
 electrodes in contact for a while, their level no longer falling as they
@@ -190,6 +191,9 @@ parser.add_argument("--up",       type=float, default=0.1,
 parser.add_argument("--down",     type=float, default=0.15,
                     help="Degradation factor: the share of the level lost per second "
                          "at full tension (default 0.15, halved in 4.6 s)")
+parser.add_argument("--weights",  default=None,
+                    help="How much each signal counts, e.g. alpha=2,beta=2,theta=0,"
+                         "bpm=0.5,still=0.25,emg=0.25 (default: those, the Brain waves preset)")
 parser.add_argument("--bias",     type=float, default=0.6,
                     help="Evidence needed to hold the level, where 0.5 is exactly "
                          "how they arrived (default 0.6 — lower is easier to earn)")
@@ -215,6 +219,12 @@ args = parser.parse_args()
 
 PRESET = args.preset or ("p50" if args.ppg else "p21")
 EVIDENCE_BIAS = args.bias
+# How much each signal counts toward evidence, changed live from the Brain page.
+WEIGHTS = {"alpha": 2.0, "beta": 2.0, "theta": 0.0, "bpm": 0.5, "still": 0.25, "emg": 0.25}
+for pair in (args.weights or "").split(","):
+    name, _, value = pair.partition("=")
+    if name.strip() in WEIGHTS and value.strip():
+        WEIGHTS[name.strip()] = float(value)
 FLAT_UV = args.flat_uv
 RAILED_UV = args.railed_uv
 NOISY_POWER = args.noisy
@@ -467,10 +477,12 @@ class Settle:
         self.frozen = False
         self.lost_since = None
         self.base = {
-            "brain": Baseline(False, ratio=True),   # alpha / beta, what decides
+            "alpha": Baseline(False, ratio=True),   # relaxed wakefulness, up is calm
+            "beta":  Baseline(True, ratio=True),    # active thinking, down is calm
+            "theta": Baseline(False, ratio=True),   # deep meditation, up is calm
+            "bpm":   Baseline(True, floor=5.0),     # heart rate, 5 bpm a step
             "still": Baseline(True, ratio=True),    # accelerometer spread
             "emg":   Baseline(True, ratio=True),    # jaw / temple tension
-            "bpm":   Baseline(True, floor=5.0),     # heart rate, 5 bpm a step
         }
 
     def describe(self) -> str:
@@ -533,16 +545,17 @@ class Settle:
             return {"settle": self.level, "session": elapsed, "phase": "anchor"}
 
         scored = {n: b.score(ch.get(n)) for n, b in self.base.items()}
-        if scored["brain"] is None:
+        rounded = {k: (None if v is None else round(v, 3)) for k, v in scored.items()}
+        # How much calmer than at arrival each signal is, averaged by the
+        # weights chosen on the Brain page: the calmer, the brighter. A signal
+        # without a score yet, or weighted 0, does not count.
+        used = [(WEIGHTS.get(n, 0.0), v) for n, v in scored.items()
+                if v is not None and WEIGHTS.get(n, 0.0) > 0]
+        total = sum(w for w, _ in used)
+        if not total:
             return {"settle": self.level, "session": elapsed, "phase": "live",
-                    "evidence": None, "scores": {}}
-
-        # Brain waves decide. The body can only hold the light back: below its
-        # arrival level it scales evidence down, above it adds nothing, so
-        # sitting still while concentrating hard cannot light the room.
-        body = [scored[n] for n in ("still", "emg", "bpm") if scored[n] is not None]
-        b = math.exp(sum(math.log(max(s, 1e-6)) for s in body) / len(body)) if body else 0.5
-        evidence = scored["brain"] * min(1.0, b / 0.5)
+                    "evidence": None, "scores": rounded}
+        evidence = sum(w * v for w, v in used) / total
 
         # Scaled so both ends saturate at ±1. Each way closes a share of the
         # distance left rather than a fixed amount: the light answers a visitor
@@ -559,9 +572,7 @@ class Settle:
             self.level += args.down * drift * self.level * dt
         self.level = max(0.0, min(1.0, self.level))
         return {"settle": self.level, "session": elapsed, "phase": "live",
-                "evidence": evidence,
-                "scores": {k: (None if v is None else round(v, 3))
-                           for k, v in scored.items()}}
+                "evidence": evidence, "scores": rounded}
 
 
 def _band_powers(x: np.ndarray) -> dict:
@@ -650,6 +661,7 @@ class Recording:
                     "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     "settings": {k: getattr(args, k) for k in
                                  ("anchor", "start", "up", "down", "bias", "window", "smooth")},
+                    "weights": dict(WEIGHTS),
                     "steady": {"channels": STEADY_CHANNELS, "for": STEADY_FOR,
                                "drift": STEADY_DRIFT}})
         log.info("recording a %s test to %s", label, self.name)
@@ -904,6 +916,12 @@ class Muse:
         if name == "start" and self.settle.frozen:
             self.settle.level = value
 
+    def weigh(self, signal, value):
+        """How much one signal counts, changed under a running session."""
+        if signal in WEIGHTS:
+            WEIGHTS[signal] = max(0.0, value)
+            log.info("%s weighs %.2f", signal, WEIGHTS[signal])
+
     def record(self, label, secs):
         """A guided test: the baseline is learned again first, the same way for
         every test, then `secs` of the condition are recorded."""
@@ -1078,7 +1096,9 @@ class Muse:
             self.signal.popleft()
 
         st = self.settle.update(now, dt, on_head, {
-            "brain": rel["alpha"] / max(rel["beta"], 1e-9),
+            "alpha": rel["alpha"],
+            "beta":  rel["beta"],
+            "theta": rel["theta"],
             "still": still,
             "emg":   self._emg(noise, good),
             "bpm":   bpm,
@@ -1524,6 +1544,11 @@ def _read_commands(loop, muse, stream):
         elif len(words) == 3 and words[0] == "set":
             try:
                 call = (muse.tune, words[1], float(words[2]))
+            except ValueError:
+                continue
+        elif len(words) == 4 and words[:2] == ["set", "weight"]:
+            try:
+                call = (muse.weigh, words[2], float(words[3]))
             except ValueError:
                 continue
         elif words == ["record", "stop"]:

@@ -339,6 +339,21 @@ export const getBrainRecordings = () =>
 
 export const brainRecordingUrl = (name) => `${BASE}/brain/recordings/${encodeURIComponent(name)}`;
 
+// how much each signal counts toward the lamps, and named sets of those
+const jsonPost = (url, body, method = 'POST') =>
+  fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json());
+
+export const brainWeights = (weights) => jsonPost(`${BASE}/brain/weights`, weights);
+
+export const getBrainPresets = () =>
+  fetch(`${BASE}/brain/presets`).then(r => r.json());
+
+export const brainPresetSave = (name, weights) => jsonPost(`${BASE}/brain/presets`, { name, weights });
+
+export const brainPresetDelete = (name) =>
+  fetch(`${BASE}/brain/presets/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(r => r.json());
+
 export const getBrainStatus = () =>
   fetch(`${BASE}/brain/status`).then(r => r.json());
 

@@ -1,7 +1,8 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { brainStart, brainStop, brainReset, brainTune, getBrainStatus, getBrainDevices,
-           brainRecord, brainRecordStop, getBrainRecordings, brainRecordingUrl } from '$lib/api.js';
+           brainRecord, brainRecordStop, getBrainRecordings, brainRecordingUrl,
+           brainWeights, getBrainPresets, brainPresetSave, brainPresetDelete } from '$lib/api.js';
   import { brainStatus } from '$lib/stores.js';
 
   let error = '';
@@ -89,8 +90,60 @@
     : settle > 0 ? 'falling' : 'holding at dark';
 
   const scoreName = {
-    brain: 'brain waves (alpha / beta)', still: 'stillness', emg: 'jaw / temple', bpm: 'heart rate',
+    alpha: 'alpha', beta: 'beta', theta: 'theta', bpm: 'heart rate', still: 'stillness', emg: 'jaw / temple',
   };
+
+  // how much each signal counts toward the lamps: sliders, and named sets of
+  // them kept on the pi
+  const signals = [
+    { key: 'alpha', name: 'Alpha', what: 'relaxed wakefulness, calmer when up' },
+    { key: 'beta',  name: 'Beta',  what: 'active thinking, calmer when down' },
+    { key: 'theta', name: 'Theta', what: 'deep meditation, calmer when up; eye movements look like it too' },
+    { key: 'bpm',   name: 'Heart rate', what: 'calmer when slower' },
+    { key: 'still', name: 'Stillness', what: 'calmer when moving less' },
+    { key: 'emg',   name: 'Jaw / temple', what: 'calmer when looser' },
+  ];
+  let weights = { alpha: 2, beta: 2, theta: 0, bpm: 0.5, still: 0.25, emg: 0.25 };
+  let presets = { builtin: {}, saved: {} };
+
+  const sameWeights = (a, b) => signals.every(({ key }) => Number(a?.[key] ?? 0) === Number(b?.[key] ?? 0));
+  $: activePreset = Object.entries({ ...presets.builtin, ...presets.saved })
+    .find(([, w]) => sameWeights(w, weights))?.[0] ?? null;
+
+  async function loadPresets() {
+    try { presets = await getBrainPresets(); } catch { /* listed next time */ }
+  }
+
+  async function weigh(changed) {
+    try {
+      const r = await brainWeights(changed);
+      if (r.status !== true) throw new Error(r.detail ?? 'could not set the weights');
+    } catch (e) { error = e.message; }
+  }
+
+  function applyPreset(w) {
+    weights = { ...weights, ...w };
+    weigh(weights);
+  }
+
+  async function savePreset() {
+    const name = prompt('Name for this preset');
+    if (!name?.trim()) return;
+    try {
+      const r = await brainPresetSave(name.trim(), weights);
+      if (r.status !== true) throw new Error(r.detail ?? 'could not save the preset');
+      await loadPresets();
+    } catch (e) { error = e.message; }
+  }
+
+  async function deletePreset(name) {
+    if (!confirm(`Delete the preset "${name}"?`)) return;
+    try {
+      const r = await brainPresetDelete(name);
+      if (r.status !== true) throw new Error(r.detail ?? 'could not delete the preset');
+      await loadPresets();
+    } catch (e) { error = e.message; }
+  }
 
   $: s = $brainStatus ?? {};
   $: settle = s.settle ?? 0;
@@ -124,6 +177,7 @@
         const p = st.settings;
         ppg = p.ppg; anchor = p.anchor; bias = p.bias; wornValue = p.minValue;
         maxValue = p.maxValue; startLevel = p.start; up = p.up; down = p.down;
+        if (p.weights) weights = { ...weights, ...p.weights };
         synced = true;
       }
       running = st.running;
@@ -221,6 +275,7 @@
 
   onMount(() => {
     loadRecordings();
+    loadPresets();
     refresh();
     scan();
     poll = setInterval(refresh, 3000);
@@ -395,8 +450,8 @@
     </div>
     <p class="hint">
       0.50 is exactly how you were when you sat down. Green is calmer than that,
-      red is tenser. Brain waves decide whether the lamps rise; stillness, jaw
-      and heart rate can only hold them back. Set the bias just under where evidence sits once
+      red is tenser. The lamps follow their average, weighted in the Signals
+      panel. Set the bias just under where evidence sits once
       you have genuinely settled. Watching this closely is itself enough to
       keep you tense, so glance rather than stare.
     </p>
@@ -428,6 +483,35 @@
   </div>
   <p class="hint">Both ways are fast at first and flatten out: toward full when
     calmer than you arrived, toward dark when tenser. These apply live.</p>
+</div>
+
+<div class="panel">
+  <h2>Signals</h2>
+  <div class="presets">
+    {#each Object.entries(presets.builtin) as [name, w]}
+      <button class="reset" class:on={activePreset === name} on:click={() => applyPreset(w)}>{name}</button>
+    {/each}
+    {#each Object.entries(presets.saved) as [name, w]}
+      <span class="saved">
+        <button class="reset" class:on={activePreset === name} on:click={() => applyPreset(w)}>{name}</button>
+        <button class="link" title="delete this preset" on:click={() => deletePreset(name)}>×</button>
+      </span>
+    {/each}
+    <button class="link" on:click={savePreset}>save as new preset</button>
+  </div>
+  <div class="sliders">
+    {#each signals as sig}
+      <span class="sname">{sig.name}</span>
+      <input type="range" min="0" max="3" step="0.1" bind:value={weights[sig.key]}
+             on:change={() => weigh({ [sig.key]: weights[sig.key] })} />
+      <span class="sval">{Number(weights[sig.key]).toFixed(1)}</span>
+      <span class="dim shint">{sig.what}{Number(weights[sig.key]) === 0 ? ' — left out'
+        : s.scores?.[sig.key] != null ? ` — now ${s.scores[sig.key].toFixed(2)}` : ''}</span>
+    {/each}
+  </div>
+  <p class="hint">Each signal is scored against how you arrived, 0.50 being exactly
+    that. The lamps follow their average, weighted here: the calmer, the
+    brighter. 0 leaves a signal out. These apply live and are kept on the pi.</p>
 </div>
 
 <fieldset class="panel" disabled={running}>
@@ -528,6 +612,10 @@
   }
   .sliders input[type="range"] { width: 100%; }
   .shint { grid-column: 1 / -1; font-size: 0.8rem; margin-bottom: 0.6rem; }
+  .presets { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.9rem; }
+  .presets button.reset { font-size: 0.85rem; padding: 0.35rem 0.8rem; }
+  .presets button.on { background: #2d7d46; }
+  .presets .saved { display: inline-flex; align-items: center; gap: 0.15rem; }
   .tests {
     display: grid; grid-template-columns: 9rem 1fr; gap: 0.5rem 0.8rem;
     align-items: center; margin-bottom: 0.8rem; font-size: 0.9rem;
