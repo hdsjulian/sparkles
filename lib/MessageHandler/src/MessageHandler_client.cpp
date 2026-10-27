@@ -61,9 +61,10 @@ void MessageHandler::handleReceive() {
             }
             else if (incomingData.messageType == MSG_MIDI_PARAMS) {
                 message_midi_params midiParamsMessage = (message_midi_params)incomingData.payload.midiParams;
-                ledInstance->setMaxDistanceFromCenter(midiParamsMessage.distance);
+                ledInstance->setFalloffDistance(midiParamsMessage.distance);
                 ledInstance->setUseDistanceSwitch(midiParamsMessage.distanceSwitch);
                 ledInstance->setDistanceMode(midiParamsMessage.distanceMode);
+                ledInstance->setDistanceEdge(midiParamsMessage.distanceEdge);
                 ledInstance->setMidiParams(midiParamsMessage);
                 ESP_LOGI("MIDI", "Received Midi Params minVal %d, maxVal %d, minRms %.2f, maxRMS %.2f", midiParamsMessage.valMin, midiParamsMessage.valMax, midiParamsMessage.rmsMin, midiParamsMessage.rmsMax);
             }
@@ -121,7 +122,7 @@ void MessageHandler::handleReceive() {
                     ledInstance->setTestMode(false);
                 }
                 if (commandMessage.commandType == CMD_SET_MAX_DISTANCE) {
-                    ledInstance->setMaxDistanceFromCenter((int)commandMessage.param);
+                    ledInstance->setMaxDistanceFromCenter(commandMessage.param);
                     ESP_LOGI("MSG", "Max distance from center set to %.2f m", commandMessage.param);
                 }
                 if (commandMessage.commandType == CMD_OTA_UPDATE) {
@@ -193,6 +194,13 @@ void MessageHandler::handleReceive() {
                 if (configData.distance > 0) {
                     ledInstance->setDistanceFromCenter(configData.distance);
                     ESP_LOGI("MSG", "Setting distance from center to: %f", configData.distance);
+                }
+                if (configData.maxDistance > 0) {
+                    ledInstance->setMaxDistanceFromCenter(configData.maxDistance);
+                }
+                // an older master leaves this field unwritten, so only take a plausible speed
+                if (configData.soundSpeed > 300.0f && configData.soundSpeed < 370.0f) {
+                    ledInstance->setSoundSpeed(configData.soundSpeed);
                 }
                 else {
                 }
@@ -555,8 +563,8 @@ void MessageHandler::onDataRecv(const esp_now_recv_info * mac, const uint8_t *in
 }
 
 
-// Leave the mesh, join an AP, fetch a firmware image, come back rebooted or not
-// at all. Empty ssid/url mean "use what was compiled in", which is what the
+// Leave the mesh, join an AP, fetch a firmware image, come back rebooted either
+// way. Empty ssid/url mean "use what was compiled in", which is what the
 // bare CMD_OTA_UPDATE still does — a master that has never been told a network
 // behaves exactly as it did before.
 void MessageHandler::runOtaUpdate(const char* ssid, const char* password, const char* url) {
@@ -580,9 +588,13 @@ void MessageHandler::runOtaUpdate(const char* ssid, const char* password, const 
         delay(500);
         retries++;
     }
+    // Returning from here used to leave the radio hunting for the AP on its own
+    // channels, off the mesh until someone power cycled the board. A restart is
+    // the one sure way back, for a failed join and a failed download alike.
     if (WiFi.status() != WL_CONNECTED) {
-        ESP_LOGE("OTA", "Could not join %s, aborting the update", useSsid);
-        return;
+        ESP_LOGE("OTA", "Could not join %s, restarting to get back on the mesh", useSsid);
+        delay(100);
+        ESP.restart();
     }
 
     ESP_LOGI("OTA", "Joined %s, IP %s", useSsid, WiFi.localIP().toString().c_str());
@@ -597,6 +609,9 @@ void MessageHandler::runOtaUpdate(const char* ssid, const char* password, const 
         ota.setup();
     }
     ota.performUpdate(); // reboots on success
+    // still here: the download failed, or the pi said this build is already on it
+    delay(100);
+    ESP.restart();
 }
 
 void MessageHandler::announceAddressWrapper(void *pvParameters) {

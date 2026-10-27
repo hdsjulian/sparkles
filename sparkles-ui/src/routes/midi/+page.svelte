@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { getMidiParams, setMidiParams, getColors, setColors, getAudioLevel, setRmsThresholds } from '$lib/api.js';
+  import { getMidiParams, setMidiParams, getColors, setColors, getAudioLevel, setRmsThresholds, getAddressList } from '$lib/api.js';
   import NoUiSlider from '$lib/components/NoUiSlider.svelte';
 
   let error = '';
@@ -143,10 +143,17 @@
   let rangeMax = 800;
   let rmsMin = -60;
   let rmsMax = 0;
-  let mode = 'midi'; // 'midi' | 'frequency'
-  let distance = 100;
+  // the numbers the master and aubio use, MIDI_MODE and FREQUENCY_MODE in MyDefines.h
+  const MIDI_MODE = 1;
+  const FREQUENCY_MODE = 2;
+  let mode = FREQUENCY_MODE;
   let distanceSwitch = false;
-  let distanceMode = 'brightness'; // 'brightness' | 'delay'
+  let distanceMode = 0; // 0 = brightness, 1 = delay
+  // falloff radius in m; 0 on the wire means the boards use the calibrated max
+  let distance = 20;
+  let falloffAuto = true;
+  let calibratedMax = 0;
+  let distanceEdge = 50; // % of the centre's brightness a board at the falloff radius gets
   let shimmerHue = 31;
   let shimmerSat = 255;
 
@@ -189,10 +196,12 @@
       rangeMax = p.rangeMax ?? 800;
       rmsMin = p.rmsMin ?? -60;
       rmsMax = p.rmsMax ?? 0;
-      mode = p.mode ?? 'midi';
-      distance = p.distance ?? 100;
+      mode = p.mode ?? FREQUENCY_MODE;
+      falloffAuto = !(p.distance > 0);
+      if (!falloffAuto) distance = p.distance;
       distanceSwitch = !!p.distanceSwitch;
-      distanceMode = p.distanceMode ?? 'brightness';
+      distanceMode = p.distanceMode ?? 0;
+      distanceEdge = p.distanceEdge ?? 50;
       // raspi color store is the source of truth for hues
       const c = await getColors();
       hue = c.midi?.hue ?? hue;
@@ -203,6 +212,15 @@
     } catch (e) {
       error = `Failed to load MIDI params: ${e.message}`;
       loaded = true;
+    }
+    // only for showing what auto falloff means, the page works without it
+    try {
+      const data = await getAddressList();
+      calibratedMax = Math.max(0, ...(data.addresses ?? []).map(d => d.distance ?? 0));
+      // a hand-set radius starts from the calibrated one
+      if (falloffAuto && calibratedMax > 0) distance = Math.min(100, Math.max(1, Math.round(calibratedMax)));
+    } catch (e) {
+      calibratedMax = 0;
     }
   });
 
@@ -227,9 +245,10 @@
         rangeMax,
         minDb: rmsMin,
         maxDb: rmsMax,
-        distance,
+        distance: falloffAuto ? 0 : distance,
         distanceSwitch: distanceSwitch ? 1 : 0,
         distanceMode,
+        distanceEdge,
         mode
       });
       await setColors({
@@ -265,18 +284,18 @@
     <div class="card-title">Mode</div>
     <div class="mode-toggle">
       <button
-        class="btn {mode === 'midi' ? 'btn-primary' : 'btn-ghost'}"
-        on:click={() => { mode = 'midi'; }}
+        class="btn {mode === MIDI_MODE ? 'btn-primary' : 'btn-ghost'}"
+        on:click={() => { mode = MIDI_MODE; }}
       >MIDI</button>
       <button
-        class="btn {mode === 'frequency' ? 'btn-primary' : 'btn-ghost'}"
-        on:click={() => { mode = 'frequency'; }}
+        class="btn {mode === FREQUENCY_MODE ? 'btn-primary' : 'btn-ghost'}"
+        on:click={() => { mode = FREQUENCY_MODE; }}
       >Frequency</button>
     </div>
   </div>
 
   <!-- Instrument presets (frequency mode) -->
-  {#if mode === 'frequency'}
+  {#if mode === FREQUENCY_MODE}
   <div class="card" style="margin-bottom:1.25rem;">
     <div class="card-title">Instrument Presets</div>
     <div class="preset-grid">
@@ -291,14 +310,14 @@
 
   <!-- Pitch Range -->
   <div class="card" style="margin-bottom:1.25rem;">
-    <div class="card-title">Pitch Range {mode === 'frequency' ? '(Hz)' : '(MIDI note)'}</div>
+    <div class="card-title">Pitch Range {mode === FREQUENCY_MODE ? '(Hz)' : '(MIDI note)'}</div>
     <div class="slider-row">
       <span class="slider-val">{rangeMin}</span>
       <div class="slider-container">
         <NoUiSlider
           bind:this={pitchSlider}
-          min={mode === 'frequency' ? 20 : 0}
-          max={mode === 'frequency' ? 4000 : 127}
+          min={mode === FREQUENCY_MODE ? 20 : 0}
+          max={mode === FREQUENCY_MODE ? 4000 : 127}
           start={[rangeMin, rangeMax]}
           step={1}
           connect={true}
@@ -547,21 +566,7 @@
   <!-- Distance -->
   <div class="card" style="margin-bottom:1.25rem;">
     <div class="card-title">Distance</div>
-    <div class="slider-row" style="margin-bottom:0.75rem;">
-      <span class="slider-val">{distance}</span>
-      <div class="slider-container">
-        <NoUiSlider
-          bind:this={distSlider}
-          min={0}
-          max={1000}
-          start={distance}
-          step={1}
-          connect={true}
-          tooltips={true}
-          on:change={(e) => { distance = e.detail; }}
-        />
-      </div>
-    </div>
+    <p class="hint">Shapes the background shimmer by each lamp's distance from the last distance calibration.</p>
 
     <div class="switch-row">
       <label class="switch">
@@ -575,14 +580,64 @@
       <div class="radio-group" style="margin-top:0.75rem;">
         <div class="card-title">Distance Mode</div>
         <label class="radio-label">
-          <input type="radio" bind:group={distanceMode} value="brightness" />
+          <input type="radio" bind:group={distanceMode} value={0} />
           Brightness
         </label>
         <label class="radio-label">
-          <input type="radio" bind:group={distanceMode} value="delay" />
+          <input type="radio" bind:group={distanceMode} value={1} />
           Delay
         </label>
       </div>
+
+      {#if distanceMode === 0}
+        <div class="switch-row" style="margin-top:0.75rem;">
+          <label class="switch">
+            <input type="checkbox" bind:checked={falloffAuto} />
+            <span class="slider-track"></span>
+          </label>
+          <span class="switch-label">
+            Fall off to the calibrated max
+            ({calibratedMax > 0 ? `${calibratedMax.toFixed(1)} m` : 'no calibration yet'})
+          </span>
+        </div>
+        {#if !falloffAuto}
+          <div class="slider-row" style="margin-top:0.75rem;">
+            <span class="slider-val">{distance} m</span>
+            <div class="slider-container">
+              <NoUiSlider
+                bind:this={distSlider}
+                min={1}
+                max={100}
+                start={distance}
+                step={1}
+                connect={true}
+                tooltips={true}
+                on:change={(e) => { distance = Math.round(e.detail); }}
+              />
+            </div>
+          </div>
+        {/if}
+
+        <div class="card-title" style="margin-top:1rem;">Brightness at the edge</div>
+        <p class="hint">
+          Centre 100% · halfway {Math.round(100 - (100 - distanceEdge) / 2)}% · edge {distanceEdge}%
+          of what your voice gives the centre. Lower is a steeper falloff.
+        </p>
+        <div class="slider-row">
+          <span class="slider-val">{distanceEdge}%</span>
+          <div class="slider-container">
+            <NoUiSlider
+              min={0}
+              max={100}
+              start={distanceEdge}
+              step={1}
+              connect={true}
+              tooltips={true}
+              on:change={(e) => { distanceEdge = Math.round(e.detail); }}
+            />
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
 

@@ -327,6 +327,13 @@ void MessageHandler::handleReceive() {
                 writeStructsToFile(addressList, NUM_DEVICES, "/clientAddress");
                 sendSystemStatus();
                 serialEmitBoard(timerIndex, addressList[timerIndex]);
+                // a board that announced may have rebooted and lost its distance
+                // and midi params, both only ever sent once, so hand them over again
+                message_data configMessage = createConfigMessage(timerIndex);
+                pushToSendQueue(configMessage);
+                message_data midiParamsMessage = createMidiParamsMessage(getMidiParams());
+                memcpy(midiParamsMessage.targetAddress, addressList[timerIndex].address, 6);
+                pushToSendQueue(midiParamsMessage);
                 resumeAnimationLoop();
             }
             else if (incomingData.messageType == MSG_STATUS) {
@@ -539,6 +546,7 @@ void MessageHandler::handleSend() {
             WiFi.macAddress(messageData.senderAddress);
             switch (messageData.messageType) {
                 case MSG_LOG:
+                case MSG_OTA_REQUEST: // the credentials do not fit the compat size
                     esp_now_send(messageData.targetAddress, (uint8_t *) &messageData, sizeof(messageData));
                     break;
                 default:
@@ -727,29 +735,10 @@ void MessageHandler::servicePendingAnnounce() {
 void MessageHandler::runOTAUpdateTask() {
     ESP_LOGI("OTA", "OTA update task started");
     int sent = 0;
-    for (int i = 0; i < NUM_CLIENTS; i++) {
+    for (int i = 0; i < NUM_DEVICES; i++) {
         client_address item = getItemFromAddressList(i);
         if (item.active != ACTIVE) continue;
-        if (memcmp(item.address, "\x00\x00\x00\x00\x00\x00", 6) == 0) continue;
-
-        // the network and the url travel with the request: a board has no way
-        // to know either one, and the firmware lives on the pi, whose address
-        // depends on which of its two networks is currently up
-        message_data msg;
-        msg.messageType = MSG_OTA_REQUEST;
-        memcpy(msg.targetAddress, item.address, 6);
-        WiFi.macAddress(msg.senderAddress);
-        message_ota_request& req = msg.payload.otaRequest;
-        strncpy(req.ssid,     _otaSsid,     sizeof(req.ssid) - 1);
-        strncpy(req.password, _otaPassword, sizeof(req.password) - 1);
-        strncpy(req.url,      _otaUrl,      sizeof(req.url) - 1);
-        req.ssid[sizeof(req.ssid) - 1] = '\0';
-        req.password[sizeof(req.password) - 1] = '\0';
-        req.url[sizeof(req.url) - 1] = '\0';
-
-        addPeer(item.address);
-        // full frame, not the 80-byte compat size — the credentials do not fit
-        esp_now_send(item.address, (uint8_t*)&msg, sizeof(msg));
+        if (!sendOtaRequest(i)) continue;
 
         ESP_LOGI("OTA", "Sent OTA request to device %d (%d/%d) — network %s, url %s",
                  item.id, ++sent, getNumDevices(),
@@ -759,6 +748,30 @@ void MessageHandler::runOTAUpdateTask() {
     }
     ESP_LOGI("OTA", "OTA commands sent to %d devices", sent);
     vTaskDelete(otaUpdateHandle);
+}
+
+// One board, now. The pi decides who goes next for a rollout, since it is the
+// one serving the firmware and can see who is still downloading.
+bool MessageHandler::sendOtaRequest(int boardId) {
+    if (boardId < 0 || boardId >= NUM_DEVICES) return false;
+    client_address item = getItemFromAddressList(boardId);
+    if (memcmp(item.address, emptyAddress, 6) == 0) return false;
+
+    // the network and the url travel with the request: a board has no way
+    // to know either one, and the firmware lives on the pi, whose address
+    // depends on which of its two networks is currently up
+    message_data msg;
+    msg.messageType = MSG_OTA_REQUEST;
+    memcpy(msg.targetAddress, item.address, 6);
+    message_ota_request& req = msg.payload.otaRequest;
+    strncpy(req.ssid,     _otaSsid,     sizeof(req.ssid) - 1);
+    strncpy(req.password, _otaPassword, sizeof(req.password) - 1);
+    strncpy(req.url,      _otaUrl,      sizeof(req.url) - 1);
+    req.ssid[sizeof(req.ssid) - 1] = '\0';
+    req.password[sizeof(req.password) - 1] = '\0';
+    req.url[sizeof(req.url) - 1] = '\0';
+    pushToSendQueue(msg);
+    return true;
 }
 
 void MessageHandler::startCalculatePositionsTask() {
@@ -1231,12 +1244,7 @@ void MessageHandler::calculateDistances() {
         pushToSendQueue(configMessage);
     }
 
-    float maxDist = 0.0f;
-    for (int i = 0; i < NUM_DEVICES; i++) {
-        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) break;
-        if (addressList[i].distanceFromCenter > maxDist)
-            maxDist = addressList[i].distanceFromCenter;
-    }
+    float maxDist = getMaxDistanceFromCenter();
     ESP_LOGI("MSG", "Broadcasting max distance: %.2f m", maxDist);
     message_data maxDistMsg = createCommandMessage(CMD_SET_MAX_DISTANCE, true);
     maxDistMsg.payload.command.param = maxDist;

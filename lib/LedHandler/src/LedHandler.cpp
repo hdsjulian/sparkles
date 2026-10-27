@@ -495,12 +495,13 @@ unsigned long long LedHandler::calculateStrobeTime(message_animation& animationD
 
 
 
-// Helper: apply brightness attenuation based on distance
-static float applyDistanceAttenuation(float val, float d, float maxDist) {
+// Helper: apply brightness attenuation based on distance, a straight line from
+// full at the centre down to edge (0-1) at maxDist, and edge beyond it
+static float applyDistanceAttenuation(float val, float d, float maxDist, float edge) {
+    if (maxDist <= 0.0f) return val; // no calibration yet, nothing to fall off over
     if (d < 0.0f) d = 0.0f;
     if (d > maxDist) d = maxDist;
-    float factor = 1.0f - 0.5f * (d / maxDist);
-    if (factor < 0.5f) factor = 0.5f;
+    float factor = 1.0f - (1.0f - edge) * (d / maxDist);
     return val * factor;
 }
 
@@ -521,10 +522,27 @@ void LedHandler::runBackgroundShimmer() {
 
     TickType_t lastUpdateTick = xTaskGetTickCount();
 
-    // Pending update slot for delay mode
-    message_animation pendingAnimation = {};
-    TickType_t        pendingApplyAt   = 0;
-    bool              pendingValid     = false;
+    // Updates waiting out their distance delay, oldest first. A single slot was
+    // replaced by every new frame and its deadline pushed back with it, so a board
+    // farther away than one frame of sound applied nothing until the stream paused
+    const int         PENDING_SIZE = 16;
+    message_animation pendingAnimations[PENDING_SIZE];
+    TickType_t        pendingApplyAt[PENDING_SIZE];
+    int               pendingHead  = 0;
+    int               pendingCount = 0;
+
+    auto pushPending = [&](message_animation& upd) {
+        uint32_t delayMs = (uint32_t)((getDistanceFromCenter() / getSoundSpeed()) * 1000.0f);
+        if (pendingCount == PENDING_SIZE) {
+            // full: the oldest is superseded by everything queued behind it
+            pendingHead = (pendingHead + 1) % PENDING_SIZE;
+            pendingCount--;
+        }
+        int slot = (pendingHead + pendingCount) % PENDING_SIZE;
+        pendingAnimations[slot] = upd;
+        pendingApplyAt[slot]    = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
+        pendingCount++;
+    };
 
     // Fade from current value to targetVal over durationMs.
     // Writes to LEDs each step. Returns true if interrupted by a queue message,
@@ -558,7 +576,7 @@ void LedHandler::runBackgroundShimmer() {
 
         if (!inDelayMode && getDistanceFromCenter() > 0.0f && getUseDistanceSwitch()) {
             newVal = applyDistanceAttenuation(newVal,
-                getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                getDistanceFromCenter(), getFalloffDistance(), getDistanceEdge());
         }
 
         hue = newHue; saturation = newSat;
@@ -593,11 +611,7 @@ void LedHandler::runBackgroundShimmer() {
                          && getDistanceFromCenter() > 0.0f;
 
             if (useDelay) {
-                float d = getDistanceFromCenter();
-                uint32_t delayMs = (uint32_t)((d / 343.0f) * 1000.0f);
-                pendingAnimation = newAnimation;
-                pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
-                pendingValid     = true;
+                pushPending(newAnimation);
             } else {
                 message_animation interrupted;
                 if (applyUpdate(newAnimation, false, &interrupted)) {
@@ -608,7 +622,7 @@ void LedHandler::runBackgroundShimmer() {
                         saturation = interrupted.animationParams.backgroundShimmer.saturation;
                         value      = interrupted.animationParams.backgroundShimmer.value;
                         if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch())
-                            value = applyDistanceAttenuation(value, getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                            value = applyDistanceAttenuation(value, getDistanceFromCenter(), getFalloffDistance(), getDistanceEdge());
                     } else {
                         value = 0;
                     }
@@ -616,40 +630,44 @@ void LedHandler::runBackgroundShimmer() {
             }
         }
 
-        // Apply a delayed update once its time has come
-        if (pendingValid && xTaskGetTickCount() >= pendingApplyAt) {
-            pendingValid = false;
+        // Apply delayed updates whose time has come, in the order they arrived
+        while (pendingCount > 0 && xTaskGetTickCount() >= pendingApplyAt[pendingHead]) {
+            message_animation due = pendingAnimations[pendingHead];
+            pendingHead = (pendingHead + 1) % PENDING_SIZE;
+            pendingCount--;
             message_animation interrupted;
-            if (applyUpdate(pendingAnimation, true, &interrupted)) {
-                // reschedule the interrupting update
-                float d = getDistanceFromCenter();
-                uint32_t delayMs = (uint32_t)((d / 343.0f) * 1000.0f);
-                pendingAnimation = interrupted;
-                pendingApplyAt   = xTaskGetTickCount() + pdMS_TO_TICKS(delayMs);
-                pendingValid     = true;
+            if (applyUpdate(due, true, &interrupted)) {
+                // arrived mid-fade, so it waits out its own delay like the rest
+                lastUpdateTick = xTaskGetTickCount();
+                pushPending(interrupted);
             }
         }
 
         // Inactivity decay
-        if (!gotUpdate && !pendingValid && value > 0) {
+        if (!gotUpdate && pendingCount == 0 && value > 0) {
             TickType_t now = xTaskGetTickCount();
             if ((now - lastUpdateTick) >= pdMS_TO_TICKS(INACTIVITY_MS)) {
                 message_animation interrupted;
                 bool interr = doFade(0, INACTIVITY_FADE_MS, &interrupted);
                 if (interr) {
                     lastUpdateTick = xTaskGetTickCount();
-                    hue        = interrupted.animationParams.backgroundShimmer.hue;
-                    saturation = interrupted.animationParams.backgroundShimmer.saturation;
-                    value      = interrupted.animationParams.backgroundShimmer.value;
-                    if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch() && getDistanceMode() == 0)
-                        value = applyDistanceAttenuation(value, getDistanceFromCenter(), (float)getMaxDistanceFromCenter());
+                    if (getUseDistanceSwitch() && getDistanceMode() == 1 && getDistanceFromCenter() > 0.0f) {
+                        // the stream is back, but this board still hears it late
+                        pushPending(interrupted);
+                    } else {
+                        hue        = interrupted.animationParams.backgroundShimmer.hue;
+                        saturation = interrupted.animationParams.backgroundShimmer.saturation;
+                        value      = interrupted.animationParams.backgroundShimmer.value;
+                        if (getDistanceFromCenter() > 0.0f && getUseDistanceSwitch())
+                            value = applyDistanceAttenuation(value, getDistanceFromCenter(), getFalloffDistance(), getDistanceEdge());
+                    }
                 } else {
                     value = 0;
                 }
             }
         }
 
-        if (value == 0 && !pendingValid) {
+        if (value == 0 && pendingCount == 0) {
             ledsOff();
             setCurrentAnimation(OFF);
             break;
@@ -970,9 +988,9 @@ void LedHandler::runBreath() {
 
     // Phase offset based on distance from center
     float dist = getDistanceFromCenter();
-    int maxDist = getMaxDistanceFromCenter();
-    uint32_t phaseOffsetMs = (maxDist > 0)
-        ? (uint32_t)((dist / (float)maxDist) * (float)p.spreadDelay)
+    float maxDist = getMaxDistanceFromCenter();
+    uint32_t phaseOffsetMs = (maxDist > 0.0f)
+        ? (uint32_t)((dist / maxDist) * (float)p.spreadDelay)
         : 0;
 
     uint32_t cycleMs = p.cycleDuration > 0 ? p.cycleDuration : 4000;

@@ -227,20 +227,70 @@ void LedHandler::setBackgroundShimmerFadeout(bool fadeout) {
     }
 }
 
-void LedHandler::setMaxDistanceFromCenter(int distance) {
+void LedHandler::setMaxDistanceFromCenter(float distance) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         maxDistanceFromCenter = distance;
         xSemaphoreGive(configMutex);
     }
 }
 
-int LedHandler::getMaxDistanceFromCenter() {
-    int returnDistance;
+float LedHandler::getMaxDistanceFromCenter() {
+    float returnDistance;
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         returnDistance = maxDistanceFromCenter;
         xSemaphoreGive(configMutex);
     }
     return returnDistance;
+}
+
+void LedHandler::setFalloffDistance(int distance) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        falloffDistance = distance;
+        xSemaphoreGive(configMutex);
+    }
+}
+
+// the radius the shimmer dims out to, the calibrated max unless one was set by hand
+float LedHandler::getFalloffDistance() {
+    float returnDistance;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnDistance = falloffDistance > 0 ? (float)falloffDistance : maxDistanceFromCenter;
+        xSemaphoreGive(configMutex);
+    }
+    return returnDistance;
+}
+
+void LedHandler::setSoundSpeed(float mps) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        soundSpeed = mps;
+        xSemaphoreGive(configMutex);
+    }
+}
+
+float LedHandler::getSoundSpeed() {
+    float returnSpeed;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnSpeed = soundSpeed;
+        xSemaphoreGive(configMutex);
+    }
+    return returnSpeed;
+}
+
+void LedHandler::setDistanceEdge(int percent) {
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        distanceEdge = constrain(percent, 0, 100);
+        xSemaphoreGive(configMutex);
+    }
+}
+
+// as a factor, 0.5 means a board at the falloff radius gets half the centre's brightness
+float LedHandler::getDistanceEdge() {
+    float returnEdge;
+    if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
+        returnEdge = distanceEdge / 100.0f;
+        xSemaphoreGive(configMutex);
+    }
+    return returnEdge;
 }
 
 bool LedHandler::getUseDistanceSwitch() {

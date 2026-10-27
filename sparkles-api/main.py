@@ -6,6 +6,7 @@ Serial: /dev/ttyACM0  (override with SPARKLES_PORT env var)
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI, Query, Request, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, RedirectResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -76,9 +77,11 @@ def _save_settings(data: dict):
 # authenticate with. The 401 it got instead was silent: it falls back to its
 # compiled-in defaults, so every parameter set in the UI — mode included — was
 # quietly ignored and the pitch detector always ran in frequency mode.
+# /firmware.bin is fetched by the boards themselves during an OTA, and they have
+# no session either: behind the login every board got a 401 and kept its old build.
 _PUBLIC_PATHS = {"/api/login", "/login", "/favicon.ico", "/", "/favicon.png", "/karaoke",
                  "/internal/keyboard_event", "/getMidiParams",
-                 "/internal/aubio_level"}
+                 "/internal/aubio_level", "/firmware.bin"}
 # /keyboard/ is public so the karaoke page can list and play songs without login
 _PUBLIC_PREFIXES = ("/_app/", "/login", "/karaoke", "/keyboard/")
 
@@ -912,14 +915,18 @@ async def set_rms_thresholds(rmsMin: float = Query(...), rmsMax: float = Query(.
     _save_settings(settings)
 
     # push to the master too, so the mesh agrees with what is stored. Needs the
-    # whole parameter set, so read the current one and change only these two.
+    # whole parameter set: the saved one, or the master's if nothing was saved yet
     try:
-        current = await _request({"cmd": "get_midi_params"}, "midi_params")
-        payload = dict(current) if isinstance(current, dict) else {}
-        payload.pop("event", None)
-        payload.update({"cmd": "set_midi_params", "minDb": settings["rmsMin"],
-                        "maxDb": settings["rmsMax"]})
-        _send(payload)
+        params = dict(bridge.midi_params)
+        if not params:
+            current = await _request({"cmd": "get_midi_params"}, "midi_params")
+            params = dict(current) if isinstance(current, dict) else {}
+            params.pop("event", None)
+            # the master answers with hue/saturation but is set with midiHue/midiSaturation
+            params["midiHue"] = params.pop("hue", 0)
+            params["midiSaturation"] = params.pop("saturation", 255)
+        params.update({"minDb": settings["rmsMin"], "maxDb": settings["rmsMax"]})
+        bridge.set_midi_params(params)
     except Exception as exc:
         logger.warning("stored thresholds but could not push to the master: %s", exc)
 
@@ -956,12 +963,13 @@ async def set_midi_params(
     minDb: float = Query(...),
     maxDb: float = Query(...),
     mode: int = Query(...),
-    distance: int = Query(default=100),
+    distance: int = Query(default=0),
     distanceSwitch: bool = Query(default=False),
     distanceMode: int = Query(default=0),
+    distanceEdge: int = Query(default=50, ge=0, le=100),
 ):
-    _send({
-        "cmd": "set_midi_params",
+    # stored by the bridge and pushed again on every connect, the master forgets on reboot
+    bridge.set_midi_params({
         "minVal": minVal, "maxVal": maxVal,
         "minSat": minSat, "maxSat": maxSat,
         "midiHue": midiHue, "midiSaturation": midiSaturation,
@@ -969,6 +977,7 @@ async def set_midi_params(
         "minDb": minDb, "maxDb": maxDb,
         "mode": mode,
         "distance": distance, "distanceSwitch": distanceSwitch, "distanceMode": distanceMode,
+        "distanceEdge": distanceEdge,
     })
     # Persist the thresholds here too, exactly as the level test does. Without
     # this, getMidiParams keeps overlaying the stored calibration on the way out
@@ -1151,17 +1160,9 @@ async def command_abort_distance_calibration():
 # Admin / system
 # ---------------------------------------------------------------------------
 
-@app.get("/commandOTAUpdate")
-async def command_ota_update():
-    """Send every active board off to fetch new firmware.
-
-    The network goes out first and is re-read here rather than trusted from
-    connect time: the pi moves between WLIAN and its own AP fallback while the
-    master stays up, and a board sent to a network that is not there leaves the
-    mesh and does not come back on its own."""
-    _assert_connected()
+def _ota_network_checked() -> tuple[str, str, str]:
+    """(ssid, password, url) for an OTA, or a 503 naming what is missing."""
     ssid, password, url = bridge.ota_network()
-
     if not ssid:
         raise HTTPException(503, detail="Could not read the Pi's current WiFi network — "
                                         "nothing sent, no board has left the mesh")
@@ -1171,6 +1172,19 @@ async def command_ota_update():
     if not url:
         raise HTTPException(503, detail="Could not detect the Pi's own IP, so the boards would "
                                         "have no firmware URL to fetch. Nothing sent.")
+    return ssid, password, url
+
+
+@app.get("/commandOTAUpdate")
+async def command_ota_update():
+    """Send every active board off to fetch new firmware.
+
+    The network goes out first and is re-read here rather than trusted from
+    connect time: the pi moves between WLIAN and its own AP fallback while the
+    master stays up, and a board sent to a network that is not there leaves the
+    mesh and does not come back on its own."""
+    _assert_connected()
+    ssid, password, url = _ota_network_checked()
 
     bridge.send({"cmd": "set_ota_wifi", "ssid": ssid, "password": password})
     bridge.send({"cmd": "set_ota_url", "url": url})
@@ -1186,6 +1200,202 @@ async def ota_network():
     ssid, password, url = bridge.ota_network()
     return {"ssid": ssid, "url": url, "hasPassword": password is not None,
             "ready": bool(ssid and password is not None and url)}
+
+
+# A rollout keeps at most this many boards away from the mesh at once, which is
+# also the most that are ever on the pi's wifi and downloading from it
+_OTA_PARALLEL = 5
+_OTA_FETCH_TIMEOUT_S = 30   # asked -> its download starts; joining alone takes a board up to 10 s
+_OTA_STALL_TIMEOUT_S = 20   # a download that moves nothing for this long is dead
+_OTA_BACK_TIMEOUT_S = 90    # downloaded -> heard on the mesh again
+
+_ota_running = False
+
+
+async def _fetch_roster(timeout: float = 5.0) -> list[dict] | None:
+    """Every board the master knows, as its update_board frames, by id.
+
+    get_address_list is answered with one update_board per board and then an
+    address_list that carries only the count, so the boards are picked off the
+    stream on the way to it. A line the master had no room for is a board left
+    out, so it asks again while the count is not met."""
+    boards: dict[int, dict] = {}
+    queue = bridge.subscribe()
+    try:
+        loop = asyncio.get_event_loop()
+        for _ in range(3):
+            bridge.send({"cmd": "get_address_list"})
+            deadline = loop.time() + timeout
+            count = None
+            while count is None:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    return None
+                try:
+                    frame = await asyncio.wait_for(queue.get(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    return None
+                if frame.get("event") == "update_board" and frame.get("id") is not None:
+                    boards[frame["id"]] = frame
+                elif frame.get("event") == "address_list":
+                    count = frame.get("numDevices", 0)
+            if len(boards) >= count:
+                break
+    finally:
+        bridge.unsubscribe(queue)
+    return [boards[i] for i in sorted(boards)]
+
+
+@app.get("/otaRollout")
+async def ota_rollout(
+    request: Request,
+    parallel: int = Query(default=_OTA_PARALLEL, ge=1, le=10),
+    boards: str = Query(default=""),
+) -> StreamingResponse:
+    """Update the boards one by one, never more than `parallel` away at once.
+
+    A board counts as away from the moment it is asked until it is heard on the
+    mesh again: joining the pi's wifi, downloading from it, and the reboot. Every
+    board in the master's list is asked, inactive ones too since after a master
+    reboot they all are, or only the ids in `boards` (comma-separated) to retry
+    the ones a previous run named. Closing the stream stops the asking; boards
+    already away finish on their own."""
+    global _ota_running
+    _assert_connected()
+    ssid, password, url = _ota_network_checked()
+    if not os.path.isfile(FIRMWARE_PATH):
+        raise HTTPException(409, detail="No firmware on the Pi to hand out")
+    try:
+        wanted = [int(b) for b in boards.split(",") if b.strip()]
+    except ValueError:
+        raise HTTPException(400, detail="boards is a comma-separated list of board ids")
+
+    # set here, not inside the generator, for the same reason as the health check
+    if _ota_running:
+        raise HTTPException(409, detail="An OTA rollout is already running")
+    _ota_running = True
+
+    async def generator() -> AsyncGenerator[str, None]:
+        global _ota_running
+
+        def emit(event: str, data: dict) -> str:
+            return f"event: {event}\ndata: {json.dumps({'event': event, **data})}\n\n"
+
+        try:
+            roster = await _fetch_roster()
+            if roster is None:
+                yield emit("ota_error", {"msg": "Master did not send its address list, nothing sent"})
+                return
+            macs = {b["id"]: b["address"].lower() for b in roster if b.get("address")}
+            targets = [b for b in (wanted or list(macs)) if b in macs]
+            unknown = [b for b in wanted if b not in macs]
+
+            bridge.send({"cmd": "set_ota_wifi", "ssid": ssid, "password": password})
+            bridge.send({"cmd": "set_ota_url", "url": url})
+            msg = f"updating {len(targets)} board(s) over {ssid}, at most {parallel} at a time"
+            if unknown:
+                msg += f", the master has no board {unknown}"
+            yield emit("ota_start", {"total": len(targets), "boardIds": targets, "unknownIds": unknown,
+                                     "parallel": parallel, "ssid": ssid, "url": url, "msg": msg})
+
+            pending = list(targets)
+            away: dict[int, dict] = {}      # boardId -> {"phase", "since"}
+            updated: list[int] = []
+            current: list[int] = []
+            not_back: list[int] = []
+            failed: dict[int, str] = {}
+
+            def board(event: str, board_id: int, phase: str, text: str) -> str:
+                done = len(targets) - len(pending) - len(away)
+                return emit(event, {"boardId": board_id, "phase": phase, "away": len(away),
+                                    "done": done, "total": len(targets),
+                                    "msg": f"board {board_id}: {text}  ({done}/{len(targets)} done, "
+                                           f"{len(away)} away)"})
+
+            # one subscription for the whole run: the reboot is only seen as the
+            # board turning up on the mesh again
+            queue = bridge.subscribe()
+            try:
+                while pending or away:
+                    if await request.is_disconnected():
+                        yield emit("ota_cancelled", {"msg": "stopped asking, boards still away "
+                                                            "finish on their own"})
+                        return
+
+                    while pending and len(away) < parallel:
+                        board_id = pending.pop(0)
+                        _ota_downloads.pop(macs[board_id], None)
+                        ack = await bridge.request({"cmd": "ota_board", "boardId": board_id},
+                                                   "ota_sent", 3.0)
+                        if ack is None:
+                            yield emit("ota_error", {"msg": "The master does not answer ota_board — is it "
+                                                            "on the new firmware? Stopped asking."})
+                            return
+                        if not ack.get("ok"):
+                            failed[board_id] = "the master has no address for it"
+                            yield board("ota_board_failed", board_id, "failed", failed[board_id])
+                            continue
+                        away[board_id] = {"phase": "asked", "since": time.monotonic()}
+                        yield board("ota_board", board_id, "asked", "asked")
+
+                    while not queue.empty():
+                        frame = queue.get_nowait()
+                        board_id = frame.get("id")
+                        if (frame.get("event") == "update_board" and frame.get("status") == "active"
+                                and board_id in away
+                                and away[board_id]["phase"] in ("downloaded", "current")):
+                            phase = away.pop(board_id)["phase"]
+                            (current if phase == "current" else updated).append(board_id)
+                            yield board("ota_board", board_id, "back", "back on the mesh")
+
+                    now = time.monotonic()
+                    for board_id, b in list(away.items()):
+                        d = _ota_downloads.get(macs[board_id])
+                        if b["phase"] == "asked":
+                            if d and d["current"]:
+                                b.update(phase="current", since=now)
+                                yield board("ota_board", board_id, "current", "already on this build")
+                            elif d:
+                                b.update(phase="downloading", since=now)
+                                yield board("ota_board", board_id, "downloading", "downloading")
+                            elif now - b["since"] > _OTA_FETCH_TIMEOUT_S:
+                                del away[board_id]
+                                failed[board_id] = "never fetched the firmware"
+                                yield board("ota_board_failed", board_id, "failed", failed[board_id])
+                                continue
+                        if b["phase"] == "downloading":
+                            if d["done"] and d["sent"] == d["size"]:
+                                took = now - b["since"]
+                                b.update(phase="downloaded", since=now)
+                                yield board("ota_board", board_id, "downloaded",
+                                            f"downloaded in {took:.0f} s, rebooting")
+                            elif d["done"] or now - d["last"] > _OTA_STALL_TIMEOUT_S:
+                                del away[board_id]
+                                failed[board_id] = f"download broke off at {100 * d['sent'] // d['size']}%"
+                                yield board("ota_board_failed", board_id, "failed", failed[board_id])
+                                continue
+                        if b["phase"] in ("downloaded", "current") and now - b["since"] > _OTA_BACK_TIMEOUT_S:
+                            del away[board_id]
+                            not_back.append(board_id)
+                            yield board("ota_board_failed", board_id, "not_back",
+                                        f"not heard on the mesh {_OTA_BACK_TIMEOUT_S} s after its download")
+
+                    await asyncio.sleep(0.5)
+
+                parts = [f"{len(updated)} updated", f"{len(current)} already on this build"]
+                if not_back:
+                    parts.append(f"{len(not_back)} downloaded but not heard back {not_back}")
+                if failed:
+                    parts.append(f"{len(failed)} failed {sorted(failed)}")
+                yield emit("ota_done", {"updated": updated, "current": current, "notBack": not_back,
+                                        "failed": failed, "msg": "done: " + ", ".join(parts)})
+            finally:
+                bridge.unsubscribe(queue)
+        finally:
+            _ota_running = False
+
+    return StreamingResponse(generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/toggleTestMode")
@@ -1598,12 +1808,12 @@ async def system_health(
         try:
             # the master owns the roster, so ask it rather than trusting
             # whatever the browser happened to have on screen
-            roster = await bridge.request({"cmd": "get_address_list"}, "address_list", 5.0)
+            roster = await _fetch_roster()
             if roster is None:
                 yield emit("health_check_error", {"detail": "Master did not send its address list"})
                 return
 
-            boards = [a["id"] for a in roster.get("addresses", []) if a.get("id") is not None]
+            boards = [a["id"] for a in roster]
             if not boards:
                 yield emit("health_check_done", {"total": 0, "pinged": 0, "pings": 0,
                                                  "responded": 0, "noResponse": 0, "passes": passes,
@@ -1855,12 +2065,43 @@ async def compile_stream(
 # Firmware OTA
 # ---------------------------------------------------------------------------
 
+# Firmware downloads by board, keyed by the STA MAC that HTTPUpdate sends along,
+# so an OTA rollout can tell who is downloading, who is done and who never came
+_ota_downloads: dict[str, dict] = {}
+
+
 @app.get("/firmware.bin")
-async def get_firmware():
+async def get_firmware(request: Request):
     if not os.path.isfile(FIRMWARE_PATH):
         raise HTTPException(404, detail="No firmware uploaded yet")
-    return FileResponse(FIRMWARE_PATH, media_type="application/octet-stream",
-                        filename="firmware.bin")
+    mac = request.headers.get("x-esp32-sta-mac", "").lower()
+    if not mac:
+        # a browser or curl, not a board
+        return FileResponse(FIRMWARE_PATH, media_type="application/octet-stream",
+                            filename="firmware.bin")
+
+    with open(FIRMWARE_PATH, "rb") as f:
+        image = f.read()
+    state = {"size": len(image), "sent": 0, "last": time.monotonic(), "done": False, "current": False}
+    _ota_downloads[mac] = state
+    # a board already running this exact image is told so instead of sent it
+    # again, which keeps a repeated rollout from being a full one
+    if request.headers.get("x-esp32-sketch-md5", "").lower() == hashlib.md5(image).hexdigest():
+        state.update(done=True, current=True)
+        return Response(status_code=304)
+
+    async def chunks():
+        try:
+            for start in range(0, len(image), 8192):
+                yield image[start:start + 8192]
+                state["sent"] = min(start + 8192, len(image))
+                state["last"] = time.monotonic()
+        finally:
+            state["done"] = True
+
+    # HTTPUpdate refuses a response without a length
+    return StreamingResponse(chunks(), media_type="application/octet-stream",
+                             headers={"Content-Length": str(len(image)), "X-Accel-Buffering": "no"})
 
 
 @app.post("/upload-firmware")

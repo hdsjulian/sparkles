@@ -54,8 +54,14 @@ public:
     void setBackgroundShimmerFadeout(bool fadeout);
     float getDistanceFromCenter();
     void setDistanceFromCenter(float distance);
-    int getMaxDistanceFromCenter();
-    void setMaxDistanceFromCenter(int distance);
+    float getMaxDistanceFromCenter();
+    void setMaxDistanceFromCenter(float distance);
+    float getFalloffDistance();
+    void setFalloffDistance(int distance);
+    float getSoundSpeed();
+    void setSoundSpeed(float mps);
+    float getDistanceEdge();
+    void setDistanceEdge(int percent);
     void setUseDistanceSwitch(bool use);
     bool getUseDistanceSwitch();
     void setDistanceMode(int mode);
@@ -131,7 +137,10 @@ private:
     float xLocation;
     float yLocation;
     float distanceFromCenter;
-    int maxDistanceFromCenter;
+    float maxDistanceFromCenter = 0.0f; // farthest board of the last calibration
+    int falloffDistance = 0;            // set on the midi page, 0 = use maxDistanceFromCenter
+    float soundSpeed = 343.0f;          // m/s, the one the calibration used once a config arrives
+    int distanceEdge = 50;              // shimmer brightness at the falloff radius, % of the centre's
     long long microsUntilStart;
     long long microsUntilEnd = 0;
     bool sustain;

@@ -76,6 +76,9 @@ _SPEAKER_PATH     = os.environ.get("SPARKLES_SPEAKER", "/home/julian/sparkles/sp
 # the air temperature, for the speed of sound the master turns flight times into
 # distances with; re-pushed on every serial connect like the speaker delay
 _AIR_PATH         = os.environ.get("SPARKLES_AIR", "/home/julian/sparkles/sparkles-api/air.json")
+# the midi params (aubio thresholds, distance effects): the master holds them in RAM
+# only, so they are re-pushed on every serial connect like the speaker delay
+_MIDI_PARAMS_PATH = os.environ.get("SPARKLES_MIDI_PARAMS", "/home/julian/sparkles/sparkles-api/midi_params.json")
 
 
 def sound_speed(temp_c: float) -> float:
@@ -199,6 +202,7 @@ class SerialBridge:
         self.schedule = self._load_schedule()
         self.speaker = self._load_speaker()
         self.air = self._load_air()
+        self.midi_params = self._load_midi_params()
         self.clock_trusted = self._load_clock_trust()
         self._clock_negotiated = True  # armed (set False) on each serial connect
         self.sleep_test_events = self._load_sleep_test_events()
@@ -383,6 +387,29 @@ class SerialBridge:
 
     def _send_sound_speed(self):
         self.send({"cmd": "set_sound_speed", "mps": round(self.sound_speed(), 2)})
+
+    @staticmethod
+    def _load_midi_params() -> dict:
+        try:
+            with open(_MIDI_PARAMS_PATH) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def set_midi_params(self, params: dict):
+        """params are the set_midi_params fields, without the cmd."""
+        self.midi_params = dict(params)
+        try:
+            with open(_MIDI_PARAMS_PATH, "w") as f:
+                json.dump(self.midi_params, f, indent=2)
+        except Exception as exc:
+            logger.warning("Could not save midi params to %s: %s", _MIDI_PARAMS_PATH, exc)
+        self._send_midi_params()
+
+    def _send_midi_params(self):
+        # nothing saved yet: the master keeps its compiled-in defaults
+        if self.midi_params:
+            self.send({"cmd": "set_midi_params", **self.midi_params})
 
     @staticmethod
     def _load_sleep_test_events() -> list:
@@ -786,6 +813,7 @@ class SerialBridge:
             self._send_clock_and_schedule()
             self._send_speaker_delay()
             self._send_sound_speed()
+            self._send_midi_params()
 
             # --- read loop (TX happens on the dedicated writer thread) ---
             # readline()'s timeout runs from the call, not from the last byte, so

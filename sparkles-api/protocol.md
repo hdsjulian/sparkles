@@ -23,7 +23,7 @@ Every command frame has at minimum `{"cmd": "<name>", ...params}`.
 | `set_sound_speed` | `mps: float` | speed of sound for turning flight times into distances, from the air temperature on the pi; kept in NVS, re-sent on every connect, answered with `sound_speed` |
 | `set_speaker_delay` | `us: int` | the speaker's own delay, taken off every calibration chirp (not off latency tests); kept in NVS, re-sent by the pi on every connect, answered with `speaker_delay` |
 | `set_wakeup_time` | `hours, minutes, seconds` | schedule wakeup |
-| `set_midi_params` | `minVal, maxVal, minSat, maxSat, midiHue, midiSaturation, rangeMin, rangeMax, minDb, maxDb, mode, distance, distanceSwitch, distanceMode` | MIDI params |
+| `set_midi_params` | `minVal, maxVal, minSat, maxSat, midiHue, midiSaturation, rangeMin, rangeMax, minDb, maxDb, mode, distance, distanceSwitch, distanceMode, distanceEdge` | MIDI params. `mode` 1 = MIDI, 2 = frequency. `distance` is the shimmer falloff radius in m, 0 = the calibrated max. `distanceMode` 0 = brightness, 1 = delay. `distanceEdge` (optional, 50 if missing) is the brightness at that radius in % of the centre's. Held in RAM on the master, so the pi stores them and re-sends on every connect |
 | `set_darkroom_params` | `strobeMin, strobeMax, redlightMin, redlightMax, candlelightMin, candlelightMax, redLightEnabled, candleLightEnabled` | darkroom params |
 | `get_address_list` | — | request address list |
 | `get_midi_params` | — | request MIDI params |
@@ -43,6 +43,7 @@ Every command frame has at minimum `{"cmd": "<name>", ...params}`.
 | `dist_cal_cancel` | — | cancel distance calibration |
 | `dist_cal_abort` | — | abort distance calibration |
 | `ota_update` | — | start OTA update. Send `set_ota_wifi` and `set_ota_url` first — they travel to the clients with the request |
+| `ota_board` | `boardId: int` | send just this board off to update, answered with `ota_sent`. The pi's rollout uses it to keep only a few boards away at once |
 | `set_ota_url` | `url: str` | where the firmware image lives, i.e. this pi |
 | `set_ota_wifi` | `ssid: str, password: str` | the network clients should join for an OTA — the one the pi is currently on |
 | `toggle_test_mode` | — | toggle test mode |
@@ -74,6 +75,7 @@ Every event frame has `{"event": "<name>", ...data}`.
 | `darkroom_params` | `strobeMin, strobeMax, ...` | darkroom params response |
 | `system_info` | `systemTime, sleepSet, sleepIn, sleepAtH, sleepAtM, sleepAtS, sleepDuration` | system info response |
 | `client_health` | `boardId, reportedId, batteryPercentage, freeHeap, minFreeHeap, uptimeS, rssi, resetReason, version` | one client's reply to `health_ping`. `rssi` is stamped by the master from the frame that carried it; a board that never answers sends nothing at all, so silence is the only signal that it is gone |
+| `ota_sent` | `boardId: int, ok: bool` | reply to `ota_board`; `ok` false means the master has no address for that board |
 | `test_mode` | `testMode: bool` | test mode toggled |
 | `logging` | `logging: bool` | logging toggled |
 | `ack` | `cmd: str, ok: bool, [msg: str]` | generic command acknowledgement |

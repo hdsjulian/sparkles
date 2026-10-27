@@ -17,11 +17,11 @@ access:
   # API endpoint rules: "METHOD /path" — exact or prefix match
   api:
     "POST /upload-firmware":              [admin]
-    "GET /firmware.bin":                  [admin]
     "GET /compile-stream":                [admin]
     "GET /current-version":               [admin, user]
     "GET /serial-status":                 [admin, user]
     "GET /commandOTAUpdate":              [admin]
+    "GET /otaRollout":                    [admin]
     "GET /factoryReset":                  [admin]
     "GET /resetSystem":                   [admin]
     "GET /commandResetClient":            [admin]

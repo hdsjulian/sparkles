@@ -85,13 +85,14 @@ public:
     bool removeDeviceAt(int index);
     void removeAllDevices();
     message_midi_params getMidiParams();
-    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode);
+    void setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode, int distanceEdge);
     message_darkroom_params getDarkroomParams();
     void setDarkroomParams(int strobeMin, int strobeMax, int redlightMin, int redlightMax, int candlelightMin, int candlelightMax, bool redLightEnabled, bool candleLightEnabled);
     bool getCalibrationTest();
     void setCalibrationTest(bool test);
     message_data createClapMessage(bool isHost = false);
     message_data createConfigMessage(int boardId);
+    float getMaxDistanceFromCenter();
     message_data createUpdateVersionMessage(Version version);
     message_data createCommandMessage(int commandType, bool isBroadcast = false);
     message_data createStatusMessage();
@@ -155,6 +156,7 @@ public:
     void runMicTest();
     static void runMicTestWrapper(void *pvParameters);
     void startOTAUpdateTask();
+    bool sendOtaRequest(int boardId);
     void setOtaUrl(const char* url);
     void setOtaWifi(const char* ssid, const char* password);
     void runOtaUpdate(const char* ssid, const char* password, const char* url);

@@ -351,9 +351,21 @@ message_data MessageHandler::createConfigMessage(int boardId) {
     configPayload.xPos = addressList[boardId].xPos;
     configPayload.yPos = addressList[boardId].yPos;
     configPayload.distance = addressList[boardId].distanceFromCenter;
+    configPayload.maxDistance = getMaxDistanceFromCenter();
+    configPayload.soundSpeed = getSoundSpeed();
     memcpy(&configMessage.payload.configData, &configPayload, sizeof(configPayload));
     WiFi.macAddress(configMessage.senderAddress);
     return configMessage;
+}
+
+float MessageHandler::getMaxDistanceFromCenter() {
+    float maxDist = 0.0f;
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (memcmp(addressList[i].address, emptyAddress, 6) == 0) continue;
+        if (addressList[i].distanceFromCenter > maxDist)
+            maxDist = addressList[i].distanceFromCenter;
+    }
+    return maxDist;
 }
 message_data MessageHandler::createUpdateVersionMessage(Version version) {
     message_data updateMessage;
@@ -705,7 +717,7 @@ int MessageHandler::getClapDeviceDelay() {
     return returnDelay;
 }
 
-void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode) {
+void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSat, int hue, int saturation, int rangeMin, int rangeMax, float rmsMin, float rmsMax, int mode, int distance, bool distanceSwitch, int distanceMode, int distanceEdge) {
     if (xSemaphoreTake(configMutex, portMAX_DELAY) == pdTRUE) {
         midiParams.valMin = minVal;
         midiParams.valMax = maxVal;
@@ -721,6 +733,7 @@ void MessageHandler::setMidiParams(int minVal, int maxVal, int minSat, int maxSa
         midiParams.distance = distance;
         midiParams.distanceSwitch = distanceSwitch;
         midiParams.distanceMode = distanceMode;
+        midiParams.distanceEdge = (uint8_t)constrain(distanceEdge, 0, 100);
         xSemaphoreGive(configMutex);
     }
     message_data midiParamsMessage = createMidiParamsMessage(midiParams);

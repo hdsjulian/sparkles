@@ -283,13 +283,18 @@ struct message_midi_params {
   float rmsMin;
   float rmsMax;
   int mode;
-  int distance; // New field for distance from center
-  bool distanceSwitch; // New field for enabling/disabling distance-based effects
+  int distance; // shimmer brightness falloff radius in m, 0 = the calibrated max distance
+  bool distanceSwitch; // distance effects on the shimmer on/off
+  uint8_t distanceEdge; // shimmer brightness at the falloff radius, % of the centre's. Sits in the bool's padding
   int distanceMode; // 0 = brightness attenuation, 1 = timing delay
-  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(-35.0f), rmsMax(-20.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false), distanceMode(0) {}
-  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), hue(other.hue), saturation(other.saturation), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode), distance(other.distance), distanceSwitch(other.distanceSwitch), distanceMode(other.distanceMode) {}
+  message_midi_params() : valMin(MIDI_VAL_MIN), valMax(MIDI_VAL_MAX), satMin(MIDI_SAT_MIN), satMax(MIDI_SAT_MAX), hue(0), saturation(255), rangeMin(MIDI_MIN_RANGE), rangeMax(MIDI_MAX_RANGE), rmsMin(-35.0f), rmsMax(-20.0f), mode(INPUT_MODE), distance(0), distanceSwitch(false), distanceEdge(50), distanceMode(0) {}
+  message_midi_params(const message_midi_params& other) : valMin(other.valMin), valMax(other.valMax), satMin(other.satMin), satMax(other.satMax), hue(other.hue), saturation(other.saturation), rangeMin(other.rangeMin), rangeMax(other.rangeMax), rmsMin(other.rmsMin), rmsMax(other.rmsMax), mode(other.mode), distance(other.distance), distanceSwitch(other.distanceSwitch), distanceEdge(other.distanceEdge), distanceMode(other.distanceMode) {}
 
 };
+
+// already fills the 80-byte compat frame exactly, a new field has to fit in padding
+static_assert(sizeof(message_midi_params) <= ESPNOW_CLIENT_COMPAT_SIZE - 24,
+              "message_midi_params must fit the 80-byte client frame");
 
 struct message_darkroom_params {
   int strobeMin;
@@ -535,9 +540,14 @@ struct message_config_data {
   float minY;
   float maxX;
   float maxY;
+  float soundSpeed; // m/s the distance was measured with, so the delay effect turns it back into the same time
 
-  message_config_data() : boardId(0), xPos(0.0), yPos(0.0), distance(0.0), minDistance(0.0), maxDistance(0.0), minX(0.0), minY(0.0), maxX(0.0), maxY(0.0) {}
+  message_config_data() : boardId(0), xPos(0.0), yPos(0.0), distance(0.0), minDistance(0.0), maxDistance(0.0), minX(0.0), minY(0.0), maxX(0.0), maxY(0.0), soundSpeed(0.0) {}
 };
+
+// config goes out in the 80-byte compat frame like everything else the master sends
+static_assert(sizeof(message_config_data) <= ESPNOW_CLIENT_COMPAT_SIZE - 24,
+              "message_config_data must fit the 80-byte client frame");
 
 struct message_update_version {
   Version version;

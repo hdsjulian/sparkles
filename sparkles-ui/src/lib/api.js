@@ -165,9 +165,14 @@ export const setSyncAsyncParams = (params) => {
 export const getMidiParams = () =>
   fetch(`${BASE}/getMidiParams`).then(r => r.json());
 
+// a rejected parameter comes back from FastAPI with detail as a list, not a string
 export const setMidiParams = (params) => {
   const qs = new URLSearchParams(params).toString();
-  return fetch(`${BASE}/setMidiParams?${qs}`).then(r => r.json());
+  return fetch(`${BASE}/setMidiParams?${qs}`).then(async r => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'MIDI params were not saved');
+    return body;
+  });
 };
 
 // ---- Sleep test ----
@@ -188,7 +193,11 @@ export const getColors = () =>
 
 export const setColors = (params) => {
   const qs = new URLSearchParams(params).toString();
-  return fetch(`${BASE}/setColors?${qs}`).then(r => r.json());
+  return fetch(`${BASE}/setColors?${qs}`).then(async r => {
+    const body = await r.json();
+    if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Colors were not saved');
+    return body;
+  });
 };
 
 // ---- Darkroom ----

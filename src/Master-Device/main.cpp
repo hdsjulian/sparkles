@@ -621,6 +621,7 @@ static void handleSerialCommand(const char* line) {
         r["minDb"]  = p.rmsMin;   r["maxDb"] = p.rmsMax;
         r["distance"] = p.distance; r["distanceSwitch"] = p.distanceSwitch;
         r["distanceMode"] = p.distanceMode; r["mode"] = p.mode;
+        r["distanceEdge"] = p.distanceEdge;
         r["event"] = "midi_params";
         serialSendDoc(r);
 
@@ -632,7 +633,8 @@ static void handleSerialCommand(const char* line) {
             doc["rangeMin"].as<int>(), doc["rangeMax"].as<int>(),
             doc["minDb"].as<float>(), doc["maxDb"].as<float>(),
             doc["mode"].as<int>(), doc["distance"].as<int>(),
-            doc["distanceSwitch"].as<bool>(), doc["distanceMode"].as<int>());
+            doc["distanceSwitch"].as<bool>(), doc["distanceMode"].as<int>(),
+            doc["distanceEdge"] | 50); // missing from params saved before it existed
 
     } else if (strcmp(cmd, "get_darkroom_params") == 0) {
         message_darkroom_params p = msgHandler.getDarkroomParams();
@@ -707,6 +709,14 @@ static void handleSerialCommand(const char* line) {
     else if (strcmp(cmd, "dist_cal_cancel") == 0)        { msgHandler.cancelCalibration(); }
     else if (strcmp(cmd, "dist_cal_abort") == 0)         { msgHandler.abortDistanceCalibration(); }
     else if (strcmp(cmd, "ota_update") == 0)             { msgHandler.startOTAUpdateTask(); }
+    else if (strcmp(cmd, "ota_board") == 0) {
+        // answered either way, so the pi can tell a board we have no address
+        // for from a master too old to know this command
+        int boardId = doc["boardId"] | -1;
+        JsonDocument r; r["event"] = "ota_sent"; r["boardId"] = boardId;
+        r["ok"] = msgHandler.sendOtaRequest(boardId);
+        serialSendDoc(r);
+    }
     else if (strcmp(cmd, "set_ota_url") == 0) {
         const char* url = doc["url"] | "";
         msgHandler.setOtaUrl(url);
