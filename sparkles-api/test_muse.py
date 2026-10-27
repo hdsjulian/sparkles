@@ -169,6 +169,21 @@ def adapters():
         muse.SYS_BLUETOOTH, muse.args.adapter, muse.adapter = saved
 
 
+def life():
+    print("a head, not a table")
+    np = muse.np
+    t = np.arange(512) / muse.PPG_FS
+    hiss = np.random.default_rng(0).normal(0, 50, 512)
+    beat = muse._pulse_clarity(list(2000 + 300 * np.sin(2 * np.pi * 1.2 * t) + hiss))
+    table = muse._pulse_clarity(list(2000 + hiss))
+    check("a heartbeat under the pulse sensor is plain", beat > 100, beat)
+    check("a table shows none", table < 20, table)
+    check("lying on a table is not a head", not muse._alive(0.0022, 4.0))
+    check("sitting still with a pulse is", muse._alive(0.0028, 300.0))
+    check("putting it on blurs the pulse, but it moves", muse._alive(0.015, 8.0))
+    check("no pulse data leaves it to the electrodes", muse._alive(0.0027, None))
+
+
 def contact():
     print("contact, with numbers from a real head and a real table")
     m = muse.Muse()
@@ -970,6 +985,7 @@ if __name__ == "__main__":
     decode()
     settle()
     adapters()
+    life()
     contact()
     steady()
     asyncio.run(commands())

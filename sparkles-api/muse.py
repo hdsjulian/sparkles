@@ -135,6 +135,8 @@ RACE_ERRORS = ("failed to discover services",
                "Service Discovery has not been performed", "Unlikely Error")
 SCORE_LOG = 10.0        # seconds between score lines in the log
 GLITCH_AFTER = 10.0     # a link up this long that drops is reconnected at once
+PULSE_CLEAR = 20.0      # pulse clarity of a head; a table reads 2-9 (see _alive)
+MOVING = 0.0035         # accelerometer spread, g, a table never reaches (0.0023)
 # A steady brain signal, before the baseline is learned: this many electrodes
 # in contact for this long, their level within STEADY_DRIFT between the two
 # halves of it rather than still falling as they settle onto the skin.
@@ -574,6 +576,33 @@ def _band_powers(x: np.ndarray) -> dict:
     return out
 
 
+def _pulse_clarity(ppg):
+    """How plainly the PPG shows a heartbeat: the strongest 42-180 bpm peak
+    against the median of 30-300 bpm. Only skin with blood under it has one."""
+    if len(ppg) < int(PPG_FS * 6):
+        return None
+    x = np.asarray(ppg, dtype=float)
+    i = np.arange(len(x))
+    x = x - np.polyval(np.polyfit(i, x, 2), i)
+    spec = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
+    freqs = np.fft.rfftfreq(len(x), 1.0 / PPG_FS)
+    band = (freqs >= 0.7) & (freqs <= 3.0)
+    ref = (freqs >= 0.5) & (freqs <= 5.0)
+    return float(spec[band].max() / max(float(np.median(spec[ref])), 1e-12))
+
+
+def _alive(still, pulse):
+    """A head, not a table: a heartbeat under the pulse sensor, or more movement
+    than a table ever shows. Electrodes alone took a headband lying on a table
+    for one on a head, for minutes. Recorded on a table: pulse 2-9, movement
+    0.0021-0.0023 g. On a head: pulse 40-1450 sitting still, and while it blurs
+    with the headband being put on or adjusted, movement 5-30 times a table's.
+    Without pulse data the electrodes decide alone, as they used to."""
+    if pulse is None:
+        return True
+    return pulse >= PULSE_CLEAR or (still is not None and still >= MOVING)
+
+
 def _heart_rate(ppg: np.ndarray):
     """Dominant frequency in the 42–180 bpm range. Cheaper and far steadier than
     peak detection on a wrist-grade sensor. Bins are ~7 bpm apart at this window
@@ -981,6 +1010,10 @@ class Muse:
         amps = self.channel_amplitude()
         noise = self.channel_noise()
         good = set(self._contact(amps, noise))
+        still = self._stillness()
+        pulse = _pulse_clarity(self.ppg) if args.ppg else None
+        if not _alive(still, pulse):
+            good = set()            # a table, however its electrodes read
         use = [ch for ch in ready if ch in good] or ready   # fall back rather than stall
 
         totals = {b: 0.0 for b in BANDS}
@@ -1046,7 +1079,7 @@ class Muse:
 
         st = self.settle.update(now, dt, on_head, {
             "brain": rel["alpha"] / max(rel["beta"], 1e-9),
-            "still": self._stillness(),
+            "still": still,
             "emg":   self._emg(noise, good),
             "bpm":   bpm,
         }, steady=self._steady(now))
@@ -1064,6 +1097,7 @@ class Muse:
             "roll": round(roll, 1),
             "blink": blink,
             "contact": len(good),
+            "pulse": None if pulse is None else round(pulse, 1),
             "good": sorted(good),
             "noise": {ch: (None if v is None else float(f"{v:.3g}"))
                       for ch, v in noise.items()},
@@ -1454,9 +1488,9 @@ async def run_session(device, muse):
                     f"{c} {'?' if a is None else round(a)}/"
                     f"{'?' if noise.get(c) is None else format(noise[c], '.0e')}"
                     for c, a in s["channels"].items())
-                log.info("%s  settle %.2f  evidence %s  contact %d/4 (%s uV/noise)  %s",
-                         s["phase"], s["settle"], ev, s["contact"], uv,
-                         muse.settle.describe())
+                log.info("%s  settle %.2f  evidence %s  contact %d/4 (%s uV/noise)  "
+                         "pulse %s  %s", s["phase"], s["settle"], ev, s["contact"], uv,
+                         s["pulse"], muse.settle.describe())
     except asyncio.CancelledError:
         raise
     except Exception as e:
