@@ -233,7 +233,7 @@ public:
     void clearClapMeasurements();
     void startDistanceCalibrationMaster();
     void startDistanceCalibrationClient();
-    void calculateDistances();
+    void calculateDistances(bool reportBoards = true);
     void cancelDistanceCalibration();
     void resetDistanceCalibration();
     void abortDistanceCalibration();

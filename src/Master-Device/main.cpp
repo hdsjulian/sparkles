@@ -1110,7 +1110,10 @@ void setup()
     Serial.begin(115200);
     // Only the serialOut task writes, so a write may wait for the pi without
     // stalling anything else; with 0 a full buffer spun until the pi read again.
-    Serial.setTxTimeoutMs(50);
+    // Once a write gets nowhere for this long the driver takes the pi for gone
+    // and throws away all but the newest 4 KB: at 50 ms a hiccup on the pi during
+    // a calibration's results cut 9 KB out of the middle of them.
+    Serial.setTxTimeoutMs(500);
     serialStart();
     delay(500);
 

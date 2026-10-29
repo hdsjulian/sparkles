@@ -14,6 +14,12 @@
 // When the queue is full a whole line is dropped instead, and counted.
 static RingbufHandle_t serialOut = nullptr;
 static volatile uint32_t serialDropped = 0;
+// A dump of every board is three times what the queue holds, and dropping on the
+// spot lost a third of it, the closing address_list included. So a line waits for
+// room — but only while the writer is getting through: with the pi gone nothing
+// drains, and every task that reports something would sit out the wait each time.
+static constexpr int SERIAL_SEND_WAIT_MS = 200;
+static volatile bool serialStalled = false;
 
 static void serialWriterTask(void*) {
     while (true) {
@@ -34,7 +40,15 @@ void serialSend(JsonDocument& doc) {
     String out;
     serializeJson(doc, out);
     out += '\n';
-    if (serialOut == nullptr || xRingbufferSend(serialOut, out.c_str(), out.length(), 0) != pdTRUE) {
+    if (serialOut == nullptr) {
+        serialDropped++;
+        return;
+    }
+    TickType_t wait = serialStalled ? 0 : pdMS_TO_TICKS(SERIAL_SEND_WAIT_MS);
+    if (xRingbufferSend(serialOut, out.c_str(), out.length(), wait) == pdTRUE) {
+        serialStalled = false;
+    } else {
+        serialStalled = true;
         serialDropped++;
     }
 }
@@ -1158,6 +1172,13 @@ bool MessageHandler::runBurstBatch(int commandType, int first, int end) {
         doc["kept"]     = kept;
         doc["chirps"]   = count;
         serialSend(doc);
+        // A distance calibration is the one spot, so this already is the board's
+        // distance from the centre. Reported with its batch: all of them at once
+        // at the end was 30 KB in a fraction of a second, and the pi lost a third.
+        if (burstIsDistance && count > 0) {
+            addressList[i].distanceFromCenter = distance;
+            serialEmitBoard(i, addressList[i]);
+        }
     }
     return true;
 }
@@ -1190,7 +1211,7 @@ void MessageHandler::finishBurst() {
             if (!burstIsDistance && burstSlot == clapIndex && clapIndex < NUM_CLAPS) clapIndex++;
             xSemaphoreGive(configMutex);
         }
-        if (burstIsDistance) calculateDistances();
+        if (burstIsDistance) calculateDistances(false);   // each batch reported its own boards
     }
     ESP_LOGI("MSG", "Burst at slot %d done, %d chirps, %d boards measured",
              burstSlot, burstChirpsHeard, burstBoardsMeasured);
@@ -1202,7 +1223,7 @@ void MessageHandler::recordChirpEmission(int chirpIndex, unsigned long long emis
     chirpEmissions[chirpIndex] = emissionTime;
 }
 
-void MessageHandler::calculateDistances() {
+void MessageHandler::calculateDistances(bool reportBoards) {
     for (int i = 0; i < NUM_DEVICES; i++) {
         if (memcmp(addressList[i].address, emptyAddress, 6) == 0) {
             continue;
@@ -1228,17 +1249,8 @@ void MessageHandler::calculateDistances() {
             ESP_LOGW("MSG", "Device %d heard no chirp, keeping %.2f m",
                      i, addressList[i].distanceFromCenter);
         }
-        {
-            JsonDocument doc;
-            doc["event"]    = "distance_result";
-            doc["boardId"]  = i;
-            doc["distance"] = addressList[i].distanceFromCenter;
-            doc["kept"]     = kept;
-            doc["chirps"]   = measured;
-            serialSend(doc);
-        }
         if (measured == 0) continue;
-        serialEmitBoard(i, addressList[i]);
+        if (reportBoards) serialEmitBoard(i, addressList[i]);
         message_data configMessage = createConfigMessage(i);
         memcpy(configMessage.targetAddress, addressList[i].address, 6);
         pushToSendQueue(configMessage);

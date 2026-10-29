@@ -69,6 +69,7 @@ Every event frame has `{"event": "<name>", ...data}`.
 | `calibration_status` | `status: int, [clapId, clapTime]` | calibration progress |
 | `distance_status` | `status: int, [clapId, clapTime]` | distance cal progress |
 | `client_clap` | `clapId, boardId, clapDistance` | clap received from client |
+| `chirp_distance` | `boardId, slot, distance, kept, chirps` | one board's averaged distance to a chirp spot, sent as its batch finishes; a distance calibration sends the board's `update_board` right after it, so nothing is left for the end but the `done` |
 | `num_devices` | `numDevices: int` | old firmware's 5 s count, now part of `status` |
 | `sync_status` | `status: str` | sync progress |
 | `midi_params` | `minVal, maxVal, ...` | MIDI params response |
