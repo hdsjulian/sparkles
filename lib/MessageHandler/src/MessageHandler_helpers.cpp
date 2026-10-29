@@ -2,6 +2,7 @@
 #include "Arduino.h"
 #include "esp_now.h"
 #include "WiFi.h"
+#include <algorithm>
 
 String MessageHandler::stringAddress(const uint8_t * mac_addr, bool debug){
     String macStr;
@@ -184,20 +185,7 @@ float MessageHandler::getBatteryPercentage() {
     int adcValue = 0;
     for (int i = 0; i < 8; i++) adcValue += analogRead(BATTERY_PIN);
     adcValue /= 8;
-    float voltage = adcValue * (4.2 / 2550.0);
-    float percentage;
-
-    if (voltage >= 4.2) {
-        percentage = 100.0;
-    } else if (voltage >= 3.8 && voltage < 4.2) {
-        percentage =  70.0 + (voltage - 3.8) / (4.2 - 3.8) * (100.0 - 70.0);
-    } else if (voltage >= 3.6 && voltage < 3.8) {
-        percentage = 15.0 + (voltage - 3.6) / (3.8 - 3.6) * (70.0 - 15.0);
-    } else if (voltage >= 3.0 && voltage < 3.6) {
-        percentage =  (voltage - 3.0) / (3.6 - 3.0) * 15.0;
-    } else {
-        percentage = 0.0;
-    }
+    float percentage = batteryPercentageFromVoltage(adcValue * BATTERY_VOLTS_PER_COUNT);
 
     batteryHistory[batteryHistoryIndex] = percentage;
     batteryHistoryIndex = (batteryHistoryIndex + 1) % BATTERY_HISTORY_SIZE;
@@ -209,6 +197,41 @@ float MessageHandler::getBatteryPercentage() {
     percentage = sum / count;
 
     percentage = round(percentage * 100) / 100;
+    return percentage;
+}
+
+// The one careful reading, at boot before the radio and the LEDs draw anything:
+// a TX burst sags the cell by several percent. Many samples and only the middle
+// half of them, so a stray read (the zero after a wake) cannot move it.
+float MessageHandler::measureBatteryVoltage() {
+    analogReadResolution(12);
+    analogSetPinAttenuation(BATTERY_PIN, ADC_11db);
+    for (int i = 0; i < 4; i++) analogRead(BATTERY_PIN);  // let the input settle
+    const int n = 64;
+    int samples[n];
+    for (int i = 0; i < n; i++) {
+        samples[i] = analogRead(BATTERY_PIN);
+        delay(1);
+    }
+    std::sort(samples, samples + n);
+    long sum = 0;
+    for (int i = n / 4; i < n * 3 / 4; i++) sum += samples[i];
+    return sum / (float)(n / 2) * BATTERY_VOLTS_PER_COUNT;
+}
+
+float MessageHandler::batteryPercentageFromVoltage(float voltage) {
+    float percentage;
+    if (voltage >= 4.2) {
+        percentage = 100.0;
+    } else if (voltage >= 3.8 && voltage < 4.2) {
+        percentage =  70.0 + (voltage - 3.8) / (4.2 - 3.8) * (100.0 - 70.0);
+    } else if (voltage >= 3.6 && voltage < 3.8) {
+        percentage = 15.0 + (voltage - 3.6) / (3.8 - 3.6) * (70.0 - 15.0);
+    } else if (voltage >= 3.0 && voltage < 3.6) {
+        percentage =  (voltage - 3.0) / (3.6 - 3.0) * 15.0;
+    } else {
+        percentage = 0.0;
+    }
     return percentage;
 }
 

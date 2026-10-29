@@ -124,6 +124,7 @@ static constexpr size_t ESPNOW_CLIENT_COMPAT_SIZE = 80;
 
 
 #define BATTERY_PIN 4
+#define BATTERY_VOLTS_PER_COUNT (4.2f / 2550.0f) // raw ADC count to cell voltage, 4.2 V reads 2550
 #define AUDIO_PIN 5
 #define NUM_DEVICES 180
 #define NUM_CLAPS 20

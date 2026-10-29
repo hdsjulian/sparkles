@@ -75,6 +75,8 @@ public:
     void setAvailable(int index);
     activeStatus getActiveStatus(int index);
     float getBatteryPercentage();
+    float measureBatteryVoltage();  // slow and careful, for boot
+    static float batteryPercentageFromVoltage(float voltage);
     void setNumDevices(int num);
     int getNumDevices();
     void recordTimeOfDayBeforeSleep();

@@ -29,6 +29,14 @@ ESP_LOGI("Received", "Data at %d", micros());
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t sendStatus) {}
 unsigned long lastTick = 0;
 int tickCount = 0;
+float bootBatteryVolts = 0;
+unsigned long lastBootBatteryLog = 0;
+
+// upload_client.py looks for this line after flashing a board
+static void logBootBattery() {
+  ESP_LOGI("BATTERY", "boot reading %.2f V, %.0f%%", bootBatteryVolts,
+           MessageHandler::batteryPercentageFromVoltage(bootBatteryVolts));
+}
 
 extern uint32_t g_lightSleepMarker; // crash breadcrumb, see MessageHandler_client.cpp
 
@@ -67,6 +75,9 @@ void setup()
     ESP_LOGE("BOOT", "previous boot DIED IN THE WAKE PATH (Serial/WiFi re-init)");
   }
   g_lightSleepMarker = 0;
+  // before the radio and the LEDs are on, see measureBatteryVoltage()
+  bootBatteryVolts = msgHandler.measureBatteryVoltage();
+  logBootBattery();
   if (!LittleFS.begin(true)) // format on fail — the crash-reboots corrupted at least one board's fs
   {
     Serial.println("LittleFS mount failed");
@@ -114,14 +125,19 @@ void setup()
   ledInstance.setup();
   msgHandler.setup(ledInstance);
   ESP_LOGI("", "Setup");
-  float batPercentage = msgHandler.getBatteryPercentage();
-  ledInstance.batteryBlink(batPercentage);
+  ledInstance.batteryBlink(MessageHandler::batteryPercentageFromVoltage(bootBatteryVolts));
 
   // put your setup code here, to run once:
 }
 
 void loop()
 {
+  // again for the first 20 s: after an upload the port is only reopened once the
+  // board is back from the reset, and the line from setup() is gone by then
+  if (millis() < 20000 && millis() - lastBootBatteryLog >= 1000) {
+    lastBootBatteryLog = millis();
+    logBootBattery();
+  }
   if (lastTick + 10000 < millis())
   {
     lastTick = millis();
