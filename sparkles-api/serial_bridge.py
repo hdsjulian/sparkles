@@ -816,31 +816,33 @@ class SerialBridge:
             self._send_midi_params()
 
             # --- read loop (TX happens on the dedicated writer thread) ---
-            # readline()'s timeout runs from the call, not from the last byte, so
-            # a line still arriving when it expires comes back cut in two; the
-            # start waits here for the rest instead of failing to parse.
-            partial = b""
+            # Everything waiting in one read, split into lines here. readline()
+            # fetches a byte per call and gives the GIL away between each, so the
+            # 30 KB of a calibration's results outran it, the kernel stopped taking
+            # data, and the master's USB driver threw away what it held. A line
+            # still arriving waits in buf for the rest.
+            buf = b""
             while self._running:
                 try:
-                    raw = self._serial.readline()
-                    if not raw:
+                    chunk = self._serial.read(self._serial.in_waiting or 1)
+                    if not chunk:
                         continue
-                    if not raw.endswith(b"\n"):
-                        partial += raw
-                        continue
-                    raw, partial = partial + raw, b""
-                    line = raw.decode(errors="replace").strip()
-                    if not line:
-                        continue
-                    logger.debug("RX ← %s", line)
-                    self._append_log(line)
-                    try:
-                        frame = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    import time as _time
-                    self._last_frame_time = _time.monotonic()
-                    self._dispatch_safe(frame, line)
+                    buf += chunk
+                    *lines, buf = buf.split(b"\n")
+                    if len(buf) > 65536:   # no newline in 64 KB is not a line
+                        buf = b""
+                    for raw in lines:
+                        line = raw.decode(errors="replace").strip()
+                        if not line:
+                            continue
+                        logger.debug("RX ← %s", line)
+                        self._append_log(line)
+                        try:
+                            frame = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        self._last_frame_time = _time.monotonic()
+                        self._dispatch_safe(frame, line)
                 except Exception as exc:
                     # pyserial can raise raw OSError/TypeError when the port is
                     # closed under a blocked readline (flash, usb re-enumeration) —
